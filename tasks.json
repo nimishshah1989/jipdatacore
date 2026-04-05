@@ -1,0 +1,157 @@
+{
+  "project": "jip-data-engine",
+  "version": "2.0",
+  "total_chunks": 16,
+  "chunks": [
+    {
+      "id": "C1",
+      "name": "Project Scaffold",
+      "status": "done",
+      "spec": "docs/specs/chunks/chunk-1.md",
+      "layer": 0,
+      "dependencies": [],
+      "complexity": "medium",
+      "completed_at": "2026-04-05"
+    },
+    {
+      "id": "C2",
+      "name": "Database Schema",
+      "status": "done",
+      "spec": "docs/specs/chunks/chunk-2.md",
+      "layer": 1,
+      "dependencies": ["C1"],
+      "complexity": "high",
+      "completed_at": "2026-04-05"
+    },
+    {
+      "id": "C3",
+      "name": "API Auth + Middleware",
+      "status": "done",
+      "spec": "docs/specs/chunks/chunk-3.md",
+      "layer": 1,
+      "dependencies": ["C1"],
+      "complexity": "medium",
+      "completed_at": "2026-04-05"
+    },
+    {
+      "id": "C4",
+      "name": "Pipeline Framework",
+      "status": "done",
+      "spec": "docs/specs/chunks/chunk-4.md",
+      "layer": 2,
+      "dependencies": ["C2"],
+      "complexity": "high",
+      "completed_at": "2026-04-05"
+    },
+    {
+      "id": "C5",
+      "name": "Data Migrations",
+      "status": "done",
+      "spec": "docs/specs/chunks/chunk-5.md",
+      "layer": 2,
+      "dependencies": ["C2"],
+      "complexity": "high",
+      "completed_at": "2026-04-05"
+    },
+    {
+      "id": "C6",
+      "name": "PII Encryption",
+      "status": "done",
+      "spec": "docs/specs/chunks/chunk-6.md",
+      "layer": 2,
+      "dependencies": ["C2"],
+      "complexity": "medium",
+      "completed_at": "2026-04-05"
+    },
+    {
+      "id": "C7",
+      "name": "Equity Ingestion Pipeline",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-7.md",
+      "layer": 3,
+      "dependencies": ["C4"],
+      "complexity": "high"
+    },
+    {
+      "id": "C8",
+      "name": "MF Ingestion Pipeline",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-8.md",
+      "layer": 3,
+      "dependencies": ["C4"],
+      "complexity": "medium"
+    },
+    {
+      "id": "C9",
+      "name": "Supporting Pipelines",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-9.md",
+      "layer": 3,
+      "dependencies": ["C4"],
+      "complexity": "medium"
+    },
+    {
+      "id": "C10",
+      "name": "Morningstar Integration",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-10.md",
+      "layer": 3,
+      "dependencies": ["C4", "C8"],
+      "complexity": "medium"
+    },
+    {
+      "id": "C11",
+      "name": "Technical Indicators + RS + Breadth + Regime",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-11.md",
+      "layer": 4,
+      "dependencies": ["C7"],
+      "complexity": "very-high"
+    },
+    {
+      "id": "C12",
+      "name": "Sector + Fund Derived Metrics",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-12.md",
+      "layer": 4,
+      "dependencies": ["C8", "C11"],
+      "complexity": "high"
+    },
+    {
+      "id": "C13",
+      "name": "Qualitative Pipeline",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-13.md",
+      "layer": 4,
+      "dependencies": ["C4"],
+      "complexity": "high"
+    },
+    {
+      "id": "C14",
+      "name": "Market Pulse + MF Pulse API",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-14.md",
+      "layer": 5,
+      "dependencies": ["C3", "C11", "C12"],
+      "complexity": "high"
+    },
+    {
+      "id": "C15",
+      "name": "Pipeline Monitoring Dashboard",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-15.md",
+      "layer": 5,
+      "dependencies": ["C3", "C4"],
+      "complexity": "medium"
+    },
+    {
+      "id": "C16",
+      "name": "Orchestrator + Monitoring + Operational Readiness",
+      "status": "pending",
+      "spec": "docs/specs/chunks/chunk-16.md",
+      "layer": 5,
+      "dependencies": ["C7", "C8", "C9", "C11"],
+      "complexity": "high"
+    }
+  ]
+}
