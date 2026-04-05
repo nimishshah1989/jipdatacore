@@ -8,6 +8,7 @@ Must run BEFORE price ingestion (bhav.py) each trading day.
 
 from __future__ import annotations
 
+
 import asyncio
 from datetime import date
 from typing import Any

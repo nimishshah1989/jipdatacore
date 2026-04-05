@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: production
+    service: jip-data-engine
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  - job_name: "jip-data-engine"
+    static_configs:
+      - targets: ["data-engine:8010"]
+    metrics_path: /metrics
+    scheme: http
+
+  - job_name: "jip-dashboard"
+    static_configs:
+      - targets: ["dashboard:8099"]
+    metrics_path: /metrics
+    scheme: http

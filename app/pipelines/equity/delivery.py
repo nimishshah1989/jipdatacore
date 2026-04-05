@@ -6,6 +6,7 @@ de_equity_ohlcv with delivery_vol and delivery_pct.
 
 from __future__ import annotations
 
+
 import asyncio
 import io
 from datetime import date

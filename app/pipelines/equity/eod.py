@@ -12,6 +12,7 @@ Extends BasePipeline — the base class handles flags, calendar, locking, loggin
 
 from __future__ import annotations
 
+
 import uuid
 from datetime import date
 from decimal import Decimal

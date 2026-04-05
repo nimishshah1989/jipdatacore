@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block title %}JIP Pipeline Dashboard{% endblock %}
+{% block nav_home %}active{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid">
+
+    <!-- Pipeline Status Grid -->
+    <section class="card full-width" id="section-pipeline-status">
+        <div class="card-header">
+            <h2>Pipeline Status</h2>
+            <span class="card-date" id="pipeline-date">—</span>
+        </div>
+        <div class="pipeline-grid" id="pipeline-grid">
+            <div class="pipeline-card loading" data-pipeline="pre_market">
+                <div class="pipeline-label">Pre-Market</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="equity_eod">
+                <div class="pipeline-label">Equity EOD</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="mf_nav">
+                <div class="pipeline-label">MF NAV</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="fii_dii_flows">
+                <div class="pipeline-label">FII/DII Flows</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="rs_computation">
+                <div class="pipeline-label">RS Computation</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="regime_update">
+                <div class="pipeline-label">Regime Update</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="indices">
+                <div class="pipeline-label">Indices</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="fo_data">
+                <div class="pipeline-label">F&amp;O Data</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="qualitative">
+                <div class="pipeline-label">Qualitative</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+            <div class="pipeline-card loading" data-pipeline="reconciliation">
+                <div class="pipeline-label">Reconciliation</div>
+                <div class="pipeline-status-badge">—</div>
+                <div class="pipeline-meta">
+                    <span class="pipeline-rows">—</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- System Health -->
+    <section class="card half-width" id="section-health">
+        <div class="card-header">
+            <h2>System Health</h2>
+        </div>
+        <div class="health-grid" id="health-grid">
+            <div class="health-item">
+                <span class="health-label">Data Engine</span>
+                <span class="health-value" id="health-de">—</span>
+            </div>
+            <div class="health-item">
+                <span class="health-label">Redis</span>
+                <span class="health-value" id="health-redis">—</span>
+            </div>
+            <div class="health-item">
+                <span class="health-label">Database</span>
+                <span class="health-value" id="health-db">—</span>
+            </div>
+            <div class="health-item">
+                <span class="health-label">EC2 Disk</span>
+                <span class="health-value" id="health-disk">—</span>
+            </div>
+            <div class="health-item">
+                <span class="health-label">DB Connections</span>
+                <span class="health-value" id="health-db-conns">—</span>
+            </div>
+            <div class="health-item">
+                <span class="health-label">Redis Latency</span>
+                <span class="health-value" id="health-redis-latency">—</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- SLA Tracking -->
+    <section class="card half-width" id="section-sla">
+        <div class="card-header">
+            <h2>SLA Tracking</h2>
+            <span class="card-date" id="sla-date">—</span>
+        </div>
+        <table class="data-table" id="sla-table">
+            <thead>
+                <tr>
+                    <th class="col-text">Pipeline</th>
+                    <th class="col-num">Deadline (IST)</th>
+                    <th class="col-num">Actual Time</th>
+                    <th class="col-text">Status</th>
+                </tr>
+            </thead>
+            <tbody id="sla-tbody">
+                <tr><td colspan="4" class="loading-cell">Loading SLA data...</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Today's Anomalies -->
+    <section class="card full-width" id="section-anomalies">
+        <div class="card-header">
+            <h2>Today's Anomalies</h2>
+            <span class="anomaly-count" id="anomaly-count">—</span>
+        </div>
+        <table class="data-table" id="anomaly-table">
+            <thead>
+                <tr>
+                    <th class="col-text">Severity</th>
+                    <th class="col-text">Pipeline</th>
+                    <th class="col-text">Entity</th>
+                    <th class="col-text">Type</th>
+                    <th class="col-text">Expected</th>
+                    <th class="col-text">Actual</th>
+                    <th class="col-num">Detected At</th>
+                    <th class="col-text">Status</th>
+                </tr>
+            </thead>
+            <tbody id="anomaly-tbody">
+                <tr><td colspan="8" class="loading-cell">Loading anomalies...</td></tr>
+            </tbody>
+        </table>
+        <!-- Anomaly detail panel -->
+        <div id="anomaly-detail-panel" class="detail-panel hidden">
+            <div class="detail-panel-header">
+                <span class="detail-panel-title">Anomaly Detail</span>
+                <button class="detail-close-btn" onclick="window.dashboard.closeAnomalyDetail()">Close</button>
+            </div>
+            <div id="anomaly-detail-content" class="detail-panel-content"></div>
+        </div>
+    </section>
+
+    <!-- Historical Pipeline Viewer -->
+    <section class="card full-width" id="section-history">
+        <div class="card-header">
+            <h2>Historical Pipeline Runs</h2>
+        </div>
+        <div class="history-filters">
+            <label class="filter-group">
+                <span>Pipeline</span>
+                <select id="history-pipeline-filter">
+                    <option value="">All pipelines</option>
+                    <option value="pre_market">Pre-Market</option>
+                    <option value="equity_eod">Equity EOD</option>
+                    <option value="mf_nav">MF NAV</option>
+                    <option value="fii_dii_flows">FII/DII Flows</option>
+                    <option value="rs_computation">RS Computation</option>
+                    <option value="regime_update">Regime Update</option>
+                    <option value="indices">Indices</option>
+                    <option value="fo_data">F&amp;O Data</option>
+                    <option value="qualitative">Qualitative</option>
+                    <option value="reconciliation">Reconciliation</option>
+                </select>
+            </label>
+            <label class="filter-group">
+                <span>From</span>
+                <input type="date" id="history-date-from" />
+            </label>
+            <label class="filter-group">
+                <span>To</span>
+                <input type="date" id="history-date-to" />
+            </label>
+            <button class="btn-primary" onclick="window.dashboard.loadHistory()">Load</button>
+        </div>
+        <table class="data-table" id="history-table">
+            <thead>
+                <tr>
+                    <th class="col-text">Pipeline</th>
+                    <th class="col-num">Business Date</th>
+                    <th class="col-text">Status</th>
+                    <th class="col-num">Rows Processed</th>
+                    <th class="col-num">Rows Failed</th>
+                    <th class="col-num">Started At</th>
+                    <th class="col-num">Completed At</th>
+                    <th class="col-num">Duration</th>
+                </tr>
+            </thead>
+            <tbody id="history-tbody">
+                <tr><td colspan="8" class="loading-cell">Select filters and click Load to view history.</td></tr>
+            </tbody>
+        </table>
+        <!-- Track status detail panel -->
+        <div id="history-detail-panel" class="detail-panel hidden">
+            <div class="detail-panel-header">
+                <span class="detail-panel-title">Run Detail — Track Status</span>
+                <button class="detail-close-btn" onclick="window.dashboard.closeHistoryDetail()">Close</button>
+            </div>
+            <div id="history-detail-content" class="detail-panel-content"></div>
+        </div>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    window.DASHBOARD_CONFIG = {
+        refreshInterval: {{ refresh_interval }},
+    };
+</script>
+{% endblock %}

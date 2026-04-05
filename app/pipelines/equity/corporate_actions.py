@@ -9,6 +9,7 @@ cookie jar from a pre-seeded NSE homepage visit.
 
 from __future__ import annotations
 
+
 import asyncio
 import uuid
 from datetime import date

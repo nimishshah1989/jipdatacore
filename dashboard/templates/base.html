@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}JIP Pipeline Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css" />
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+    <header class="site-header">
+        <div class="header-inner">
+            <div class="header-brand">
+                <span class="brand-logo">JIP</span>
+                <span class="brand-title">Pipeline Dashboard</span>
+            </div>
+            <nav class="header-nav">
+                <a href="/" class="nav-link {% block nav_home %}{% endblock %}">Overview</a>
+            </nav>
+            <div class="header-meta">
+                <span class="last-updated-label">Last updated:</span>
+                <span id="last-updated" class="last-updated-value">—</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="site-main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <span>JIP Data Engine v2.0 &mdash; SSH tunnel access only (port 8099)</span>
+            <span>Auto-refresh every <span id="refresh-countdown">{{ refresh_interval }}</span>s</span>
+        </div>
+    </footer>
+
+    <script src="/static/js/dashboard.js"></script>
+    {% block scripts_extra %}{% endblock %}
+</body>
+</html>

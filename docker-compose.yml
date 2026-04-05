@@ -13,8 +13,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
     depends_on:
-      - redis
+      redis:
+        condition: service_started
 
   redis:
     image: redis:7-alpine
@@ -35,7 +37,23 @@ services:
       - .env
     restart: unless-stopped
     depends_on:
-      - data-engine
+      data-engine:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
 
 volumes:
   redis-data:
+  prometheus-data:

@@ -8,7 +8,7 @@ from app.config import get_settings
 from app.logging import setup_logging, get_logger
 from app.db.session import async_engine
 from app.middleware.request_logging import RequestLoggingMiddleware
-from app.api.v1.auth import router as auth_router
+from app.api.v1 import all_routers
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -48,7 +48,8 @@ app.add_middleware(RequestLoggingMiddleware)
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 # Routers
-app.include_router(auth_router)
+for _router in all_routers:
+    app.include_router(_router)
 
 
 @app.get("/health")

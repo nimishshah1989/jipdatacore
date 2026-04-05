@@ -137,30 +137,32 @@
     {
       "id": "C12",
       "name": "Sector + Fund Derived Metrics",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-12.md",
       "layer": 4,
       "dependencies": [
         "C8",
         "C11"
       ],
-      "complexity": "high"
+      "complexity": "high",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C13",
       "name": "Qualitative Pipeline",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-13.md",
       "layer": 4,
       "dependencies": [
         "C4"
       ],
-      "complexity": "high"
+      "complexity": "high",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C14",
       "name": "Market Pulse + MF Pulse API",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-14.md",
       "layer": 5,
       "dependencies": [
@@ -168,24 +170,26 @@
         "C11",
         "C12"
       ],
-      "complexity": "high"
+      "complexity": "high",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C15",
       "name": "Pipeline Monitoring Dashboard",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-15.md",
       "layer": 5,
       "dependencies": [
         "C3",
         "C4"
       ],
-      "complexity": "medium"
+      "complexity": "medium",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C16",
       "name": "Orchestrator + Monitoring + Operational Readiness",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-16.md",
       "layer": 5,
       "dependencies": [
@@ -194,7 +198,8 @@
         "C9",
         "C11"
       ],
-      "complexity": "high"
+      "complexity": "high",
+      "completed_at": "2026-04-05"
     }
   ]
 }

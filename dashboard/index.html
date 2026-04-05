@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JIP Data Engine — Pipeline Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="topbar-logo"><div class="topbar-logo-inner"></div></div>
+      <span class="topbar-title">JIP Data Engine</span>
+      <span class="topbar-subtitle">Pipeline Monitor</span>
+    </div>
+    <div class="topbar-right">
+      <div class="refresh-indicator">
+        <div class="refresh-dot" id="refresh-dot"></div>
+        <span>Auto-refresh 30s</span>
+      </div>
+      <span class="timestamp-text" id="last-refresh">—</span>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="main-content">
+
+    <!-- Error banner -->
+    <div class="error-banner" id="error-banner"></div>
+
+    <!-- Summary stats -->
+    <div class="stats-grid">
+      <div class="stat-card stat-ok" id="stat-card-success">
+        <div class="stat-label">Successful</div>
+        <div class="stat-value" id="stat-success">—</div>
+        <div class="stat-meta">pipelines today</div>
+      </div>
+      <div class="stat-card" id="stat-card-failed">
+        <div class="stat-label">Failed / Partial</div>
+        <div class="stat-value" id="stat-failed">—</div>
+        <div class="stat-meta">pipelines today</div>
+      </div>
+      <div class="stat-card stat-running">
+        <div class="stat-label">Running / Pending</div>
+        <div class="stat-value" id="stat-running">—</div>
+        <div class="stat-meta">pipelines</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Rows Processed</div>
+        <div class="stat-value" id="stat-total-rows">—</div>
+        <div class="stat-meta">today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Rows Failed</div>
+        <div class="stat-value" id="stat-failed-rows">—</div>
+        <div class="stat-meta">today</div>
+      </div>
+    </div>
+
+    <!-- Pipeline status table -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Today's Pipeline Runs</span>
+      </div>
+      <div class="pipeline-table-wrap">
+        <table class="pipeline-table">
+          <thead>
+            <tr>
+              <th>Pipeline</th>
+              <th>Business Date</th>
+              <th>Status</th>
+              <th class="num">Rows In</th>
+              <th class="num">Rows Failed</th>
+              <th>Started (IST)</th>
+              <th>Elapsed</th>
+              <th>SLA</th>
+            </tr>
+          </thead>
+          <tbody id="pipeline-tbody">
+            <tr><td colspan="8" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SLA + Health row -->
+    <div class="two-col">
+
+      <!-- SLA tracker -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">SLA Tracker</span>
+        </div>
+        <div class="card-body">
+          <div class="sla-grid" id="sla-grid">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- System health -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">System Health</span>
+        </div>
+        <div class="card-body">
+          <div class="health-grid">
+
+            <div class="health-item">
+              <span class="health-label">Redis</span>
+              <span class="health-value neutral" id="health-redis">—</span>
+              <span class="health-sub" id="health-redis-sub"></span>
+            </div>
+
+            <div class="health-item">
+              <span class="health-label">DB Connections</span>
+              <span class="health-value neutral" id="health-db-conns">—</span>
+              <span class="health-sub" id="health-db-sub"></span>
+            </div>
+
+            <div class="health-item">
+              <span class="health-label">Disk Usage</span>
+              <span class="health-value neutral" id="health-disk">—</span>
+              <span class="health-sub" id="health-disk-sub"></span>
+            </div>
+
+            <div class="health-item">
+              <span class="health-label">Engine</span>
+              <span class="health-value neutral" id="health-engine">—</span>
+              <span class="health-sub" id="health-engine-sub"></span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Anomalies panel -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Anomalies</span>
+      </div>
+      <div class="card-body">
+        <div class="anomaly-tabs">
+          <button class="anomaly-tab active" data-filter="all">All</button>
+          <button class="anomaly-tab critical" data-filter="critical">
+            Critical <span class="anomaly-count-badge" id="anomaly-count-critical">0</span>
+          </button>
+          <button class="anomaly-tab warning" data-filter="warning">
+            Warning <span class="anomaly-count-badge" id="anomaly-count-warning">0</span>
+          </button>
+          <button class="anomaly-tab info" data-filter="info">
+            Info <span class="anomaly-count-badge" id="anomaly-count-info">0</span>
+          </button>
+        </div>
+        <div class="anomaly-list" id="anomaly-list">
+          <div class="empty-state">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historical run viewer -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Historical Pipeline Runs</span>
+      </div>
+      <div class="card-body">
+        <div class="filter-bar" style="margin-bottom: 14px;">
+          <span class="filter-label">From</span>
+          <input type="date" class="filter-input" id="hist-from" />
+          <span class="filter-label">To</span>
+          <input type="date" class="filter-input" id="hist-to" />
+          <button class="btn btn-primary" id="load-history-btn">Load</button>
+          <button class="btn btn-secondary" id="clear-history-btn" onclick="document.getElementById('history-tbody').innerHTML='<tr><td colspan=\'7\' class=\'empty-state\'>Select a date range above.</td></tr>'">Clear</button>
+        </div>
+        <div class="pipeline-table-wrap">
+          <table class="pipeline-table">
+            <thead>
+              <tr>
+                <th>Business Date</th>
+                <th>Pipeline</th>
+                <th>Status</th>
+                <th class="num">Rows In</th>
+                <th class="num">Rows Failed</th>
+                <th>Elapsed</th>
+                <th>SLA</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr><td colspan="7" class="empty-state">Select a date range above.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Anomaly detail slide-over -->
+<div class="detail-overlay" id="detail-overlay">
+  <div class="detail-panel">
+    <div class="detail-panel-header">
+      <span class="detail-panel-title" id="detail-panel-title">Detail</span>
+      <button class="detail-panel-close" id="detail-close-btn" title="Close">x</button>
+    </div>
+    <div class="detail-panel-body" id="detail-panel-body"></div>
+  </div>
+</div>
+
+<script src="/static/main.js"></script>
+</body>
+</html>
