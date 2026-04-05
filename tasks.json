@@ -19,7 +19,9 @@
       "status": "done",
       "spec": "docs/specs/chunks/chunk-2.md",
       "layer": 1,
-      "dependencies": ["C1"],
+      "dependencies": [
+        "C1"
+      ],
       "complexity": "high",
       "completed_at": "2026-04-05"
     },
@@ -29,7 +31,9 @@
       "status": "done",
       "spec": "docs/specs/chunks/chunk-3.md",
       "layer": 1,
-      "dependencies": ["C1"],
+      "dependencies": [
+        "C1"
+      ],
       "complexity": "medium",
       "completed_at": "2026-04-05"
     },
@@ -39,7 +43,9 @@
       "status": "done",
       "spec": "docs/specs/chunks/chunk-4.md",
       "layer": 2,
-      "dependencies": ["C2"],
+      "dependencies": [
+        "C2"
+      ],
       "complexity": "high",
       "completed_at": "2026-04-05"
     },
@@ -49,7 +55,9 @@
       "status": "done",
       "spec": "docs/specs/chunks/chunk-5.md",
       "layer": 2,
-      "dependencies": ["C2"],
+      "dependencies": [
+        "C2"
+      ],
       "complexity": "high",
       "completed_at": "2026-04-05"
     },
@@ -59,36 +67,47 @@
       "status": "done",
       "spec": "docs/specs/chunks/chunk-6.md",
       "layer": 2,
-      "dependencies": ["C2"],
+      "dependencies": [
+        "C2"
+      ],
       "complexity": "medium",
       "completed_at": "2026-04-05"
     },
     {
       "id": "C7",
       "name": "Equity Ingestion Pipeline",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-7.md",
       "layer": 3,
-      "dependencies": ["C4"],
-      "complexity": "high"
+      "dependencies": [
+        "C4"
+      ],
+      "complexity": "high",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C8",
       "name": "MF Ingestion Pipeline",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-8.md",
       "layer": 3,
-      "dependencies": ["C4"],
-      "complexity": "medium"
+      "dependencies": [
+        "C4"
+      ],
+      "complexity": "medium",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C9",
       "name": "Supporting Pipelines",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-9.md",
       "layer": 3,
-      "dependencies": ["C4"],
-      "complexity": "medium"
+      "dependencies": [
+        "C4"
+      ],
+      "complexity": "medium",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C10",
@@ -96,7 +115,10 @@
       "status": "pending",
       "spec": "docs/specs/chunks/chunk-10.md",
       "layer": 3,
-      "dependencies": ["C4", "C8"],
+      "dependencies": [
+        "C4",
+        "C8"
+      ],
       "complexity": "medium"
     },
     {
@@ -105,7 +127,9 @@
       "status": "pending",
       "spec": "docs/specs/chunks/chunk-11.md",
       "layer": 4,
-      "dependencies": ["C7"],
+      "dependencies": [
+        "C7"
+      ],
       "complexity": "very-high"
     },
     {
@@ -114,7 +138,10 @@
       "status": "pending",
       "spec": "docs/specs/chunks/chunk-12.md",
       "layer": 4,
-      "dependencies": ["C8", "C11"],
+      "dependencies": [
+        "C8",
+        "C11"
+      ],
       "complexity": "high"
     },
     {
@@ -123,7 +150,9 @@
       "status": "pending",
       "spec": "docs/specs/chunks/chunk-13.md",
       "layer": 4,
-      "dependencies": ["C4"],
+      "dependencies": [
+        "C4"
+      ],
       "complexity": "high"
     },
     {
@@ -132,7 +161,11 @@
       "status": "pending",
       "spec": "docs/specs/chunks/chunk-14.md",
       "layer": 5,
-      "dependencies": ["C3", "C11", "C12"],
+      "dependencies": [
+        "C3",
+        "C11",
+        "C12"
+      ],
       "complexity": "high"
     },
     {
@@ -141,7 +174,10 @@
       "status": "pending",
       "spec": "docs/specs/chunks/chunk-15.md",
       "layer": 5,
-      "dependencies": ["C3", "C4"],
+      "dependencies": [
+        "C3",
+        "C4"
+      ],
       "complexity": "medium"
     },
     {
@@ -150,7 +186,12 @@
       "status": "pending",
       "spec": "docs/specs/chunks/chunk-16.md",
       "layer": 5,
-      "dependencies": ["C7", "C8", "C9", "C11"],
+      "dependencies": [
+        "C7",
+        "C8",
+        "C9",
+        "C11"
+      ],
       "complexity": "high"
     }
   ]
