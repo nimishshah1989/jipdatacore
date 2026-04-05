@@ -112,25 +112,27 @@
     {
       "id": "C10",
       "name": "Morningstar Integration",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-10.md",
       "layer": 3,
       "dependencies": [
         "C4",
         "C8"
       ],
-      "complexity": "medium"
+      "complexity": "medium",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C11",
       "name": "Technical Indicators + RS + Breadth + Regime",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/chunk-11.md",
       "layer": 4,
       "dependencies": [
         "C7"
       ],
-      "complexity": "very-high"
+      "complexity": "very-high",
+      "completed_at": "2026-04-05"
     },
     {
       "id": "C12",
