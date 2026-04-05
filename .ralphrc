@@ -2,7 +2,10 @@
 # Placed at .ralphrc in your project root by setup or /forge-build
 
 # Timeout per iteration (minutes) — prevents runaway sessions
-CLAUDE_TIMEOUT_MINUTES=15
+CLAUDE_TIMEOUT_MINUTES=60
+
+# Each loop gets a fresh Claude session — prevents corrupted session file
+SESSION_CONTINUITY=false
 
 # Max iterations before stopping — circuit breaker
 MAX_ITERATIONS=25
