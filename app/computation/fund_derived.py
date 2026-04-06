@@ -358,15 +358,17 @@ async def compute_fund_derived_metrics(
             nav_history[mid] = []
         nav_history[mid].append(float(row.nav))
 
-    # Fetch NIFTY 50 benchmark price history for beta
+    # Fetch NIFTY 50 benchmark price history for beta.
+    # Query de_index_prices directly by index_code to avoid the UUID/VARCHAR
+    # type mismatch that occurs when joining de_index_price_daily (a view where
+    # instrument_id is VARCHAR) against de_instrument.id (UUID).
     bench_query = sa.text("""
-        SELECT ip.date, CAST(ip.close_adj AS FLOAT) AS close_adj
-        FROM de_index_price_daily ip
-        JOIN de_instrument i ON i.id = ip.instrument_id
-        WHERE i.symbol = :benchmark
-          AND ip.date <= :bdate
-          AND ip.close_adj IS NOT NULL
-        ORDER BY ip.date
+        SELECT date, CAST(close AS FLOAT) AS close_adj
+        FROM de_index_prices
+        WHERE index_code = :benchmark
+          AND date <= :bdate
+          AND close IS NOT NULL
+        ORDER BY date
     """)
 
     bench_rows = (

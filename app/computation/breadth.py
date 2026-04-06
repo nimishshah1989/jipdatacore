@@ -6,6 +6,7 @@ Writes to de_breadth_daily ON CONFLICT (date) DO UPDATE.
 
 from __future__ import annotations
 
+import datetime as dt
 from datetime import date
 from decimal import Decimal
 from typing import Optional
@@ -224,6 +225,9 @@ async def compute_breadth(
           AND close_adj IS NOT NULL
     """)
 
+    # Compute 52-week window in Python to avoid asyncpg interval arithmetic issues
+    start_52w = business_date - dt.timedelta(days=365)
+
     # Fetch 52-week high/low counts
     week52_query = sa.text("""
         WITH year_range AS (
@@ -232,7 +236,7 @@ async def compute_breadth(
                 MAX(high) AS high_52w,
                 MIN(low) AS low_52w
             FROM de_equity_price_daily
-            WHERE date BETWEEN :bdate - interval '365 days' AND :bdate - interval '1 day'
+            WHERE date >= :start_52w AND date < :bdate
               AND data_status = 'validated'
             GROUP BY instrument_id
         ),
@@ -264,7 +268,7 @@ async def compute_breadth(
     dma_result = await session.execute(dma_query, {"bdate": business_date})
     dma_row = dma_result.fetchone()
 
-    week52_result = await session.execute(week52_query, {"bdate": business_date})
+    week52_result = await session.execute(week52_query, {"bdate": business_date, "start_52w": start_52w})
     week52_row = week52_result.fetchone()
 
     prev_result = await session.execute(prev_mcclellan_query, {"bdate": business_date})

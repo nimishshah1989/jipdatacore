@@ -7,6 +7,7 @@ If equity data stale: confidence *= 0.5
 
 from __future__ import annotations
 
+import datetime as dt
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -150,18 +151,23 @@ async def _fetch_momentum_score(session: AsyncSession, business_date: date) -> O
 
 async def _fetch_volume_score(session: AsyncSession, business_date: date) -> Optional[float]:
     """Derive volume score (0-100) from recent vs historical volumes."""
+    # Compute date boundaries in Python to avoid asyncpg interval arithmetic issues
+    # Use extra buffer days to account for weekends/holidays
+    start_5d = business_date - dt.timedelta(days=10)
+    start_20d = business_date - dt.timedelta(days=30)
+
     result = await session.execute(
         sa.text("""
             WITH recent AS (
                 SELECT AVG(CAST(volume AS FLOAT)) AS avg_vol_5d
                 FROM de_equity_price_daily
-                WHERE date BETWEEN :bdate - interval '5 days' AND :bdate
+                WHERE date >= :start_5d AND date <= :bdate
                   AND data_status = 'validated'
             ),
             historical AS (
                 SELECT AVG(CAST(volume AS FLOAT)) AS avg_vol_20d
                 FROM de_equity_price_daily
-                WHERE date BETWEEN :bdate - interval '20 days' AND :bdate - interval '5 days'
+                WHERE date >= :start_20d AND date < :start_5d
                   AND data_status = 'validated'
             )
             SELECT
@@ -169,7 +175,7 @@ async def _fetch_volume_score(session: AsyncSession, business_date: date) -> Opt
                 h.avg_vol_20d
             FROM recent r, historical h
         """),
-        {"bdate": business_date},
+        {"bdate": business_date, "start_5d": start_5d, "start_20d": start_20d},
     )
     row = result.fetchone()
     if row is None or row.avg_vol_20d is None or row.avg_vol_20d == 0:
@@ -183,17 +189,20 @@ async def _fetch_volume_score(session: AsyncSession, business_date: date) -> Opt
 
 async def _fetch_global_score(session: AsyncSession, business_date: date) -> Optional[float]:
     """Derive global markets score from global price data."""
+    # Compute date boundary in Python to avoid asyncpg interval arithmetic issues
+    start_5d = business_date - dt.timedelta(days=10)
+
     result = await session.execute(
         sa.text("""
             SELECT
-                symbol,
+                ticker,
                 CAST(close AS FLOAT) AS close,
-                CAST(LAG(close) OVER (PARTITION BY instrument_id ORDER BY date) AS FLOAT) AS prev_close
-            FROM de_global_price_daily
-            WHERE date BETWEEN :bdate - interval '5 days' AND :bdate
-            ORDER BY instrument_id, date DESC
+                CAST(LAG(close) OVER (PARTITION BY ticker ORDER BY date) AS FLOAT) AS prev_close
+            FROM de_global_prices
+            WHERE date >= :start_5d AND date <= :bdate
+            ORDER BY ticker, date DESC
         """),
-        {"bdate": business_date},
+        {"bdate": business_date, "start_5d": start_5d},
     )
     rows = result.fetchall()
 
@@ -217,15 +226,19 @@ async def _fetch_global_score(session: AsyncSession, business_date: date) -> Opt
 
 async def _fetch_fii_score(session: AsyncSession, business_date: date) -> Optional[float]:
     """Derive FII/DII flow score from flows data."""
+    # Compute date boundary in Python to avoid asyncpg interval arithmetic issues
+    start_5d = business_date - dt.timedelta(days=10)
+
     result = await session.execute(
         sa.text("""
             SELECT
-                SUM(CAST(fii_equity_net AS FLOAT)) AS fii_net,
-                SUM(CAST(dii_equity_net AS FLOAT)) AS dii_net
-            FROM de_flow_daily
-            WHERE date BETWEEN :bdate - interval '5 days' AND :bdate
+                SUM(CASE WHEN category = 'FII' THEN CAST(net_flow AS FLOAT) ELSE 0 END) AS fii_net,
+                SUM(CASE WHEN category = 'DII' THEN CAST(net_flow AS FLOAT) ELSE 0 END) AS dii_net
+            FROM de_institutional_flows
+            WHERE date >= :start_5d AND date <= :bdate
+              AND market_type = 'equity'
         """),
-        {"bdate": business_date},
+        {"bdate": business_date, "start_5d": start_5d},
     )
     row = result.fetchone()
     if row is None:

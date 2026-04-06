@@ -115,12 +115,14 @@ async def compute_sector_metrics(
         benchmark=benchmark,
     )
 
-    # Fetch all constituents with RS + technical flags + market cap
+    # Fetch all constituents with RS + technical flags.
+    # de_market_cap_history stores cap CATEGORY (large/mid/small), not cap value.
+    # Use equal weights (1.0) for all constituents — effective equal-weight sector RS.
     query = sa.text("""
         SELECT
             i.sector,
             CAST(rs.rs_composite AS FLOAT) AS rs_composite,
-            CAST(mch.market_cap_crore AS FLOAT) AS market_cap,
+            1.0 AS market_cap,
             COALESCE(etd.above_50dma, FALSE) AS above_50dma,
             COALESCE(etd.above_200dma, FALSE) AS above_200dma
         FROM de_rs_scores rs
@@ -129,14 +131,6 @@ async def compute_sector_metrics(
         LEFT JOIN de_equity_technical_daily etd
             ON etd.instrument_id::text = rs.entity_id
             AND etd.date = :bdate
-        LEFT JOIN (
-            SELECT DISTINCT ON (instrument_id)
-                instrument_id,
-                market_cap_crore
-            FROM de_market_cap_history
-            WHERE as_of_date <= :bdate
-            ORDER BY instrument_id, as_of_date DESC
-        ) mch ON mch.instrument_id::text = rs.entity_id
         WHERE rs.date = :bdate
           AND rs.vs_benchmark = :benchmark
           AND rs.entity_type = 'equity'

@@ -198,13 +198,13 @@ async def compute_rs_scores(
         SELECT
             ep.instrument_id::text AS entity_id,
             ep.date,
-            CAST(ep.close_adj AS FLOAT) AS close_adj,
+            CAST(COALESCE(ep.close_adj, ep.close) AS FLOAT) AS close_adj,
             i.symbol
         FROM de_equity_price_daily ep
         JOIN de_instrument i ON i.id = ep.instrument_id
         WHERE ep.data_status = 'validated'
           AND ep.date <= :bdate
-          AND ep.close_adj IS NOT NULL
+          AND COALESCE(ep.close_adj, ep.close) IS NOT NULL
         ORDER BY ep.instrument_id, ep.date
         LIMIT 5000000
     """)
@@ -227,21 +227,20 @@ async def compute_rs_scores(
     # Fetch benchmark price series by symbol
     benchmark_query = sa.text("""
         SELECT
-            i.symbol,
+            ip.index_code AS symbol,
             ip.date,
-            CAST(ip.close_adj AS FLOAT) AS close_adj
-        FROM de_index_price_daily ip
-        JOIN de_instrument i ON i.id = ip.instrument_id
-        WHERE i.symbol IN :symbols
+            CAST(ip.close AS FLOAT) AS close_adj
+        FROM de_index_prices ip
+        WHERE ip.index_code = ANY(:symbols)
           AND ip.date <= :bdate
-          AND ip.close_adj IS NOT NULL
-        ORDER BY i.symbol, ip.date
+          AND ip.close IS NOT NULL
+        ORDER BY ip.index_code, ip.date
     """)
 
     bench_rows = (
         await session.execute(
             benchmark_query,
-            {"symbols": tuple(BENCHMARKS), "bdate": business_date},
+            {"symbols": list(BENCHMARKS), "bdate": business_date},
         )
     ).fetchall()
 

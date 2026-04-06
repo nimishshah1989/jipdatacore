@@ -89,10 +89,10 @@ async def run_technicals_for_date(
         SELECT
             ep.instrument_id,
             ep.date,
-            CAST(ep.close_adj AS FLOAT) AS close_adj
+            CAST(COALESCE(ep.close_adj, ep.close) AS FLOAT) AS close_adj
         FROM de_equity_price_daily ep
         WHERE ep.data_status = 'validated'
-          AND ep.close_adj IS NOT NULL
+          AND COALESCE(ep.close_adj, ep.close) IS NOT NULL
           AND ep.date <= :bdate
           AND ep.date >= :start_date
         ORDER BY ep.instrument_id, ep.date
