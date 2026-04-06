@@ -333,12 +333,16 @@ async def compute_fund_derived_metrics(
         r.mstar_id: r.rs_composite for r in nav_rs_rows
     }
 
-    # Fetch NAV history for risk metrics
+    # Fetch NAV history for risk metrics — limit to 3yr + buffer (LOOKBACK_3Y=756 trading days)
+    import datetime as dt
+    nav_start_date = business_date - dt.timedelta(days=1100)  # ~756 trading days with buffer
+
     nav_history_query = sa.text("""
         SELECT mstar_id, nav_date, CAST(nav AS FLOAT) AS nav
         FROM de_mf_nav_daily
         WHERE mstar_id = ANY(:mstar_ids)
           AND nav_date <= :bdate
+          AND nav_date >= :start_date
           AND data_status = 'validated'
           AND nav IS NOT NULL
         ORDER BY mstar_id, nav_date
@@ -347,7 +351,7 @@ async def compute_fund_derived_metrics(
     nav_history_rows = (
         await session.execute(
             nav_history_query,
-            {"mstar_ids": mstar_ids, "bdate": business_date},
+            {"mstar_ids": mstar_ids, "bdate": business_date, "start_date": nav_start_date},
         )
     ).fetchall()
 
@@ -367,6 +371,7 @@ async def compute_fund_derived_metrics(
         FROM de_index_prices
         WHERE index_code = :benchmark
           AND date <= :bdate
+          AND date >= :start_date
           AND close IS NOT NULL
         ORDER BY date
     """)
@@ -374,7 +379,7 @@ async def compute_fund_derived_metrics(
     bench_rows = (
         await session.execute(
             bench_query,
-            {"benchmark": benchmark, "bdate": business_date},
+            {"benchmark": benchmark, "bdate": business_date, "start_date": nav_start_date},
         )
     ).fetchall()
 

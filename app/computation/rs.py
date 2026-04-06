@@ -193,7 +193,11 @@ async def compute_rs_scores(
         )
         return 0
 
-    # Fetch price history — use a safe parameterised approach
+    # Fetch price history — limit to 300 trading days (~15 months) for rs_12m=252
+    import datetime as dt
+    # ~300 trading days with buffer for rs_12m=252
+    rs_start_date = business_date - dt.timedelta(days=400)
+
     price_history_query = sa.text("""
         SELECT
             ep.instrument_id::text AS entity_id,
@@ -204,12 +208,12 @@ async def compute_rs_scores(
         JOIN de_instrument i ON i.id = ep.instrument_id
         WHERE ep.data_status = 'validated'
           AND ep.date <= :bdate
+          AND ep.date >= :start_date
           AND COALESCE(ep.close_adj, ep.close) IS NOT NULL
         ORDER BY ep.instrument_id, ep.date
-        LIMIT 5000000
     """)
 
-    rows = (await session.execute(price_history_query, {"bdate": business_date})).fetchall()
+    rows = (await session.execute(price_history_query, {"bdate": business_date, "start_date": rs_start_date})).fetchall()
 
     if not rows:
         logger.warning("rs_scores_no_price_data", business_date=business_date.isoformat())
