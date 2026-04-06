@@ -55,6 +55,9 @@ docs/specs/
 ```
 
 ## Database
-- RDS endpoint: fie-db.c7osw6q6kwmw.ap-south-1.rds.amazonaws.com
+- RDS endpoint: jip-data-engine.ctay2iewomaj.ap-south-1.rds.amazonaws.com
 - Database: data_engine
+- User: jip_admin
+- AWS Account: 389517402998 (JSL Wealth — NEVER use personal fie account)
+- Private subnet only (no public access)
 - Credentials: in .env (never in code)
