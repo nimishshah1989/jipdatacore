@@ -5,1022 +5,307 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JIP Computation QA Tracker</title>
   <style>
-    /* ------------------------------------------------------------------ */
-    /* Reset + base                                                          */
-    /* ------------------------------------------------------------------ */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --teal:       #1D9E75;
-      --teal-light: #E8F7F2;
-      --teal-dark:  #157A5A;
-      --text:       #1A1A2E;
-      --text-muted: #6B7280;
-      --border:     #E5E7EB;
-      --bg:         #FFFFFF;
-      --bg-alt:     #F9FAFB;
-      --danger:     #DC2626;
-      --warning:    #D97706;
-      --success:    #16A34A;
-      --running:    #2563EB;
-      --pending:    #9CA3AF;
-      --radius:     6px;
-      --shadow:     0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --teal: #1D9E75; --teal-light: #E8F7F2; --teal-dark: #157A5A;
+      --text: #1A1A2E; --text-muted: #6B7280; --border: #E5E7EB;
+      --bg: #FFFFFF; --bg-alt: #F9FAFB;
+      --danger: #DC2626; --warning: #D97706; --success: #16A34A;
+      --running: #2563EB; --pending: #9CA3AF;
+      --radius: 6px; --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
     }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; background: var(--bg-alt); color: var(--text); }
+    .header { background: var(--bg); border-bottom: 2px solid var(--teal); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-logo { width: 28px; height: 28px; background: var(--teal); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+    .header-logo svg { width: 16px; height: 16px; fill: white; }
+    .header-title { font-size: 16px; font-weight: 700; }
+    .header-subtitle { font-size: 11px; color: var(--text-muted); }
+    .server-time { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .server-time strong { color: var(--text); font-weight: 600; }
+    .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pending); display: inline-block; }
+    .conn-dot.ok { background: var(--success); } .conn-dot.error { background: var(--danger); }
+    .main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+    .section-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
+    .count-badge { font-size: 11px; font-weight: 600; background: var(--border); color: var(--text-muted); border-radius: 10px; padding: 1px 7px; text-transform: none; letter-spacing: 0; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      font-size: 14px;
-      background: var(--bg-alt);
-      color: var(--text);
-      min-height: 100vh;
-    }
+    /* Progress bar */
+    .progress-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+    .progress-bar-outer { height: 24px; background: var(--bg-alt); border-radius: 12px; overflow: hidden; margin: 10px 0; }
+    .progress-bar-inner { height: 100%; background: linear-gradient(90deg, var(--teal), var(--teal-dark)); border-radius: 12px; transition: width 1s ease; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; }
+    .progress-stats { display: flex; gap: 32px; font-size: 13px; color: var(--text-muted); }
+    .progress-stats strong { color: var(--text); font-weight: 700; font-size: 18px; display: block; }
 
-    /* ------------------------------------------------------------------ */
-    /* Header                                                               */
-    /* ------------------------------------------------------------------ */
-    .header {
-      background: var(--bg);
-      border-bottom: 2px solid var(--teal);
-      padding: 0 24px;
-      height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      box-shadow: var(--shadow);
-    }
+    /* Pipeline cards */
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .pipeline-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; position: relative; overflow: hidden; }
+    .pipeline-card::before { content: ""; position: absolute; top: 0; left: 0; width: 3px; height: 100%; }
+    .pipeline-card.s-passed::before { background: var(--success); }
+    .pipeline-card.s-pending::before { background: var(--pending); }
+    .pipeline-card.s-failed::before { background: var(--danger); }
+    .card-name { font-size: 13px; font-weight: 700; margin-bottom: 8px; text-transform: capitalize; }
+    .card-stat { font-size: 12px; color: var(--text-muted); margin: 2px 0; }
+    .card-stat strong { color: var(--text); }
 
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .badge.passed { background: #DCFCE7; color: var(--success); }
+    .badge.pending { background: var(--border); color: var(--text-muted); }
+    .badge.failed { background: #FEE2E2; color: var(--danger); }
+    .badge.warning { background: #FEF3C7; color: var(--warning); }
 
-    .header-logo {
-      width: 28px;
-      height: 28px;
-      background: var(--teal);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    .header-logo svg {
-      width: 16px;
-      height: 16px;
-      fill: white;
-    }
-
-    .header-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.3px;
-    }
-
-    .header-subtitle {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-weight: 400;
-      margin-top: 1px;
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-    }
-
-    .server-time {
-      font-size: 12px;
-      color: var(--text-muted);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .server-time strong {
-      color: var(--text);
-      font-weight: 600;
-    }
-
-    /* Connection status dot */
-    .conn-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--pending);
-      display: inline-block;
-      transition: background 0.4s;
-    }
-    .conn-dot.ok    { background: var(--success); }
-    .conn-dot.error { background: var(--danger); }
-
-    /* ------------------------------------------------------------------ */
-    /* Main layout                                                          */
-    /* ------------------------------------------------------------------ */
-    .main {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 24px 24px 72px;
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* Section headings                                                     */
-    /* ------------------------------------------------------------------ */
-    .section-heading {
-      font-size: 13px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      color: var(--text-muted);
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .section-heading .count-badge {
-      font-size: 11px;
-      font-weight: 600;
-      background: var(--border);
-      color: var(--text-muted);
-      border-radius: 10px;
-      padding: 1px 7px;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* Pipeline grid (6 cards)                                             */
-    /* ------------------------------------------------------------------ */
-    .pipeline-flow {
-      display: flex;
-      align-items: stretch;
-      gap: 0;
-      margin-bottom: 32px;
-      overflow-x: auto;
-    }
-
-    .pipeline-card {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 14px 16px;
-      transition: border-color 0.25s, box-shadow 0.25s;
-      position: relative;
-      overflow: hidden;
-      flex: 1;
-      min-width: 160px;
-    }
-
-    .pipeline-card::before {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 3px;
-      height: 100%;
-    }
-    .pipeline-card.status-passed::before,
-    .pipeline-card.status-success::before  { background: var(--success); }
-    .pipeline-card.status-running::before  { background: var(--running); }
-    .pipeline-card.status-failed::before   { background: var(--danger); }
-    .pipeline-card.status-warning::before  { background: var(--warning); }
-    .pipeline-card.status-pending::before  { background: var(--pending); }
-
-    .pipeline-card:hover {
-      border-color: var(--teal);
-      box-shadow: 0 4px 12px rgba(29,158,117,0.12);
-    }
-
-    /* Arrow connectors between cards */
-    .flow-arrow {
-      display: flex;
-      align-items: center;
-      padding: 0 2px;
-      flex-shrink: 0;
-    }
-
-    .flow-arrow svg {
-      width: 20px;
-      height: 20px;
-      color: var(--border);
-      fill: var(--text-muted);
-    }
-
-    .card-name {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1.3;
-      margin-bottom: 6px;
-    }
-
-    .card-step-id {
-      font-size: 10px;
-      color: var(--text-muted);
-      font-family: "SF Mono", "Fira Code", Consolas, monospace;
-      margin-bottom: 8px;
-    }
-
-    .card-metrics-mini {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid var(--border);
-    }
-
-    .metric-mini {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-    }
-
-    .metric-mini-label {
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-
-    .metric-mini-value {
-      font-weight: 700;
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* Status badges                                                        */
-    /* ------------------------------------------------------------------ */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 3px 9px;
-      border-radius: 99px;
-      font-size: 11px;
-      font-weight: 700;
-      white-space: nowrap;
-      letter-spacing: 0.2px;
-    }
-
-    .badge-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .badge.passed,
-    .badge.success,
-    .badge.match    { background: #DCFCE7; color: var(--success); }
-    .badge.passed .badge-dot,
-    .badge.success .badge-dot,
-    .badge.match .badge-dot { background: var(--success); }
-
-    .badge.running  { background: #DBEAFE; color: var(--running); }
-    .badge.running .badge-dot {
-      background: var(--running);
-      animation: pulse-blue 1.2s ease-in-out infinite;
-    }
-
-    .badge.failed,
-    .badge.mismatch,
-    .badge.breach   { background: #FEE2E2; color: var(--danger); }
-    .badge.failed .badge-dot,
-    .badge.mismatch .badge-dot,
-    .badge.breach .badge-dot { background: var(--danger); }
-
-    .badge.warning,
-    .badge.close,
-    .badge.within_tolerance { background: #FEF3C7; color: var(--warning); }
-    .badge.warning .badge-dot,
-    .badge.close .badge-dot,
-    .badge.within_tolerance .badge-dot { background: var(--warning); }
-
-    .badge.pending  { background: var(--border); color: var(--text-muted); }
-    .badge.pending .badge-dot { background: var(--pending); }
-
-    @keyframes pulse-blue {
-      0%, 100% { opacity: 1;   transform: scale(1); }
-      50%       { opacity: 0.4; transform: scale(1.5); }
-    }
-
-    /* Small severity badge */
-    .sev-badge {
-      display: inline-block;
-      padding: 1px 6px;
-      border-radius: 4px;
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    .sev-badge.critical { background: #FEE2E2; color: var(--danger); }
-    .sev-badge.high     { background: #FEE2E2; color: var(--danger); font-weight: 800; }
-    .sev-badge.medium   { background: #FEF3C7; color: var(--warning); }
-    .sev-badge.low      { background: var(--border); color: var(--text-muted); }
-    .sev-badge.info     { background: var(--teal-light); color: var(--teal-dark); }
-
-    /* ------------------------------------------------------------------ */
-    /* Table wrapper                                                        */
-    /* ------------------------------------------------------------------ */
-    .table-wrap {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-      margin-bottom: 32px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    thead tr {
-      background: var(--bg-alt);
-      border-bottom: 1px solid var(--border);
-    }
-
-    thead th {
-      padding: 10px 14px;
-      text-align: left;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-      white-space: nowrap;
-    }
-
+    /* Tables */
+    .table-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: var(--bg-alt); border-bottom: 1px solid var(--border); }
+    thead th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
     thead th.num { text-align: right; }
-
-    tbody tr {
-      border-bottom: 1px solid var(--border);
-      transition: background 0.15s;
-    }
+    tbody tr { border-bottom: 1px solid var(--border); }
     tbody tr:last-child { border-bottom: none; }
     tbody tr:hover { background: var(--bg-alt); }
+    tbody td { padding: 9px 14px; font-size: 13px; }
+    tbody td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .positive { color: var(--success); } .negative { color: var(--danger); }
+    .empty-state { padding: 32px; text-align: center; color: var(--text-muted); font-size: 13px; }
 
-    /* QA row severity color-coding via left border on <tr> */
-    tbody tr.qa-passed  { border-left: 3px solid var(--success); }
-    tbody tr.qa-warning { border-left: 3px solid var(--warning); }
-    tbody tr.qa-failed  { border-left: 3px solid var(--danger); }
+    /* Two-column layout */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } .card-grid { grid-template-columns: repeat(2, 1fr); } }
 
-    tbody td {
-      padding: 9px 14px;
-      font-size: 13px;
-      color: var(--text);
-      vertical-align: middle;
-    }
+    /* Regime badge */
+    .regime-badge { font-size: 14px; font-weight: 800; padding: 4px 12px; border-radius: 4px; }
+    .regime-BULL { background: #DCFCE7; color: var(--success); }
+    .regime-BEAR { background: #FEE2E2; color: var(--danger); }
+    .regime-SIDEWAYS { background: #FEF3C7; color: var(--warning); }
+    .regime-RECOVERY { background: #DBEAFE; color: var(--running); }
 
-    tbody td.num {
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-      font-weight: 600;
-    }
-
-    tbody td.muted {
-      color: var(--text-muted);
-      font-size: 12px;
-    }
-
-    tbody td.mono {
-      font-family: "SF Mono", "Fira Code", Consolas, monospace;
-      font-size: 12px;
-    }
-
-    .empty-state {
-      padding: 48px 24px;
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 13px;
-    }
-
-    /* Deviation % coloring */
-    .dev-green  { color: var(--success); font-weight: 700; }
-    .dev-amber  { color: var(--warning); font-weight: 700; }
-    .dev-red    { color: var(--danger);  font-weight: 700; }
-
-    /* ------------------------------------------------------------------ */
-    /* Error bar                                                            */
-    /* ------------------------------------------------------------------ */
-    .error-bar {
-      background: #FEE2E2;
-      border: 1px solid #FECACA;
-      border-radius: var(--radius);
-      padding: 10px 16px;
-      font-size: 13px;
-      color: var(--danger);
-      margin-bottom: 16px;
-      display: none;
-    }
-    .error-bar.visible { display: block; }
-
-    /* ------------------------------------------------------------------ */
-    /* Footer                                                               */
-    /* ------------------------------------------------------------------ */
-    .footer {
-      border-top: 1px solid var(--border);
-      background: var(--bg);
-      padding: 12px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 12px;
-      color: var(--text-muted);
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-    }
-
-    .footer-left {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .spinner {
-      width: 12px;
-      height: 12px;
-      border: 2px solid var(--border);
-      border-top-color: var(--teal);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      display: none;
-    }
-    .spinner.active { display: inline-block; }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* Business date chip                                                   */
-    /* ------------------------------------------------------------------ */
-    .biz-date-chip {
-      display: inline-block;
-      background: var(--teal-light);
-      color: var(--teal-dark);
-      border-radius: 4px;
-      padding: 2px 10px;
-      font-size: 12px;
-      font-weight: 600;
-      margin-left: 8px;
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* Responsive                                                           */
-    /* ------------------------------------------------------------------ */
-    @media (max-width: 900px) {
-      .pipeline-flow { flex-wrap: wrap; }
-      .flow-arrow { display: none; }
-      .pipeline-card { min-width: 140px; flex: 0 0 calc(33% - 8px); }
-    }
-    @media (max-width: 640px) {
-      .header { padding: 0 16px; }
-      .main  { padding: 16px 16px 72px; }
-      .pipeline-card { flex: 0 0 calc(50% - 8px); }
-      thead th:nth-child(n+5) { display: none; }
-      tbody td:nth-child(n+5) { display: none; }
-    }
+    .footer { border-top: 1px solid var(--border); background: var(--bg); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-muted); position: fixed; bottom: 0; left: 0; right: 0; }
   </style>
 </head>
 <body>
-
-<!-- -------------------------------------------------------------------- -->
-<!-- Header                                                                 -->
-<!-- -------------------------------------------------------------------- -->
 <header class="header">
   <div class="header-left">
-    <div class="header-logo">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M9 3L5 6.99h3V14h2V6.99h3L9 3zm7 14.01V10h-2v7.01h-3L15 21l4-3.99h-3z"/>
-      </svg>
-    </div>
+    <div class="header-logo"><svg viewBox="0 0 24 24"><path d="M3 3h18v2H3V3zm0 4h12v2H3V7zm0 4h18v2H3v-2zm0 4h12v2H3v-2zm0 4h18v2H3v-2z"/></svg></div>
     <div>
       <div class="header-title">JIP Computation QA Tracker</div>
-      <div class="header-subtitle">Live computation status, validation &amp; cross-checks</div>
+      <div class="header-subtitle">Live computation status, validation & cross-checks</div>
     </div>
   </div>
-  <div class="header-right">
-    <div class="server-time">
-      Server time (IST): <strong id="server-time">—</strong>
-    </div>
-    <span class="conn-dot" id="conn-dot" title="Connection status"></span>
+  <div style="display:flex;align-items:center;gap:20px">
+    <div class="server-time">IST: <strong id="server-time">--</strong></div>
+    <span class="conn-dot" id="conn-dot"></span>
   </div>
 </header>
 
-<!-- -------------------------------------------------------------------- -->
-<!-- Main content                                                           -->
-<!-- -------------------------------------------------------------------- -->
 <main class="main">
+  <div id="error-bar" style="background:#FEE2E2;border:1px solid #FECACA;border-radius:6px;padding:10px 16px;color:#DC2626;margin-bottom:16px;display:none"></div>
 
-  <!-- Error bar -->
-  <div class="error-bar" id="error-bar"></div>
-
-  <!-- Section 1: Computation Pipeline -->
-  <div class="section-heading">
-    Computation Pipeline
-    <span id="biz-date-chip" class="biz-date-chip" style="display:none;"></span>
-  </div>
-  <div class="pipeline-flow" id="pipeline-flow">
-    <!-- Populated by JS -->
-    <div class="empty-state" style="width:100%;">Loading pipeline status…</div>
-  </div>
-
-  <!-- Section 2: Pre-Computation QA -->
-  <div class="section-heading">
-    Pre-Computation QA
-    <span class="count-badge" id="pre-qa-count">0</span>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Check</th>
-          <th>Severity</th>
-          <th>Status</th>
-          <th>Details</th>
-        </tr>
-      </thead>
-      <tbody id="pre-qa-tbody">
-        <tr><td colspan="4" class="empty-state">Loading…</td></tr>
-      </tbody>
-    </table>
+  <!-- Progress -->
+  <div class="progress-wrap">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:15px;font-weight:700">Computation Progress</div>
+      <div id="progress-pct" style="font-size:24px;font-weight:800;color:var(--teal)">0%</div>
+    </div>
+    <div class="progress-bar-outer"><div class="progress-bar-inner" id="progress-bar" style="width:0%"></div></div>
+    <div class="progress-stats">
+      <div>Days Computed<strong id="days-done">0</strong></div>
+      <div>Total Days<strong id="days-total">0</strong></div>
+      <div>Remaining<strong id="days-remaining">0</strong></div>
+      <div>Business Date<strong id="biz-date">--</strong></div>
+    </div>
   </div>
 
-  <!-- Section 3: Post-Computation QA -->
-  <div class="section-heading">
-    Post-Computation QA
-    <span class="count-badge" id="post-qa-count">0</span>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Check</th>
-          <th>Severity</th>
-          <th>Status</th>
-          <th>Details</th>
-        </tr>
-      </thead>
-      <tbody id="post-qa-tbody">
-        <tr><td colspan="4" class="empty-state">Loading…</td></tr>
-      </tbody>
-    </table>
+  <!-- Pipeline cards -->
+  <div class="section-heading">Computation Pipeline</div>
+  <div class="card-grid" id="pipeline-cards"></div>
+
+  <div class="two-col">
+    <!-- Regime History -->
+    <div>
+      <div class="section-heading">Market Regime History <span class="count-badge" id="regime-count">0</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Regime</th><th class="num">Confidence</th></tr></thead>
+          <tbody id="regime-tbody"><tr><td colspan="3" class="empty-state">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Breadth History -->
+    <div>
+      <div class="section-heading">Market Breadth History <span class="count-badge" id="breadth-count">0</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th class="num">Adv</th><th class="num">Dec</th><th class="num">A/D</th><th class="num">%>200DMA</th><th class="num">%>50DMA</th></tr></thead>
+          <tbody id="breadth-tbody"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
-  <!-- Section 4: Spot-Check Validation -->
-  <div class="section-heading">
-    Spot-Check Validation
-    <span class="count-badge" id="spot-count">0</span>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Symbol</th>
-          <th>Metric</th>
-          <th class="num">Computed</th>
-          <th class="num">Expected</th>
-          <th>Source</th>
-          <th class="num">Deviation %</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="spot-tbody">
-        <tr><td colspan="7" class="empty-state">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
+  <div class="two-col">
+    <!-- RS Distribution -->
+    <div>
+      <div class="section-heading">RS Score Distribution (vs NIFTY 50)</div>
+      <div class="table-wrap" style="padding:20px" id="rs-dist">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
 
-  <!-- Section 5: Morningstar Cross-Validation -->
-  <div class="section-heading">
-    Morningstar Cross-Validation
-    <span class="count-badge" id="mstar-count">0</span>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Fund Name</th>
-          <th>Metric</th>
-          <th class="num">Our Value</th>
-          <th class="num">Morningstar</th>
-          <th class="num">Deviation %</th>
-          <th class="num">Tolerance</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="mstar-tbody">
-        <tr><td colspan="7" class="empty-state">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Section 6: Bad Data Flagged -->
-  <div class="section-heading">
-    Bad Data Flagged
-    <span class="count-badge" id="bad-count">0</span>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Entity</th>
-          <th>Value</th>
-          <th>Severity</th>
-          <th>Flagged At</th>
-        </tr>
-      </thead>
-      <tbody id="bad-tbody">
-        <tr><td colspan="5" class="empty-state">Loading…</td></tr>
-      </tbody>
-    </table>
+    <!-- Fund Derived Summary -->
+    <div>
+      <div class="section-heading">Fund Derived Metrics Summary</div>
+      <div class="table-wrap" style="padding:20px" id="fund-summary">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
   </div>
 
 </main>
 
-<!-- -------------------------------------------------------------------- -->
-<!-- Footer                                                                 -->
-<!-- -------------------------------------------------------------------- -->
 <footer class="footer">
-  <div class="footer-left">
-    <div class="spinner" id="spinner"></div>
-    Auto-refreshing every 10 seconds
-  </div>
-  <div>Last checked: <span id="last-checked">—</span></div>
+  <div>Auto-refreshing every 10 seconds</div>
+  <div>Last checked: <span id="last-checked">--</span></div>
 </footer>
 
-<!-- -------------------------------------------------------------------- -->
-<!-- JavaScript                                                             -->
-<!-- -------------------------------------------------------------------- -->
 <script>
-  "use strict";
+"use strict";
 
-  // -------------------------------------------------------------------------
-  // Formatting helpers (copied exactly from tracker.html)
-  // -------------------------------------------------------------------------
-  function fmtIndian(n) {
-    if (n === null || n === undefined) return "—";
-    n = parseInt(n, 10);
-    if (isNaN(n)) return "—";
-    const neg = n < 0;
-    n = Math.abs(n);
-    const s = String(n);
-    if (s.length <= 3) return (neg ? "-" : "") + s;
-    const last3 = s.slice(-3);
-    let rest = s.slice(0, -3);
-    const parts = [];
-    while (rest.length > 2) {
-      parts.unshift(rest.slice(-2));
-      rest = rest.slice(0, -2);
-    }
-    if (rest) parts.unshift(rest);
-    return (neg ? "-" : "") + parts.join(",") + "," + last3;
-  }
+function fmtIndian(n) {
+  if (n == null) return "--";
+  n = parseInt(n); if (isNaN(n)) return "--";
+  const s = String(Math.abs(n));
+  if (s.length <= 3) return (n < 0 ? "-" : "") + s;
+  const last3 = s.slice(-3); let rest = s.slice(0, -3);
+  const parts = [];
+  while (rest.length > 2) { parts.unshift(rest.slice(-2)); rest = rest.slice(0, -2); }
+  if (rest) parts.unshift(rest);
+  return (n < 0 ? "-" : "") + parts.join(",") + "," + last3;
+}
 
-  function fmtDuration(seconds) {
-    if (seconds === null || seconds === undefined) return "—";
-    seconds = Math.round(seconds);
-    if (seconds < 60) return seconds + "s";
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    if (m < 60) return m + "m " + s + "s";
-    const h = Math.floor(m / 60);
-    const rm = m % 60;
-    return h + "h " + rm + "m";
-  }
+function fmtDate(d) {
+  if (!d) return "--";
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const [y,m,dd] = d.split("-");
+  return `${dd}-${months[parseInt(m)-1]}-${y}`;
+}
 
-  function fmtIstTime(isoStr) {
-    if (!isoStr) return "—";
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleTimeString("en-IN", {
-        hour: "2-digit", minute: "2-digit", second: "2-digit",
-        timeZone: "Asia/Kolkata", hour12: false
-      });
-    } catch (e) { return isoStr; }
-  }
+function esc(s) { return s ? String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }
 
-  function fmtIstDateTime(isoStr) {
-    if (!isoStr) return "—";
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleString("en-IN", {
-        day: "2-digit", month: "short", year: "numeric",
-        hour: "2-digit", minute: "2-digit",
-        timeZone: "Asia/Kolkata", hour12: false
-      });
-    } catch (e) { return isoStr; }
-  }
+function renderPipeline(steps) {
+  const c = document.getElementById("pipeline-cards");
+  c.innerHTML = steps.map(s => `
+    <div class="pipeline-card s-${s.status}">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div class="card-name">${esc(s.step)}</div>
+        <span class="badge ${s.status}">${s.status}</span>
+      </div>
+      <div class="card-stat">Rows: <strong>${fmtIndian(s.rows)}</strong></div>
+      <div class="card-stat">Days: <strong>${s.days_computed || 0}</strong></div>
+      <div class="card-stat">Latest: <strong>${fmtDate(s.latest_date)}</strong></div>
+      ${s.regime_detail ? `<div style="margin-top:8px"><span class="regime-badge regime-${s.regime_detail.regime}">${s.regime_detail.regime}</span> <span style="font-size:12px;color:var(--text-muted)">conf: ${s.regime_detail.confidence?.toFixed(1)}%</span></div>` : ''}
+    </div>
+  `).join("");
+}
 
-  function fmtDate(dateStr) {
-    if (!dateStr) return "—";
-    try {
-      const [y, m, d] = dateStr.split("-");
-      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-      return `${d}-${months[parseInt(m, 10) - 1]}-${y}`;
-    } catch(e) { return dateStr; }
-  }
+function renderRegime(regimes) {
+  const tbody = document.getElementById("regime-tbody");
+  document.getElementById("regime-count").textContent = regimes.length;
+  if (!regimes.length) { tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No regime data</td></tr>'; return; }
+  tbody.innerHTML = regimes.map(r => `
+    <tr>
+      <td>${fmtDate(r.date)}</td>
+      <td><span class="regime-badge regime-${r.regime}">${r.regime}</span></td>
+      <td class="num">${r.confidence?.toFixed(1) || '--'}%</td>
+    </tr>
+  `).join("");
+}
 
-  function badgeHtml(status) {
-    const label = status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown";
-    const cls = status || "pending";
-    return `<span class="badge ${cls}"><span class="badge-dot"></span>${label}</span>`;
-  }
+function renderBreadth(breadth) {
+  const tbody = document.getElementById("breadth-tbody");
+  document.getElementById("breadth-count").textContent = breadth.length;
+  if (!breadth.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No breadth data</td></tr>'; return; }
+  tbody.innerHTML = breadth.map(b => `
+    <tr>
+      <td>${fmtDate(b.date)}</td>
+      <td class="num ${b.advance > b.decline ? 'positive' : 'negative'}">${b.advance}</td>
+      <td class="num ${b.decline > b.advance ? 'negative' : ''}">${b.decline}</td>
+      <td class="num">${b.ad_ratio || '--'}</td>
+      <td class="num">${b.pct_above_200dma?.toFixed(1) || '--'}%</td>
+      <td class="num">${b.pct_above_50dma?.toFixed(1) || '--'}%</td>
+    </tr>
+  `).join("");
+}
 
-  function escHtml(s) {
-    if (!s) return "";
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
+function renderRsDist(dist) {
+  const el = document.getElementById("rs-dist");
+  if (!dist || !dist.stock_count) { el.innerHTML = '<div class="empty-state">No RS data yet</div>'; return; }
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px">
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Stocks</div><div style="font-size:20px;font-weight:700">${fmtIndian(dist.stock_count)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Mean RS</div><div style="font-size:20px;font-weight:700">${dist.mean?.toFixed(2) || '--'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Std Dev</div><div style="font-size:20px;font-weight:700">${dist.stddev?.toFixed(2) || '--'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Range</div><div style="font-size:20px;font-weight:700">${dist.min?.toFixed(1)} to ${dist.max?.toFixed(1)}</div></div>
+    </div>
+  `;
+}
 
-  // -------------------------------------------------------------------------
-  // Step display names
-  // -------------------------------------------------------------------------
-  const STEP_LABELS = {
-    technicals:   "Technicals",
-    rs:           "RS",
-    breadth:      "Breadth",
-    regime:       "Regime",
-    sectors:      "Sectors",
-    fund_derived: "Fund Derived",
-  };
+function renderFundSummary(fs) {
+  const el = document.getElementById("fund-summary");
+  if (!fs || !fs.fund_count) { el.innerHTML = '<div class="empty-state">No fund derived data yet</div>'; return; }
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px">
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Funds</div><div style="font-size:20px;font-weight:700">${fmtIndian(fs.fund_count)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Avg Sharpe 1Y</div><div style="font-size:20px;font-weight:700">${fs.avg_sharpe_1y?.toFixed(2) || '--'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Avg Beta</div><div style="font-size:20px;font-weight:700">${fs.avg_beta?.toFixed(2) || '--'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Avg Vol 1Y</div><div style="font-size:20px;font-weight:700">${fs.avg_volatility_1y?.toFixed(1) || '--'}%</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Avg Max DD</div><div style="font-size:20px;font-weight:700">${fs.avg_max_drawdown_1y?.toFixed(1) || '--'}%</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Avg Coverage</div><div style="font-size:20px;font-weight:700">${fs.avg_coverage_pct?.toFixed(0) || '--'}%</div></div>
+    </div>
+  `;
+}
 
-  // -------------------------------------------------------------------------
-  // Render: Section 1 — Computation Pipeline
-  // -------------------------------------------------------------------------
-  function renderPipeline(steps) {
-    const container = document.getElementById("pipeline-flow");
-    if (!steps || !steps.length) {
-      container.innerHTML = '<div class="empty-state" style="width:100%;">No computation data found.</div>';
-      return;
-    }
+async function fetchStatus() {
+  try {
+    const resp = await fetch("/api/computation/status");
+    const connDot = document.getElementById("conn-dot");
+    const errorBar = document.getElementById("error-bar");
 
-    const parts = [];
-    steps.forEach((step, i) => {
-      const label = STEP_LABELS[step.step] || step.step;
-      const status = step.status || "pending";
-      const rowsHtml = step.rows != null ? fmtIndian(step.rows) : "—";
-      const durHtml  = step.duration_s != null ? fmtDuration(step.duration_s) : "—";
+    if (!resp.ok) { connDot.className = "conn-dot error"; errorBar.textContent = `HTTP ${resp.status}`; errorBar.style.display = "block"; return; }
 
-      parts.push(`
-        <div class="pipeline-card status-${escHtml(status)}">
-          <div class="card-name">${escHtml(label)}</div>
-          <div class="card-step-id">${escHtml(step.step)}</div>
-          ${badgeHtml(status)}
-          <div class="card-metrics-mini">
-            <div class="metric-mini">
-              <span class="metric-mini-label">Rows</span>
-              <span class="metric-mini-value">${rowsHtml}</span>
-            </div>
-            <div class="metric-mini">
-              <span class="metric-mini-label">Time</span>
-              <span class="metric-mini-value">${durHtml}</span>
-            </div>
-          </div>
-        </div>
-      `);
+    const data = await resp.json();
+    connDot.className = "conn-dot ok";
+    errorBar.style.display = "none";
 
-      if (i < steps.length - 1) {
-        parts.push(`
-          <div class="flow-arrow">
-            <svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
-          </div>
-        `);
-      }
-    });
-
-    container.innerHTML = parts.join("");
-  }
-
-  // -------------------------------------------------------------------------
-  // Render: Sections 2 & 3 — QA tables
-  // -------------------------------------------------------------------------
-  function renderQATable(tbodyId, checks) {
-    const tbody = document.getElementById(tbodyId);
-    const countId = tbodyId === "pre-qa-tbody" ? "pre-qa-count" : "post-qa-count";
-    document.getElementById(countId).textContent = checks.length;
-
-    if (!checks.length) {
-      const emptyMsg = tbodyId === "pre-qa-tbody"
-        ? "No pre-computation QA data found."
-        : "No post-computation QA data found.";
-      tbody.innerHTML = `<tr><td colspan="4" class="empty-state">${emptyMsg}</td></tr>`;
-      return;
+    if (data.server_time_ist) {
+      const d = new Date(data.server_time_ist);
+      document.getElementById("server-time").textContent = d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: false, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     }
 
-    tbody.innerHTML = checks.map(c => {
-      const status = c.status || "pending";
-      const rowClass = status === "passed" || status === "success"
-        ? "qa-passed"
-        : status === "failed" ? "qa-failed"
-        : status === "warning" ? "qa-warning" : "";
+    // Progress
+    const p = data.progress || {};
+    document.getElementById("days-done").textContent = fmtIndian(p.days_computed);
+    document.getElementById("days-total").textContent = fmtIndian(p.total_trading_days);
+    document.getElementById("days-remaining").textContent = fmtIndian(p.remaining);
+    document.getElementById("progress-pct").textContent = (p.pct_complete || 0).toFixed(1) + "%";
+    document.getElementById("progress-bar").style.width = (p.pct_complete || 0) + "%";
+    document.getElementById("biz-date").textContent = fmtDate(data.business_date);
 
-      const sev = (c.severity || "info").toLowerCase();
-      const sevClass = ["critical","high","medium","low","info"].includes(sev) ? sev : "info";
+    renderPipeline(data.pipeline_status || []);
+    renderRegime(data.regime_history || []);
+    renderBreadth(data.breadth_history || []);
+    renderRsDist(data.rs_distribution || {});
+    renderFundSummary(data.fund_derived_summary || {});
 
-      let details = c.message || "";
-      if (c.details && typeof c.details === "object") {
-        const pairs = Object.entries(c.details)
-          .slice(0, 3)
-          .map(([k, v]) => `${escHtml(k)}: ${escHtml(String(v))}`)
-          .join(" · ");
-        if (pairs) details = pairs;
-      }
-
-      return `
-        <tr class="${rowClass}">
-          <td class="mono">${escHtml(c.check)}</td>
-          <td><span class="sev-badge ${sevClass}">${escHtml(c.severity || "info")}</span></td>
-          <td>${badgeHtml(status)}</td>
-          <td class="muted">${escHtml(details)}</td>
-        </tr>
-      `;
-    }).join("");
+    document.getElementById("last-checked").textContent = new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false }) + " IST";
+  } catch (err) {
+    document.getElementById("conn-dot").className = "conn-dot error";
+    document.getElementById("error-bar").textContent = err.message;
+    document.getElementById("error-bar").style.display = "block";
   }
+}
 
-  // -------------------------------------------------------------------------
-  // Render: Section 4 — Spot checks
-  // -------------------------------------------------------------------------
-  function deviationClass(devPct) {
-    const v = parseFloat(devPct);
-    if (isNaN(v)) return "";
-    if (Math.abs(v) < 2)  return "dev-green";
-    if (Math.abs(v) < 5)  return "dev-amber";
-    return "dev-red";
-  }
-
-  function renderSpotChecks(checks) {
-    const tbody = document.getElementById("spot-tbody");
-    document.getElementById("spot-count").textContent = checks.length;
-
-    if (!checks.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No spot-check data found.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = checks.map(c => {
-      const devClass = deviationClass(c.deviation_pct);
-      const devDisplay = c.deviation_pct ? escHtml(c.deviation_pct) + "%" : "—";
-      return `
-        <tr>
-          <td class="mono" style="font-weight:700;">${escHtml(c.symbol)}</td>
-          <td>${escHtml(c.metric)}</td>
-          <td class="num">${escHtml(c.computed)}</td>
-          <td class="num">${escHtml(c.expected)}</td>
-          <td class="muted">${escHtml(c.source)}</td>
-          <td class="num"><span class="${devClass}">${devDisplay}</span></td>
-          <td>${badgeHtml(c.status)}</td>
-        </tr>
-      `;
-    }).join("");
-  }
-
-  // -------------------------------------------------------------------------
-  // Render: Section 5 — Morningstar cross-validation
-  // -------------------------------------------------------------------------
-  function renderMstarCrossval(items) {
-    const tbody = document.getElementById("mstar-tbody");
-    document.getElementById("mstar-count").textContent = items.length;
-
-    if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No Morningstar cross-validation data found.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = items.map(m => {
-      const devClass = deviationClass(m.deviation_pct);
-      const devDisplay = m.deviation_pct ? escHtml(m.deviation_pct) + "%" : "—";
-      const tolDisplay = m.tolerance_pct ? escHtml(m.tolerance_pct) + "%" : "—";
-      return `
-        <tr>
-          <td>${escHtml(m.fund)}</td>
-          <td class="mono">${escHtml(m.metric)}</td>
-          <td class="num">${escHtml(m.ours)}</td>
-          <td class="num">${escHtml(m.morningstar)}</td>
-          <td class="num"><span class="${devClass}">${devDisplay}</span></td>
-          <td class="num muted">${tolDisplay}</td>
-          <td>${badgeHtml(m.status)}</td>
-        </tr>
-      `;
-    }).join("");
-  }
-
-  // -------------------------------------------------------------------------
-  // Render: Section 6 — Bad data
-  // -------------------------------------------------------------------------
-  function renderBadData(items) {
-    const tbody = document.getElementById("bad-tbody");
-    document.getElementById("bad-count").textContent = items.length;
-
-    if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No data quality issues detected.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = items.map(b => {
-      const sev = (b.severity || "medium").toLowerCase();
-      const sevClass = ["critical","high","medium","low"].includes(sev) ? sev : "medium";
-      return `
-        <tr>
-          <td class="mono">${escHtml(b.type)}</td>
-          <td style="font-weight:600;">${escHtml(b.symbol)}</td>
-          <td class="muted">${escHtml(b.value)}</td>
-          <td><span class="sev-badge ${sevClass}">${escHtml(b.severity || "medium")}</span></td>
-          <td class="muted">${fmtIstDateTime(b.flagged_at)}</td>
-        </tr>
-      `;
-    }).join("");
-  }
-
-  // -------------------------------------------------------------------------
-  // Fetch & update
-  // -------------------------------------------------------------------------
-  async function fetchStatus() {
-    const spinner = document.getElementById("spinner");
-    spinner.classList.add("active");
-
-    try {
-      const resp = await fetch("/api/computation/status");
-      const connDot = document.getElementById("conn-dot");
-      const errorBar = document.getElementById("error-bar");
-
-      if (!resp.ok) {
-        connDot.className = "conn-dot error";
-        errorBar.textContent = `API error: HTTP ${resp.status}`;
-        errorBar.classList.add("visible");
-        return;
-      }
-
-      const data = await resp.json();
-
-      connDot.className = "conn-dot ok";
-
-      if (data.error) {
-        errorBar.textContent = "Warning: " + data.error;
-        errorBar.classList.add("visible");
-      } else {
-        errorBar.classList.remove("visible");
-      }
-
-      // Server time
-      if (data.server_time_ist) {
-        document.getElementById("server-time").textContent = fmtIstDateTime(data.server_time_ist);
-      }
-
-      // Business date chip
-      if (data.business_date) {
-        const chip = document.getElementById("biz-date-chip");
-        chip.textContent = fmtDate(data.business_date);
-        chip.style.display = "inline-block";
-      }
-
-      renderPipeline(data.pipeline_status || []);
-      renderQATable("pre-qa-tbody", data.pre_qa || []);
-      renderQATable("post-qa-tbody", data.post_qa || []);
-      renderSpotChecks(data.spot_checks || []);
-      renderMstarCrossval(data.mstar_crossval || []);
-      renderBadData(data.bad_data || []);
-
-      // Last checked
-      const now = new Date();
-      document.getElementById("last-checked").textContent = now.toLocaleTimeString("en-IN", {
-        hour: "2-digit", minute: "2-digit", second: "2-digit",
-        timeZone: "Asia/Kolkata", hour12: false
-      }) + " IST";
-
-    } catch (err) {
-      const connDot = document.getElementById("conn-dot");
-      connDot.className = "conn-dot error";
-      const errorBar = document.getElementById("error-bar");
-      errorBar.textContent = "Connection error: " + err.message;
-      errorBar.classList.add("visible");
-    } finally {
-      spinner.classList.remove("active");
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Boot
-  // -------------------------------------------------------------------------
-  fetchStatus();
-  setInterval(fetchStatus, 10000);
+fetchStatus();
+setInterval(fetchStatus, 10000);
 </script>
 </body>
 </html>
