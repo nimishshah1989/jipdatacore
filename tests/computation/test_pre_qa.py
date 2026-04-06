@@ -161,19 +161,19 @@ async def test_check_ohlcv_coverage_passed() -> None:
 
 @pytest.mark.asyncio
 async def test_check_ohlcv_coverage_warning() -> None:
-    session = _mock_session_scalar(1200)
+    session = _mock_session_scalar(400)
     step = await check_ohlcv_coverage(session, BUSINESS_DATE)
     assert step.status == "warning"
-    assert step.rows_affected == 1200
+    assert step.rows_affected == 400
     assert len(step.errors) == 1
 
 
 @pytest.mark.asyncio
 async def test_check_ohlcv_coverage_failed_critical() -> None:
-    session = _mock_session_scalar(500)
+    session = _mock_session_scalar(100)
     step = await check_ohlcv_coverage(session, BUSINESS_DATE)
     assert step.status == "failed"
-    assert step.rows_affected == 500
+    assert step.rows_affected == 100
     assert any(str(OHLCV_CRITICAL) in e for e in step.errors)
 
 
