@@ -142,8 +142,8 @@ def compute_rs_composite(rs_scores: dict[str, Optional[float]]) -> Optional[floa
     if total_weight == 0.0:
         return None
 
-    # Normalise by available weight
-    return weighted_sum / total_weight * sum(RS_WEIGHTS.values())
+    # Normalise by available weight (weighted average of available components)
+    return weighted_sum / total_weight
 
 
 async def compute_rs_scores(

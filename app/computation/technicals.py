@@ -392,7 +392,8 @@ def compute_mfi(
                 neg_flow += rmf[j]
 
         if neg_flow == 0.0:
-            mfi_val = 100.0
+            # All flow is positive — skip this day per convention
+            continue
         else:
             mf_ratio = pos_flow / neg_flow
             mfi_val = 100.0 - 100.0 / (1.0 + mf_ratio)
