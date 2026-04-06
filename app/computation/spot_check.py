@@ -309,7 +309,7 @@ async def spot_check_rs_self_consistency(
                     r.rs_6m,
                     r.rs_12m
                 FROM de_rs_scores r
-                JOIN de_instrument i ON i.id = r.entity_id
+                JOIN de_instrument i ON i.id::text = r.entity_id
                 WHERE r.date = :bdate
                   AND r.entity_type = 'equity'
                   AND r.vs_benchmark = 'NIFTY 50'
@@ -664,6 +664,7 @@ async def run_spot_checks(
         try:
             step = await fn(session, business_date)
         except Exception as exc:
+            await session.rollback()
             logger.error(
                 "spot_check_step_exception",
                 step=fn.__name__,
