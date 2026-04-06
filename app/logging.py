@@ -1,9 +1,22 @@
+import logging
+
 import structlog
 from app.config import get_settings
+
+# Compatible log level lookup (works with all structlog versions)
+_LOG_LEVELS = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
 
 
 def setup_logging() -> None:
     settings = get_settings()
+
+    log_level = _LOG_LEVELS.get(settings.log_level.upper(), logging.INFO)
 
     structlog.configure(
         processors=[
@@ -16,9 +29,7 @@ def setup_logging() -> None:
             if settings.app_env == "development"
             else structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            structlog.get_level_from_name(settings.log_level)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(log_level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
