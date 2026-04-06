@@ -23,8 +23,8 @@ from app.logging import get_logger
 logger = get_logger(__name__)
 
 # Thresholds
-OHLCV_CRITICAL = 1000
-OHLCV_WARNING = 1500
+OHLCV_CRITICAL = 200
+OHLCV_WARNING = 500
 MF_NAV_CRITICAL = 200
 MF_NAV_WARNING = 300
 PRICE_SPIKE_PCT_THRESHOLD = 0.25   # 25% single-day move
@@ -230,9 +230,8 @@ async def check_benchmark_availability(
     step = StepResult(step_name="check_benchmark_availability", status="running")
     result = await session.execute(
         sa.text(
-            "SELECT i.symbol FROM de_instrument i"
-            " JOIN de_index_price_daily idx ON idx.instrument_id = i.id"
-            " WHERE i.symbol = ANY(:symbols) AND idx.date = :bdate"
+            "SELECT DISTINCT index_code FROM de_index_prices"
+            " WHERE index_code = ANY(:symbols) AND date = :bdate"
         ),
         {"symbols": BENCHMARKS, "bdate": business_date},
     )

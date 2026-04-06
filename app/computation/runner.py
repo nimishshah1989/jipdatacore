@@ -287,6 +287,7 @@ async def run_full_computation_pipeline(
             StepResult(step_name="technicals", status="passed", rows_affected=rows)
         )
     except Exception as exc:
+        await session.rollback()
         report.steps.append(
             StepResult(step_name="technicals",
                 status="failed",
@@ -318,6 +319,7 @@ async def run_full_computation_pipeline(
             StepResult(step_name="rs", status="passed", rows_affected=rows)
         )
     except Exception as exc:
+        await session.rollback()
         report.steps.append(
             StepResult(step_name="rs", status="failed", errors=[str(exc)])
         )
@@ -344,6 +346,7 @@ async def run_full_computation_pipeline(
             StepResult(step_name="breadth", status="passed", rows_affected=result)
         )
     except Exception as exc:
+        await session.rollback()
         report.steps.append(
             StepResult(step_name="breadth", status="failed", errors=[str(exc)])
         )
@@ -365,6 +368,7 @@ async def run_full_computation_pipeline(
             )
         )
     except Exception as exc:
+        await session.rollback()
         report.steps.append(
             StepResult(step_name="regime", status="failed", errors=[str(exc)])
         )
@@ -389,6 +393,7 @@ async def run_full_computation_pipeline(
             )
         )
     except Exception as exc:
+        await session.rollback()
         report.steps.append(
             StepResult(step_name="sectors", status="failed", errors=[str(exc)])
         )
@@ -408,6 +413,7 @@ async def run_full_computation_pipeline(
             StepResult(step_name="fund_derived", status="passed", rows_affected=rows)
         )
     except Exception as exc:
+        await session.rollback()
         report.steps.append(
             StepResult(step_name="fund_derived", status="failed", errors=[str(exc)])
         )
