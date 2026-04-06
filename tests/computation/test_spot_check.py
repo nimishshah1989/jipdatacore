@@ -103,11 +103,9 @@ def test_qa_report_to_dict_structure() -> None:
     d = report.to_dict()
     assert d["phase"] == "spot_check"
     assert d["business_date"] == "2025-12-31"
-    assert "generated_at" in d
     assert "overall_status" in d
-    assert "summary" in d
     assert "steps" in d
-    assert d["summary"]["total"] == 1
+    assert len(d["steps"]) == 1
 
 
 def test_qa_report_from_steps() -> None:

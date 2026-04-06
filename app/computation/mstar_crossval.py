@@ -306,7 +306,7 @@ async def run_mstar_crossvalidation(
         report.add_step(
             StepResult(
                 name="get_top_funds",
-                status="warn",
+                status="warning",
                 message="No active equity funds found in de_mf_master",
             )
         )
@@ -343,7 +343,6 @@ async def run_mstar_crossvalidation(
                         message="Morningstar credentials not configured — crossvalidation skipped",
                     )
                 )
-                report.overall_status = "skipped"
                 return report
 
             # 3. Per-fund comparisons
@@ -392,7 +391,7 @@ async def run_mstar_crossvalidation(
                     total_metrics += fund_metrics
                     total_breaches += fund_breaches
 
-                    fund_status = "fail" if fund_breaches > 0 else "pass"
+                    fund_status = "failed" if fund_breaches > 0 else "passed"
                     report.add_step(
                         StepResult(
                             name=f"fund_{mstar_id}",
@@ -402,9 +401,7 @@ async def run_mstar_crossvalidation(
                                 if fund_breaches
                                 else f"{fund_name}: all {fund_metrics} metrics within tolerance"
                             ),
-                            details={"comparisons": comparisons},
-                            metric_count=fund_metrics,
-                            breach_count=fund_breaches,
+                            details={"comparisons": comparisons, "metric_count": fund_metrics, "breach_count": fund_breaches},
                         )
                     )
 
@@ -418,7 +415,7 @@ async def run_mstar_crossvalidation(
                     report.add_step(
                         StepResult(
                             name=f"fund_{mstar_id}",
-                            status="error",
+                            status="failed",
                             message=f"{fund_name}: unexpected error — {exc}",
                         )
                     )
@@ -428,14 +425,14 @@ async def run_mstar_crossvalidation(
         report.add_step(
             StepResult(
                 name="mstar_client",
-                status="error",
+                status="failed",
                 message=f"Morningstar client failed: {exc}",
             )
         )
         return report
 
     # 4. Rollup StepResult with all comparisons
-    rollup_status = "fail" if total_breaches > 0 else "pass"
+    rollup_status = "failed" if total_breaches > 0 else "passed"
     if total_metrics == 0:
         rollup_status = "skipped"
 
@@ -448,9 +445,7 @@ async def run_mstar_crossvalidation(
                 if total_metrics
                 else "No metrics were comparable (all funds missing data)"
             ),
-            details={"comparisons": all_comparisons},
-            metric_count=total_metrics,
-            breach_count=total_breaches,
+            details={"comparisons": all_comparisons, "metric_count": total_metrics, "breach_count": total_breaches},
         )
     )
 
