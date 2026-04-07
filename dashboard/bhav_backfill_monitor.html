@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BHAV Copy Backfill — Live Monitor</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e4e4e7;
+    --muted: #71717a;
+    --teal: #1D9E75;
+    --teal-dim: rgba(29,158,117,0.15);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.15);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245,158,11,0.15);
+    --blue: #3b82f6;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+  .header .badge {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-running { background: var(--teal-dim); color: var(--teal); }
+  .badge-completed { background: var(--teal-dim); color: var(--teal); }
+  .badge-error, .badge-stopped { background: var(--red-dim); color: var(--red); }
+  .badge-initializing { background: var(--amber-dim); color: var(--amber); }
+  .badge-completed_with_errors { background: var(--amber-dim); color: var(--amber); }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .stat-card .label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .stat-card .value {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .stat-card .sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .value-teal { color: var(--teal); }
+  .value-red { color: var(--red); }
+  .value-amber { color: var(--amber); }
+  .value-blue { color: var(--blue); }
+
+  .progress-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .progress-section h2 {
+    font-size: 13px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 14px;
+  }
+  .progress-bar-outer {
+    width: 100%;
+    height: 28px;
+    background: #252830;
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+  }
+  .progress-bar-completed { background: var(--teal); }
+  .progress-bar-skipped { background: var(--blue); opacity: 0.6; }
+  .progress-bar-failed { background: var(--red); opacity: 0.7; }
+  .progress-pct {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .progress-legend {
+    display: flex;
+    gap: 20px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+
+  .info-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .info-card {
+    flex: 1;
+    min-width: 250px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .info-card h3 {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+  .info-card .detail {
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .info-card .detail span.label {
+    color: var(--muted);
+    display: inline-block;
+    min-width: 140px;
+  }
+
+  .error-list {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    max-height: 250px;
+    overflow-y: auto;
+  }
+  .error-list h3 {
+    font-size: 12px;
+    color: var(--red);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+  .error-list .error-item {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .error-list .error-item:last-child { border-bottom: none; }
+
+  .pulse {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--teal);
+    margin-right: 8px;
+    animation: pulse-anim 1.5s infinite;
+  }
+  @keyframes pulse-anim {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .last-update {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+    margin-top: 16px;
+  }
+
+  .offline-banner {
+    display: none;
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: var(--red);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>BHAV Copy Backfill — Live Monitor</h1>
+  <span id="statusBadge" class="badge badge-initializing">INITIALIZING</span>
+</div>
+
+<div id="offlineBanner" class="offline-banner">
+  Backfill process not reachable. It may have stopped or not started yet. Waiting for connection...
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="label">Completed</div>
+    <div class="value value-teal" id="completedCount">0</div>
+    <div class="sub" id="completedSub">of 0 total dates</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Already Existed</div>
+    <div class="value value-blue" id="skippedCount">0</div>
+    <div class="sub">skipped (already in DB)</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Failed</div>
+    <div class="value value-red" id="failedCount">0</div>
+    <div class="sub" id="failedSub">download errors</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Rows Inserted</div>
+    <div class="value" id="rowsInserted">0</div>
+    <div class="sub">total OHLCV records</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Speed</div>
+    <div class="value value-amber" id="speed">—</div>
+    <div class="sub">dates / minute</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">ETA</div>
+    <div class="value" id="eta">—</div>
+    <div class="sub" id="etaSub">estimated time remaining</div>
+  </div>
+</div>
+
+<div class="progress-section">
+  <h2>Overall Progress</h2>
+  <div class="progress-bar-outer">
+    <div id="progressBar" class="progress-bar-fill progress-bar-completed" style="width: 0%"></div>
+    <span id="progressPct" class="progress-pct">0%</span>
+  </div>
+  <div class="progress-legend">
+    <span><span class="legend-dot" style="background:var(--teal)"></span> Ingested</span>
+    <span><span class="legend-dot" style="background:var(--blue)"></span> Already existed</span>
+    <span><span class="legend-dot" style="background:var(--red)"></span> Failed</span>
+  </div>
+</div>
+
+<div class="info-row">
+  <div class="info-card">
+    <h3>Current Status</h3>
+    <div class="detail">
+      <div><span class="label">Phase:</span> <span id="phase">—</span></div>
+      <div><span class="label">Current Date:</span> <span id="currentDate">—</span></div>
+      <div><span class="label">Last Completed:</span> <span id="lastCompleted">—</span></div>
+    </div>
+  </div>
+  <div class="info-card">
+    <h3>Timing</h3>
+    <div class="detail">
+      <div><span class="label">Started:</span> <span id="startedAt">—</span></div>
+      <div><span class="label">Elapsed:</span> <span id="elapsed">—</span></div>
+      <div><span class="label">Last Error:</span> <span id="lastError" style="color:var(--red)">—</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="workerSection" class="progress-section" style="display:none">
+  <h2>Worker Status</h2>
+  <div id="workerGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:10px;"></div>
+</div>
+
+<div id="errorSection" class="error-list" style="display:none">
+  <h3>Recent Failures</h3>
+  <div id="errorList"></div>
+</div>
+
+<div class="last-update">
+  <span class="pulse" id="pulseIndicator"></span>
+  Auto-refreshing every 3s — Last update: <span id="lastUpdate">—</span>
+</div>
+
+<script>
+const API = '/api/progress';
+let pollInterval;
+let failCount = 0;
+
+function indianNumber(n) {
+  if (n == null) return '—';
+  const s = n.toString();
+  if (s.length <= 3) return s;
+  const last3 = s.slice(-3);
+  const rest = s.slice(0, -3);
+  const formatted = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+  return formatted + ',' + last3;
+}
+
+function formatEta(minutes) {
+  if (minutes == null || minutes <= 0) return '—';
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return `${h}h ${m}m`;
+}
+
+function formatElapsed(startTs) {
+  if (!startTs) return '—';
+  const elapsed = (Date.now() / 1000) - startTs;
+  if (elapsed < 60) return `${Math.round(elapsed)}s`;
+  if (elapsed < 3600) return `${Math.round(elapsed / 60)}m`;
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.round((elapsed % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
+function formatTime(ts) {
+  if (!ts) return '—';
+  return new Date(ts * 1000).toLocaleTimeString('en-IN', { hour12: true });
+}
+
+async function refresh() {
+  try {
+    const resp = await fetch(API);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const d = await resp.json();
+    failCount = 0;
+    document.getElementById('offlineBanner').style.display = 'none';
+    document.getElementById('pulseIndicator').style.background = 'var(--teal)';
+
+    // Status badge
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = (d.status || 'unknown').toUpperCase().replace('_', ' ');
+    badge.className = 'badge badge-' + (d.status || 'initializing');
+
+    // Stats
+    const total = d.total_dates || 1;
+    const done = (d.completed_dates || 0) + (d.skipped_dates || 0);
+    const pct = Math.round((done / total) * 100);
+
+    document.getElementById('completedCount').textContent = indianNumber(d.completed_dates);
+    document.getElementById('completedSub').textContent = `of ${indianNumber(total)} total dates`;
+    document.getElementById('skippedCount').textContent = indianNumber(d.skipped_dates);
+    document.getElementById('failedCount').textContent = indianNumber(d.failed_dates);
+    document.getElementById('rowsInserted').textContent = indianNumber(d.total_rows_inserted);
+    document.getElementById('speed').textContent = d.dates_per_minute || '—';
+    document.getElementById('eta').textContent = formatEta(d.eta_minutes);
+
+    // Progress bar
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressPct').textContent = pct + '%';
+
+    // Info
+    document.getElementById('phase').textContent = d.phase || '—';
+    document.getElementById('currentDate').textContent = d.current_date || '—';
+    document.getElementById('lastCompleted').textContent = d.last_completed_date || '—';
+    document.getElementById('startedAt').textContent = formatTime(d.started_at);
+    document.getElementById('elapsed').textContent = formatElapsed(d.started_at);
+    document.getElementById('lastError').textContent = d.last_error || 'None';
+
+    // Error list
+    const errors = d.failed_date_list || [];
+    const errorSection = document.getElementById('errorSection');
+    if (errors.length > 0) {
+      errorSection.style.display = 'block';
+      document.getElementById('errorList').innerHTML = errors
+        .slice(-20)
+        .reverse()
+        .map(e => `<div class="error-item">${e}</div>`)
+        .join('');
+    } else {
+      errorSection.style.display = 'none';
+    }
+
+    // Worker grid
+    const workers = d.workers || {};
+    const workerKeys = Object.keys(workers);
+    const workerSection = document.getElementById('workerSection');
+    const workerGrid = document.getElementById('workerGrid');
+    if (workerKeys.length > 0) {
+      workerSection.style.display = 'block';
+      workerGrid.innerHTML = workerKeys.map(wk => {
+        const w = workers[wk];
+        const wPct = w.total ? Math.round(((w.completed || 0) / w.total) * 100) : 0;
+        const statusColor = w.status === 'done' ? 'var(--teal)' : w.status === 'stopped' ? 'var(--red)' : 'var(--amber)';
+        return `<div style="background:#252830;border-radius:6px;padding:12px">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:${statusColor}">${wk}</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.8">
+            <div>Status: <span style="color:${statusColor}">${(w.status||'—').toUpperCase()}</span></div>
+            <div>Progress: ${w.completed||0}/${w.total||0} (${wPct}%)</div>
+            <div>Failed: ${w.failed||0}</div>
+            <div>Current: ${w.current_date||'—'}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-IN');
+  } catch (err) {
+    failCount++;
+    if (failCount >= 3) {
+      document.getElementById('offlineBanner').style.display = 'block';
+      document.getElementById('pulseIndicator').style.background = 'var(--red)';
+    }
+  }
+}
+
+// Initial load + poll every 3 seconds
+refresh();
+pollInterval = setInterval(refresh, 3000);
+</script>
+</body>
+</html>

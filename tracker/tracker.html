@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JIP Data Ingestion Tracker</title>
+  <style>
+    /* ------------------------------------------------------------------ */
+    /* Reset + base                                                          */
+    /* ------------------------------------------------------------------ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --teal:       #1D9E75;
+      --teal-light: #E8F7F2;
+      --teal-dark:  #157A5A;
+      --text:       #1A1A2E;
+      --text-muted: #6B7280;
+      --border:     #E5E7EB;
+      --bg:         #FFFFFF;
+      --bg-alt:     #F9FAFB;
+      --danger:     #DC2626;
+      --warning:    #D97706;
+      --success:    #16A34A;
+      --running:    #2563EB;
+      --pending:    #9CA3AF;
+      --radius:     6px;
+      --shadow:     0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      background: var(--bg-alt);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Header                                                               */
+    /* ------------------------------------------------------------------ */
+    .header {
+      background: var(--bg);
+      border-bottom: 2px solid var(--teal);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-logo {
+      width: 28px;
+      height: 28px;
+      background: var(--teal);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .header-logo svg {
+      width: 16px;
+      height: 16px;
+      fill: white;
+    }
+
+    .header-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+
+    .header-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-top: 1px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .server-time {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .server-time strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* Connection status dot */
+    .conn-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--pending);
+      display: inline-block;
+      transition: background 0.4s;
+    }
+    .conn-dot.ok    { background: var(--success); }
+    .conn-dot.error { background: var(--danger); }
+
+    /* ------------------------------------------------------------------ */
+    /* Main layout                                                          */
+    /* ------------------------------------------------------------------ */
+    .main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 24px 48px;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Section headings                                                     */
+    /* ------------------------------------------------------------------ */
+    .section-heading {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-heading .count-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--border);
+      color: var(--text-muted);
+      border-radius: 10px;
+      padding: 1px 7px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Cards (target pipelines)                                             */
+    /* ------------------------------------------------------------------ */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .pipeline-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px 20px;
+      transition: border-color 0.25s, box-shadow 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pipeline-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+    }
+    .pipeline-card.status-success::before  { background: var(--success); }
+    .pipeline-card.status-running::before  { background: var(--running); }
+    .pipeline-card.status-failed::before   { background: var(--danger); }
+    .pipeline-card.status-partial::before  { background: var(--warning); }
+    .pipeline-card.status-pending::before,
+    .pipeline-card.status-skipped::before  { background: var(--pending); }
+
+    .pipeline-card:hover {
+      border-color: var(--teal);
+      box-shadow: 0 4px 12px rgba(29,158,117,0.12);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .card-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.3;
+    }
+
+    .card-pipeline-id {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      margin-top: 2px;
+    }
+
+    .card-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .metric {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .metric-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-value.positive { color: var(--success); }
+    .metric-value.negative { color: var(--danger); }
+    .metric-value.muted    { color: var(--text-muted); font-weight: 400; }
+
+    .card-footer {
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 14px;
+    }
+
+    .card-footer span { display: flex; gap: 4px; align-items: center; }
+
+    /* ------------------------------------------------------------------ */
+    /* Status badges                                                        */
+    /* ------------------------------------------------------------------ */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      letter-spacing: 0.2px;
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .badge.success  { background: #DCFCE7; color: var(--success); }
+    .badge.success .badge-dot  { background: var(--success); }
+
+    .badge.running  { background: #DBEAFE; color: var(--running); }
+    .badge.running .badge-dot  {
+      background: var(--running);
+      animation: pulse-blue 1.2s ease-in-out infinite;
+    }
+
+    .badge.failed   { background: #FEE2E2; color: var(--danger); }
+    .badge.failed .badge-dot   { background: var(--danger); }
+
+    .badge.partial  { background: #FEF3C7; color: var(--warning); }
+    .badge.partial .badge-dot  { background: var(--warning); }
+
+    .badge.pending,
+    .badge.skipped  { background: var(--border); color: var(--text-muted); }
+    .badge.pending .badge-dot,
+    .badge.skipped .badge-dot  { background: var(--pending); }
+
+    @keyframes pulse-blue {
+      0%, 100% { opacity: 1;   transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(1.5); }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Table (recent activity)                                              */
+    /* ------------------------------------------------------------------ */
+    .table-wrap {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead tr {
+      background: var(--bg-alt);
+      border-bottom: 1px solid var(--border);
+    }
+
+    thead th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    thead th.num { text-align: right; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg-alt); }
+
+    tbody td {
+      padding: 9px 14px;
+      font-size: 13px;
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    tbody td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+
+    tbody td.muted {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .pipeline-name-cell {
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 12px;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .empty-state {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Error bar                                                            */
+    /* ------------------------------------------------------------------ */
+    .error-bar {
+      background: #FEE2E2;
+      border: 1px solid #FECACA;
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--danger);
+      margin-bottom: 16px;
+      display: none;
+    }
+    .error-bar.visible { display: block; }
+
+    /* ------------------------------------------------------------------ */
+    /* Footer                                                               */
+    /* ------------------------------------------------------------------ */
+    .footer {
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--teal);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+    .spinner.active { display: inline-block; }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Running timer                                                        */
+    /* ------------------------------------------------------------------ */
+    .running-timer {
+      font-variant-numeric: tabular-nums;
+      color: var(--running);
+      font-weight: 700;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Responsive                                                           */
+    /* ------------------------------------------------------------------ */
+    @media (max-width: 640px) {
+      .card-grid { grid-template-columns: 1fr; }
+      .header { padding: 0 16px; }
+      .main  { padding: 16px 16px 56px; }
+      thead th:nth-child(n+5) { display: none; }
+      tbody td:nth-child(n+5) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- Header                                                                 -->
+<!-- -------------------------------------------------------------------- -->
+<header class="header">
+  <div class="header-left">
+    <div class="header-logo">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 3h18v2H3V3zm0 4h12v2H3V7zm0 4h18v2H3v-2zm0 4h12v2H3v-2zm0 4h18v2H3v-2z"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">JIP Data Ingestion Tracker</div>
+      <div class="header-subtitle">Live pipeline status &amp; monitoring</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="server-time">
+      Server time (IST): <strong id="server-time">—</strong>
+    </div>
+    <span class="conn-dot" id="conn-dot" title="Connection status"></span>
+  </div>
+</header>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- Main content                                                           -->
+<!-- -------------------------------------------------------------------- -->
+<main class="main">
+
+  <!-- Error bar -->
+  <div class="error-bar" id="error-bar"></div>
+
+  <!-- Target pipelines -->
+  <div class="section-heading">
+    Target Pipelines
+    <span class="count-badge" id="target-count">3</span>
+  </div>
+  <div class="card-grid" id="target-cards">
+    <!-- Populated by JS -->
+  </div>
+
+  <!-- Recent activity -->
+  <div class="section-heading">
+    Recent Pipeline Activity (last 24 h)
+    <span class="count-badge" id="recent-count">0</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Pipeline</th>
+          <th>Status</th>
+          <th class="num">Rows Processed</th>
+          <th class="num">Rows Failed</th>
+          <th class="num">Duration</th>
+          <th>Business Date</th>
+          <th>Started</th>
+        </tr>
+      </thead>
+      <tbody id="recent-tbody">
+        <tr><td colspan="7" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- Footer                                                                 -->
+<!-- -------------------------------------------------------------------- -->
+<footer class="footer">
+  <div class="footer-left">
+    <div class="spinner" id="spinner"></div>
+    Auto-refreshing every 3 seconds
+  </div>
+  <div>Last checked: <span id="last-checked">—</span></div>
+</footer>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- JavaScript                                                             -->
+<!-- -------------------------------------------------------------------- -->
+<script>
+  "use strict";
+
+  // -------------------------------------------------------------------------
+  // State
+  // -------------------------------------------------------------------------
+  let runningTimers = {};   // pipeline_name -> { startedAt: Date, el: Element }
+
+  // -------------------------------------------------------------------------
+  // Formatting helpers
+  // -------------------------------------------------------------------------
+  function fmtIndian(n) {
+    if (n === null || n === undefined) return "—";
+    n = parseInt(n, 10);
+    if (isNaN(n)) return "—";
+    const neg = n < 0;
+    n = Math.abs(n);
+    const s = String(n);
+    if (s.length <= 3) return (neg ? "-" : "") + s;
+    const last3 = s.slice(-3);
+    let rest = s.slice(0, -3);
+    const parts = [];
+    while (rest.length > 2) {
+      parts.unshift(rest.slice(-2));
+      rest = rest.slice(0, -2);
+    }
+    if (rest) parts.unshift(rest);
+    return (neg ? "-" : "") + parts.join(",") + "," + last3;
+  }
+
+  function fmtDuration(seconds) {
+    if (seconds === null || seconds === undefined) return "—";
+    seconds = Math.round(seconds);
+    if (seconds < 60) return seconds + "s";
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (m < 60) return m + "m " + s + "s";
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return h + "h " + rm + "m";
+  }
+
+  function fmtIstTime(isoStr) {
+    if (!isoStr) return "—";
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleTimeString("en-IN", {
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        timeZone: "Asia/Kolkata", hour12: false
+      });
+    } catch (e) { return isoStr; }
+  }
+
+  function fmtIstDateTime(isoStr) {
+    if (!isoStr) return "—";
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleString("en-IN", {
+        day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+        timeZone: "Asia/Kolkata", hour12: false
+      });
+    } catch (e) { return isoStr; }
+  }
+
+  function fmtDate(dateStr) {
+    if (!dateStr) return "—";
+    try {
+      const [y, m, d] = dateStr.split("-");
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      return `${d}-${months[parseInt(m, 10) - 1]}-${y}`;
+    } catch(e) { return dateStr; }
+  }
+
+  // -------------------------------------------------------------------------
+  // Status badge HTML
+  // -------------------------------------------------------------------------
+  function badgeHtml(status) {
+    const label = status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown";
+    const cls = status || "pending";
+    return `<span class="badge ${cls}"><span class="badge-dot"></span>${label}</span>`;
+  }
+
+  // -------------------------------------------------------------------------
+  // Running elapsed timer (live counter inside cards)
+  // -------------------------------------------------------------------------
+  function elapsedFromStart(startedAtIso) {
+    if (!startedAtIso) return null;
+    const start = new Date(startedAtIso);
+    const now = new Date();
+    return Math.max(0, Math.round((now - start) / 1000));
+  }
+
+  function startRunningTimer(name, startedAtIso, el) {
+    if (runningTimers[name]) {
+      clearInterval(runningTimers[name].interval);
+    }
+    const interval = setInterval(() => {
+      const secs = elapsedFromStart(startedAtIso);
+      if (el && el.isConnected) {
+        el.textContent = fmtDuration(secs);
+      } else {
+        clearInterval(interval);
+      }
+    }, 1000);
+    runningTimers[name] = { interval, el };
+  }
+
+  function stopAllTimers() {
+    for (const key of Object.keys(runningTimers)) {
+      clearInterval(runningTimers[key].interval);
+    }
+    runningTimers = {};
+  }
+
+  // -------------------------------------------------------------------------
+  // Render target pipeline cards
+  // -------------------------------------------------------------------------
+  function renderTargetCards(pipelines) {
+    stopAllTimers();
+    const container = document.getElementById("target-cards");
+    document.getElementById("target-count").textContent = pipelines.length;
+
+    if (!pipelines.length) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">No target pipelines configured.</p>';
+      return;
+    }
+
+    container.innerHTML = pipelines.map(p => {
+      const isRunning = p.status === "running";
+      const durationVal = isRunning
+        ? elapsedFromStart(p.started_at)
+        : p.duration_seconds;
+
+      const durHtml = isRunning
+        ? `<span class="running-timer" id="timer-${p.name}">${fmtDuration(durationVal)}</span>`
+        : `<span>${fmtDuration(p.duration_seconds)}</span>`;
+
+      const rowsFailed = (p.rows_failed !== null && p.rows_failed > 0)
+        ? `<span class="metric-value negative">${fmtIndian(p.rows_failed)}</span>`
+        : `<span class="metric-value muted">${p.rows_failed !== null ? "0" : "—"}</span>`;
+
+      return `
+        <div class="pipeline-card status-${p.status || "pending"}">
+          <div class="card-header">
+            <div>
+              <div class="card-name">${escHtml(p.display_name || p.name)}</div>
+              <div class="card-pipeline-id">${escHtml(p.name)}</div>
+            </div>
+            ${badgeHtml(p.status)}
+          </div>
+          <div class="card-metrics">
+            <div class="metric">
+              <span class="metric-label">Rows</span>
+              <span class="metric-value">${fmtIndian(p.rows_processed)}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Failed</span>
+              ${rowsFailed}
+            </div>
+            <div class="metric">
+              <span class="metric-label">Duration</span>
+              ${durHtml}
+            </div>
+          </div>
+          <div class="card-footer">
+            <span>Biz date: <strong>${fmtDate(p.business_date)}</strong></span>
+            <span>Started: <strong>${fmtIstTime(p.started_at)}</strong></span>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // Kick off live timers for running pipelines
+    for (const p of pipelines) {
+      if (p.status === "running" && p.started_at) {
+        const el = document.getElementById("timer-" + p.name);
+        if (el) startRunningTimer(p.name, p.started_at, el);
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Render recent runs table
+  // -------------------------------------------------------------------------
+  function renderRecentTable(runs) {
+    const tbody = document.getElementById("recent-tbody");
+    document.getElementById("recent-count").textContent = runs.length;
+
+    if (!runs.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No pipeline activity in the last 24 hours.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = runs.map(r => {
+      const durationVal = r.status === "running"
+        ? elapsedFromStart(r.started_at)
+        : r.duration_seconds;
+
+      return `
+        <tr>
+          <td class="pipeline-name-cell">${escHtml(r.name)}</td>
+          <td>${badgeHtml(r.status)}</td>
+          <td class="num">${fmtIndian(r.rows_processed)}</td>
+          <td class="num">${r.rows_failed > 0
+            ? `<span style="color:var(--danger);font-weight:700">${fmtIndian(r.rows_failed)}</span>`
+            : (r.rows_failed !== null ? "0" : "—")
+          }</td>
+          <td class="num">${fmtDuration(durationVal)}</td>
+          <td class="muted">${fmtDate(r.business_date)}</td>
+          <td class="muted">${fmtIstDateTime(r.started_at)}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  // -------------------------------------------------------------------------
+  // XSS escape
+  // -------------------------------------------------------------------------
+  function escHtml(s) {
+    if (!s) return "";
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // -------------------------------------------------------------------------
+  // Fetch & update
+  // -------------------------------------------------------------------------
+  async function fetchStatus() {
+    const spinner = document.getElementById("spinner");
+    spinner.classList.add("active");
+
+    try {
+      const resp = await fetch("/api/status");
+      const connDot = document.getElementById("conn-dot");
+      const errorBar = document.getElementById("error-bar");
+
+      if (!resp.ok) {
+        connDot.className = "conn-dot error";
+        errorBar.textContent = `API error: HTTP ${resp.status}`;
+        errorBar.classList.add("visible");
+        return;
+      }
+
+      const data = await resp.json();
+
+      // Connection OK
+      connDot.className = "conn-dot ok";
+
+      if (data.error) {
+        errorBar.textContent = "Warning: " + data.error;
+        errorBar.classList.add("visible");
+      } else {
+        errorBar.classList.remove("visible");
+      }
+
+      // Server time
+      if (data.server_time_ist) {
+        document.getElementById("server-time").textContent = fmtIstDateTime(data.server_time_ist);
+      }
+
+      renderTargetCards(data.target_pipelines || []);
+      renderRecentTable(data.recent_runs || []);
+
+      // Last checked
+      const now = new Date();
+      document.getElementById("last-checked").textContent = now.toLocaleTimeString("en-IN", {
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        timeZone: "Asia/Kolkata", hour12: false
+      }) + " IST";
+
+    } catch (err) {
+      const connDot = document.getElementById("conn-dot");
+      connDot.className = "conn-dot error";
+      const errorBar = document.getElementById("error-bar");
+      errorBar.textContent = "Connection error: " + err.message;
+      errorBar.classList.add("visible");
+    } finally {
+      spinner.classList.remove("active");
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Boot
+  // -------------------------------------------------------------------------
+  fetchStatus();
+  setInterval(fetchStatus, 3000);
+</script>
+</body>
+</html>

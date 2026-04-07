@@ -144,7 +144,7 @@ async def main() -> None:
                     "open_adj = CAST(open AS NUMERIC(18,4)) * :factor, "
                     "high_adj = CAST(high AS NUMERIC(18,4)) * :factor, "
                     "low_adj = CAST(low AS NUMERIC(18,4)) * :factor "
-                    "WHERE instrument_id = :iid::uuid AND date < :ex_date"
+                    "WHERE instrument_id = CAST(:iid AS UUID) AND date < :ex_date"
                 ), {
                     "factor": Decimal(str(round(cum, 6))),
                     "iid": iid,
@@ -157,7 +157,7 @@ async def main() -> None:
             r = await session.execute(sa.text(
                 "UPDATE de_equity_ohlcv SET "
                 "close_adj = close, open_adj = open, high_adj = high, low_adj = low "
-                "WHERE instrument_id = :iid::uuid AND date >= :ex_date AND close_adj IS NULL"
+                "WHERE instrument_id = CAST(:iid AS UUID) AND date >= :ex_date AND close_adj IS NULL"
             ), {"iid": iid, "ex_date": last_ex})
             total_updated += r.rowcount
 
