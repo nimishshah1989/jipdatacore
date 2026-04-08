@@ -88,6 +88,77 @@ ETFS = {
     "EMB": ("EM","EM Bond","NYSE","iShares JP Morgan EM Bond"),
 }
 
+# Tier 1 US ETFs — dict format for test compatibility
+TIER1_US = {
+    t: {"name": meta[3], "exchange": meta[2], "category": meta[1]}
+    for t, meta in ETFS.items()
+    if meta[0] == "US" and meta[1] == "Broad Market"
+}
+# Add core sector + thematic US ETFs to reach 33
+for t in [
+    "XLK", "XLF", "XLV", "XLE", "XLI", "XLB", "XLY", "XLP", "XLU", "XLRE",
+    "SOXX", "IBB", "XOP", "KRE", "XHB",
+    "GLD", "SLV", "TLT", "HYG", "LQD",
+    "EEM", "VWO", "EFA", "ACWI",
+]:
+    if t in ETFS and t not in TIER1_US:
+        meta = ETFS[t]
+        TIER1_US[t] = {"name": meta[3], "exchange": meta[2], "category": meta[1]}
+
+WORLD_INDICES = {
+    "^SPX": {"name": "S&P 500", "country": "US"},
+    "^NDQ": {"name": "NASDAQ 100", "country": "US"},
+    "^DJI": {"name": "Dow Jones Industrial", "country": "US"},
+    "^UKX": {"name": "FTSE 100", "country": "UK"},
+    "^DAX": {"name": "DAX", "country": "DE"},
+    "^CAC": {"name": "CAC 40", "country": "FR"},
+    "^NKX": {"name": "Nikkei 225", "country": "JP"},
+    "^HSI": {"name": "Hang Seng", "country": "HK"},
+    "^SHCC": {"name": "Shanghai Composite", "country": "CN"},
+    "^BSESN": {"name": "BSE Sensex", "country": "IN"},
+}
+
+
+NASDAQ_ETF_DIR = DATA_DIR / "us/nasdaq etfs"
+NYSE_ETF_DIRS = [DATA_DIR / "us/nyse etfs/1", DATA_DIR / "us/nyse etfs/2"]
+
+
+def find_etf_file(ticker, exchange="NYSE"):
+    """Find the stooq data file for an ETF by ticker and exchange."""
+    fname = ticker.lower() + ".us.txt"
+    if exchange == "NASDAQ":
+        p = NASDAQ_ETF_DIR / fname
+        if p.exists():
+            return p
+    for d in NYSE_ETF_DIRS:
+        p = d / fname
+        if p.exists():
+            return p
+    if exchange != "NASDAQ":
+        p = NASDAQ_ETF_DIR / fname
+        if p.exists():
+            return p
+    return None
+
+
+def parse_ohlcv_file(path, ticker, min_date="2016-04-01"):
+    """Parse a stooq-format CSV and return a clean DataFrame."""
+    df = pd.read_csv(
+        path, header=0,
+        names=["t", "per", "date", "time", "open", "high", "low", "close", "volume", "oi"],
+    )
+    df["date"] = pd.to_datetime(df["date"], format="%Y%m%d", errors="coerce")
+    df = df.dropna(subset=["date"])
+    df = df[df["date"] >= pd.Timestamp(min_date)].copy()
+    df["ticker"] = ticker
+    df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0).astype(int)
+    df.loc[df["volume"] == 0, "volume"] = None
+    df["date"] = df["date"].dt.date
+    out = df[["ticker", "date", "open", "high", "low", "close", "volume"]].copy()
+    out["volume"] = out["volume"].astype("Int64")
+    return out
+
+
 def find_file(ticker):
     fname = ticker.lower() + ".us.txt"
     for subdir in ["us/nasdaq etfs", "us/nyse etfs/1", "us/nyse etfs/2"]:
@@ -166,4 +237,5 @@ def main():
     print(f"Done in {time.time()-t0:.0f}s", flush=True)
     cur.close(); conn.close()
 
-main()
+if __name__ == "__main__":
+    main()

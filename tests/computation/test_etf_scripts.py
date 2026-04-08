@@ -24,7 +24,9 @@ def _make_stooq_csv(ticker: str, rows: int = 300, start_date: str = "20160101") 
     lines = ["<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>"]
     from datetime import date, timedelta
 
-    d = date.fromisoformat(start_date)
+    # Accept both YYYYMMDD and YYYY-MM-DD formats
+    iso = start_date if "-" in start_date else f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+    d = date.fromisoformat(iso)
     price = 100.0
     for i in range(rows):
         open_ = round(price * 0.99, 4)
@@ -97,7 +99,7 @@ class TestParseOhlcvFile:
         p.write_text("\n".join(lines))
 
         df = parse_ohlcv_file(p, "GLD", min_date="2019-01-01")
-        assert df.iloc[0]["volume"] is None or (df.iloc[0]["volume"] != df.iloc[0]["volume"])  # NaN or None
+        assert pd.isna(df.iloc[0]["volume"])  # pd.NA or NaN or None
         assert df.iloc[1]["volume"] == 500000
 
     def test_parse_ticker_column_is_canonical(self, tmp_path):
