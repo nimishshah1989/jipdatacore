@@ -250,29 +250,73 @@ def is_duplicate(cur: "psycopg2.cursor", source_id: int, content_hash: str) -> b
 # HTTP session authentication
 # ---------------------------------------------------------------------------
 def build_session(email: str, password: str) -> Session:
-    """Create a requests.Session(), set browser User-Agent, and log in."""
+    """Use Playwright to authenticate (JS-based login), then transfer cookies to requests.Session()."""
+    import json as _json
+
+    cookie_file = Path(os.environ.get("GOLDILOCKS_COOKIE_FILE", "/tmp/goldilocks_cookies.json"))
+
+    # Try reusing saved cookies first
     sess = requests.Session()
     sess.headers.update({"User-Agent": REAL_UA})
 
-    _log(f"Logging in to {LOGIN_URL} as {email}")
-    resp = sess.post(
-        LOGIN_URL,
-        data={"Email": email, "Password": password},
-        timeout=30,
-        allow_redirects=True,
-    )
-    resp.raise_for_status()
+    if cookie_file.exists():
+        _log("Trying saved cookies...")
+        with open(cookie_file) as f:
+            for c in _json.load(f):
+                sess.cookies.set(c["name"], c["value"], domain=c.get("domain", ""))
+        # Test if session is valid
+        test = sess.get(f"{BASE_URL}/cus_dashboard.php", timeout=15, allow_redirects=True)
+        if "window.location.href" not in test.text[:200] and len(test.text) > 10000:
+            _log("Saved cookies valid — reusing session")
+            return sess
+        _log("Saved cookies expired — re-authenticating via Playwright")
+        sess.cookies.clear()
 
-    # Heuristic: check we are not sitting on the login page (auth failed)
-    if "cus_signin" in resp.url and "dashboard" not in resp.url:
-        lower_body = resp.text.lower()
-        if "invalid" in lower_body or "incorrect" in lower_body or "error" in lower_body:
-            raise RuntimeError(
-                f"Goldilocks login failed — check credentials. "
-                f"Response URL: {resp.url}"
-            )
+    # Playwright login
+    _log(f"Logging in via Playwright as {email}")
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise RuntimeError("playwright not installed. Run: pip3 install playwright && playwright install chromium")
 
-    _log(f"Login response URL: {resp.url} (status {resp.status_code})")
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context(user_agent=REAL_UA)
+        page = context.new_page()
+
+        page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+        import time as _time
+        _time.sleep(2)
+
+        page.fill('input[name="Email"]', email)
+        page.fill('input[name="Password"]', password)
+        page.click('button[type="submit"]')
+        _time.sleep(5)
+
+        # Verify login by checking dashboard
+        page.goto(f"{BASE_URL}/cus_dashboard.php", wait_until="domcontentloaded", timeout=30000)
+        _time.sleep(3)
+        content = page.content()
+
+        if "window.location.href" in content[:200]:
+            browser.close()
+            raise RuntimeError("Goldilocks login failed — dashboard redirects. Check credentials.")
+
+        _log("Playwright login success — transferring cookies")
+
+        # Save cookies
+        cookies = context.cookies()
+        cookie_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(cookie_file, "w") as f:
+            _json.dump(cookies, f)
+
+        # Transfer to requests.Session
+        for c in cookies:
+            sess.cookies.set(c["name"], c["value"], domain=c.get("domain", ""))
+
+        browser.close()
+
+    _log(f"Session ready with {len(sess.cookies)} cookies")
     return sess
 
 
