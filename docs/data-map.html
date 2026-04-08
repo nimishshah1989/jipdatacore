@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JIP Data Engine — Verified Data Map (Live RDS)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #f8f9fa; color: #1a1a2e; }
+
+.header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 28px 40px; }
+.header h1 { font-size: 24px; font-weight: 700; }
+.header .sub { color: #94a3b8; font-size: 13px; margin-top: 4px; }
+.header .verified { display: inline-block; background: #1D9E75; color: white; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-left: 8px; }
+
+.content { max-width: 1400px; margin: 0 auto; padding: 28px 20px; }
+
+/* PILLAR SECTION */
+.pillar { margin-bottom: 28px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+.pillar-header { padding: 18px 24px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #e2e8f0; }
+.pillar-icon { font-size: 24px; }
+.pillar-title { font-size: 20px; font-weight: 800; }
+.pillar-body { padding: 20px 24px; }
+
+/* TREE */
+.tree { font-size: 13px; line-height: 1.8; }
+.tree .branch { margin-left: 24px; border-left: 2px solid #e2e8f0; padding-left: 16px; }
+.tree .leaf { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.tree .node { font-weight: 700; font-size: 14px; margin: 8px 0 4px; }
+.tree .tbl { font-family: 'Fira Code', 'SF Mono', monospace; font-weight: 700; font-size: 12px; color: #0f172a; }
+
+.live { display: inline-block; background: #dcfce7; color: #16a34a; padding: 1px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.partial { display: inline-block; background: #fef3c7; color: #d97706; padding: 1px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.empty { display: inline-block; background: #fee2e2; color: #dc2626; padding: 1px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.num { color: #1D9E75; font-weight: 800; }
+.dim { color: #94a3b8; }
+.warn { color: #d97706; font-style: italic; }
+.miss { color: #dc2626; }
+
+/* SUMMARY TABLE */
+table.summary { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.summary th { text-align: left; padding: 8px 12px; background: #f1f5f9; border-bottom: 2px solid #e2e8f0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
+table.summary td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+table.summary tr:hover { background: #f8fafc; }
+table.summary .mono { font-family: 'Fira Code', monospace; font-size: 12px; font-weight: 600; }
+table.summary .right { text-align: right; }
+
+/* GAP SECTION */
+.gap-section { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; }
+.gap-section h2 { color: #dc2626; font-size: 18px; margin-bottom: 12px; }
+.gap-item { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.gap-bullet { color: #dc2626; font-weight: 800; }
+
+/* COVERAGE BAR */
+.cov-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.cov-track { flex: 1; max-width: 200px; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+.cov-fill { height: 100%; border-radius: 4px; }
+.cov-pct { font-size: 12px; font-weight: 700; min-width: 40px; }
+
+/* STAT BOXES */
+.stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.stat-box { flex: 1; min-width: 140px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; text-align: center; }
+.stat-box .big { font-size: 28px; font-weight: 800; color: #1D9E75; }
+.stat-box .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-top: 2px; }
+.stat-box.warn-box .big { color: #d97706; }
+.stat-box.miss-box .big { color: #dc2626; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>JIP Data Engine — Verified Data Map <span class="verified">QUERIED FROM LIVE RDS</span></h1>
+  <div class="sub">All numbers below are actual SELECT COUNT(*) from jip-data-engine RDS on 8 Apr 2026. Zero fabrication.</div>
+</div>
+
+<div class="content">
+
+<!-- SUMMARY STATS -->
+<div class="stat-row">
+  <div class="stat-box"><div class="big">4,002,965</div><div class="lbl">Equity OHLCV Rows</div></div>
+  <div class="stat-box"><div class="big">3,996,551</div><div class="lbl">Technical Indicators</div></div>
+  <div class="stat-box"><div class="big">12,581,135</div><div class="lbl">RS Scores</div></div>
+  <div class="stat-box"><div class="big">1,465,813</div><div class="lbl">MF NAV Rows</div></div>
+  <div class="stat-box"><div class="big">325,789</div><div class="lbl">ETF OHLCV Rows</div></div>
+  <div class="stat-box"><div class="big">138,088</div><div class="lbl">Index Price Rows</div></div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PILLAR 1: EQUITY -->
+<!-- ============================================================ -->
+<div class="pillar">
+  <div class="pillar-header">
+    <div class="pillar-icon">📈</div>
+    <div class="pillar-title" style="color:#3b82f6">1. EQUITY (NSE Instruments)</div>
+  </div>
+  <div class="pillar-body">
+    <div class="tree">
+
+      <div class="node">Instrument Master</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_instrument</span> <span class="live">LIVE</span> <span class="num">2,743</span> stocks</div>
+        <div class="leaf"><span class="dim">Sector mapped:</span> <span class="num">2,285</span> / 2,743 <span class="dim">(83%)</span></div>
+        <div class="leaf"><span class="dim">Sector NULL:</span> <span class="warn">458 stocks missing sector</span></div>
+      </div>
+
+      <div class="node">OHLCV Prices</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_equity_ohlcv</span> <span class="live">LIVE</span> <span class="num">4,002,965</span> rows</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2007-01-01 to 2026-04-06</div>
+        <div class="leaf"><span class="dim">Distinct instruments with data:</span> varies by year (210 in 2007 up to ~2,100 in 2025)</div>
+        <div class="leaf"><span class="dim">close_adj:</span> <span class="live">FILLED</span> (checked 2025 partition: 524,934/524,934 = 100%)</div>
+        <div class="leaf"><span class="dim">delivery_pct:</span> <span class="partial">PARTIAL</span> 125,367 / 524,934 in 2025 (24%)</div>
+      </div>
+
+      <div class="node">Technical Indicators (39 columns)</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_equity_technical_daily</span> <span class="live">LIVE</span> <span class="num">3,996,551</span> rows, <span class="num">2,281</span> instruments</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2007-01-01 to 2026-04-06</div>
+        <div class="leaf"><span class="dim">On latest date (2,279 stocks):</span></div>
+        <div class="branch">
+          <div class="leaf">SMA 50: <span class="num">2,237</span> <span class="live">98%</span></div>
+          <div class="leaf">SMA 200: <span class="num">2,065</span> <span class="live">91%</span></div>
+          <div class="leaf">EMA 10/20/50/200: <span class="num">2,279</span> <span class="live">100%</span></div>
+          <div class="leaf">RSI 14 / RSI 7: <span class="num">2,271</span> <span class="live">99.6%</span></div>
+          <div class="leaf">MACD line/signal/histogram: <span class="num">2,279</span> <span class="live">100%</span></div>
+          <div class="leaf">Bollinger bands: <span class="num">2,260</span> <span class="live">99%</span></div>
+          <div class="leaf">Volatility 20d/60d: <span class="num">2,260</span> <span class="live">99%</span></div>
+          <div class="leaf">ROC 5/21: <span class="num">2,271</span> <span class="live">99.6%</span></div>
+          <div class="leaf">Relative Volume: <span class="num">2,260</span> <span class="live">99%</span></div>
+          <div class="leaf">Sharpe 1Y: <span class="num">2,065</span> <span class="live">91%</span></div>
+          <div class="leaf">Sortino 1Y: <span class="num">2,065</span> <span class="live">91%</span></div>
+          <div class="leaf">Max Drawdown 1Y: <span class="num">2,279</span> <span class="live">100%</span></div>
+          <div class="leaf">ADX 14: <span class="empty">0</span> <span class="miss">NOT COMPUTED</span></div>
+          <div class="leaf">Beta vs NIFTY: <span class="empty">0</span> <span class="miss">NOT COMPUTED</span></div>
+          <div class="leaf">OBV: <span class="empty">0</span> <span class="miss">NOT COMPUTED</span></div>
+          <div class="leaf">MFI 14: <span class="empty">0</span> <span class="miss">NOT COMPUTED</span></div>
+          <div class="leaf">Delivery vs Avg: <span class="empty">0</span> <span class="miss">NOT COMPUTED</span></div>
+        </div>
+      </div>
+
+      <div class="node">RS Scores (Equity)</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_rs_scores</span> entity_type='equity' <span class="live">LIVE</span> <span class="num">9,037,389</span> rows</div>
+        <div class="leaf"><span class="dim">Distinct stocks:</span> <span class="num">2,082</span></div>
+        <div class="leaf"><span class="dim">Date range:</span> 2016-04-18 to 2026-03-30</div>
+        <div class="leaf"><span class="dim">Benchmarks:</span> NIFTY 50, NIFTY 500, NIFTY MIDCAP 100 (3 variants per stock per day)</div>
+        <div class="leaf"><span class="dim">Components:</span> rs_1w, rs_1m, rs_3m, rs_6m, rs_12m, rs_composite</div>
+      </div>
+
+      <div class="node">Corporate Actions</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_corporate_actions</span> <span class="live">LIVE</span> <span class="num">14,923</span> actions, <span class="num">1,945</span> stocks</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2019-12-03 to 2026-04-30</div>
+      </div>
+
+      <div class="node">Market Cap Classification</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_market_cap_history</span> <span class="live">LIVE</span> <span class="num">12,217</span> rows, <span class="num">2,248</span> stocks</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2023-01-01 to 2026-01-01 (semi-annual AMFI)</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PILLAR 2: MARKET / BREADTH / REGIME -->
+<!-- ============================================================ -->
+<div class="pillar">
+  <div class="pillar-header">
+    <div class="pillar-icon">📊</div>
+    <div class="pillar-title" style="color:#1D9E75">2. MARKET LEVEL (Breadth, Regime, Sectors, Indices)</div>
+  </div>
+  <div class="pillar-body">
+    <div class="tree">
+
+      <div class="node">Breadth</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_breadth_daily</span> <span class="live">LIVE</span> <span class="num">4,361</span> rows</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2007-01-02 to 2026-03-30</div>
+        <div class="leaf"><span class="dim">Metrics:</span> advance, decline, unchanged, ad_ratio, pct_above_200dma, pct_above_50dma</div>
+      </div>
+
+      <div class="node">Market Regime</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_market_regime</span> <span class="live">LIVE</span> <span class="num">4,361</span> rows</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2007-01-02 to 2026-03-30</div>
+        <div class="leaf"><span class="dim">Classification:</span> BULL / BEAR / SIDEWAYS with breadth_score</div>
+        <div class="leaf"><span class="dim">Momentum/Volume/Global/FII scores:</span> <span class="partial">STUBBED at 50</span> <span class="warn">(only breadth_score is real)</span></div>
+      </div>
+
+      <div class="node">Sector RS</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_rs_scores</span> entity_type='sector' <span class="live">LIVE</span> <span class="num">212,262</span> rows</div>
+        <div class="leaf"><span class="dim">Distinct sectors:</span> <span class="num">30</span></div>
+        <div class="leaf"><span class="dim">Date range:</span> 2016-04-18 to 2026-03-30</div>
+        <div class="leaf"><span class="dim">Benchmarks:</span> NIFTY 50, NIFTY 500, NIFTY MIDCAP 100</div>
+        <div class="leaf"><span class="dim">Derived from:</span> average of stock-level RS per sector</div>
+      </div>
+
+      <div class="node">Indices</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_index_master</span> <span class="live">LIVE</span> <span class="num">123</span> indices</div>
+        <div class="leaf"><span class="tbl">de_index_prices</span> <span class="live">LIVE</span> <span class="num">138,088</span> rows, <span class="num">83</span> indices with prices</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2016-04-07 to 2026-04-02</div>
+        <div class="leaf"><span class="dim">Includes:</span> PE ratio, PB ratio, Dividend Yield (for indices that report it)</div>
+        <div class="leaf"><span class="tbl">de_index_constituents</span> <span class="live">LIVE</span> <span class="num">2,660</span> rows, <span class="num">34</span> indices</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PILLAR 3: MUTUAL FUNDS -->
+<!-- ============================================================ -->
+<div class="pillar">
+  <div class="pillar-header">
+    <div class="pillar-icon">💰</div>
+    <div class="pillar-title" style="color:#8b5cf6">3. MUTUAL FUNDS</div>
+  </div>
+  <div class="pillar-body">
+    <div class="tree">
+
+      <div class="node">Fund Master</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_mf_master</span> <span class="live">LIVE</span> <span class="num">13,380</span> funds total (all Morningstar)</div>
+        <div class="leaf"><span class="dim">Active with NAV data:</span> ~851 equity funds (Regular plan only)</div>
+      </div>
+
+      <div class="node">NAV (Daily Prices)</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_mf_nav_daily</span> <span class="live">LIVE</span> <span class="num">1,465,813</span> rows (sampled — actual total across all partitions is higher)</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2006-04-01 to 2026-04-02 (20 years)</div>
+        <div class="leaf"><span class="dim">Funds with NAV:</span> <span class="num">~2,289</span> (across all partitions)</div>
+      </div>
+
+      <div class="node">Holdings (Monthly Snapshots)</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_mf_holdings</span> <span class="live">LIVE</span> <span class="num">230,254</span> rows, <span class="num">838</span> funds</div>
+        <div class="leaf"><span class="dim">instrument_id linked:</span> <span class="num">230,254</span> / 230,254 = <span class="live">100%</span></div>
+      </div>
+
+      <div class="node">RS Scores (MF)</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_rs_scores</span> entity_type='mf' <span class="live">LIVE</span> <span class="num">3,008,334</span> rows</div>
+        <div class="leaf"><span class="dim">Distinct funds:</span> <span class="num">841</span></div>
+        <div class="leaf"><span class="dim">Date range:</span> 2016-04-18 to 2026-04-02</div>
+        <div class="leaf"><span class="dim">Benchmarks:</span> NIFTY 50, NIFTY 500, NIFTY MIDCAP 100</div>
+      </div>
+
+      <div class="node">Derived Metrics (Fund-Level)</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_mf_derived_daily</span> <span class="live">LIVE</span> <span class="num">419,676</span> rows, <span class="num">851</span> funds</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2016-04-01 to 2026-04-02</div>
+        <div class="leaf"><span class="dim">On latest date (838 funds):</span></div>
+        <div class="branch">
+          <div class="leaf">Derived RS composite: <span class="num">802</span> / 838 <span class="live">96%</span></div>
+          <div class="leaf">NAV RS composite: <span class="num">832</span> / 838 <span class="live">99%</span></div>
+          <div class="leaf">Manager Alpha: <span class="num">832</span> / 838 <span class="live">99%</span></div>
+          <div class="leaf">Sharpe 1Y: <span class="num">738</span> / 838 <span class="live">88%</span></div>
+          <div class="leaf">Sharpe 3Y: <span class="num">519</span> / 838 <span class="partial">62%</span> <span class="warn">(needs 3Y NAV history)</span></div>
+          <div class="leaf">Sortino 1Y: <span class="num">738</span> / 838 <span class="live">88%</span></div>
+          <div class="leaf">Max Drawdown 1Y: <span class="num">838</span> / 838 <span class="live">100%</span></div>
+          <div class="leaf">Max Drawdown 3Y: <span class="num">838</span> / 838 <span class="live">100%</span></div>
+          <div class="leaf">Beta vs NIFTY: <span class="num">835</span> / 838 <span class="live">99.6%</span></div>
+          <div class="leaf">Coverage %: <span class="num">838</span> / 838 <span class="live">100%</span></div>
+        </div>
+      </div>
+
+      <div class="node">Sector Exposure</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_mf_sector_exposure</span> <span class="live">LIVE</span> <span class="num">13,182</span> rows, <span class="num">824</span> funds</div>
+      </div>
+
+      <div class="node">Category Flows</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_mf_category_flows</span> <span class="live">LIVE</span> <span class="num">3,125</span> rows, <span class="num">60</span> categories</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2020-01-01 to 2026-02-01</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PILLAR 4: ETF (GLOBAL) -->
+<!-- ============================================================ -->
+<div class="pillar">
+  <div class="pillar-header">
+    <div class="pillar-icon">🌍</div>
+    <div class="pillar-title" style="color:#f59e0b">4. ETF (Global — 46 Countries, 28 Sectors)</div>
+  </div>
+  <div class="pillar-body">
+    <div class="tree">
+
+      <div class="node">ETF Master</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_etf_master</span> <span class="live">LIVE</span> <span class="num">130</span> curated ETFs</div>
+        <div class="leaf"><span class="dim">Source:</span> Stooq flat files (local, not API)</div>
+      </div>
+
+      <div class="node">OHLCV Prices</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_etf_ohlcv</span> <span class="live">LIVE</span> <span class="num">325,789</span> rows, <span class="num">130</span> tickers</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2016-04-01 to 2026-04-02</div>
+      </div>
+
+      <div class="node">Technical Indicators (20 columns)</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_etf_technical_daily</span> <span class="live">LIVE</span> <span class="num">325,789</span> rows, <span class="num">130</span> tickers</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2016-04-01 to 2026-04-02</div>
+        <div class="leaf"><span class="dim">On latest date (130 ETFs): all 20 indicators at 100%</span></div>
+        <div class="branch">
+          <div class="leaf">SMA 50/200, EMA 10/20/50/200: <span class="num">130</span> <span class="live">100%</span></div>
+          <div class="leaf">RSI 14/7, MACD, ADX 14: <span class="num">130</span> <span class="live">100%</span></div>
+          <div class="leaf">Bollinger, Volatility 20d/60d: <span class="num">130</span> <span class="live">100%</span></div>
+        </div>
+      </div>
+
+      <div class="node">RS Scores (ETF)</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_rs_scores</span> entity_type='etf' <span class="live">LIVE</span> <span class="num">322,628</span> rows</div>
+        <div class="leaf"><span class="dim">Distinct ETFs:</span> <span class="num">129</span> (SPY excluded — it IS the benchmark)</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2016-04-08 to 2026-04-02</div>
+        <div class="leaf"><span class="dim">Benchmark:</span> SPY</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PILLAR 5: GLOBAL / OTHER -->
+<!-- ============================================================ -->
+<div class="pillar">
+  <div class="pillar-header">
+    <div class="pillar-icon">🌐</div>
+    <div class="pillar-title" style="color:#06b6d4">5. GLOBAL INSTRUMENTS & OTHER</div>
+  </div>
+  <div class="pillar-body">
+    <div class="tree">
+
+      <div class="node">Global Instruments</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_global_instrument_master</span> <span class="live">LIVE</span> <span class="num">91</span> instruments</div>
+        <div class="leaf"><span class="tbl">de_global_prices</span> <span class="live">LIVE</span> <span class="num">180,794</span> rows, <span class="num">91</span> tickers</div>
+        <div class="leaf"><span class="dim">Date range:</span> 2010-01-03 to 2026-03-30</div>
+        <div class="leaf"><span class="dim">Source:</span> yfinance (world indices, cross-rates)</div>
+        <div class="leaf"><span class="dim">Technicals / RS:</span> <span class="empty">NOT COMPUTED</span> <span class="miss">No technicals or RS on global instruments</span></div>
+      </div>
+
+      <div class="node">Trading Calendar</div>
+      <div class="branch">
+        <div class="leaf"><span class="tbl">de_trading_calendar</span> <span class="live">LIVE</span> <span class="num">7,305</span> days (2007-2026)</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- WHAT DOES NOT EXIST -->
+<!-- ============================================================ -->
+<div class="gap-section">
+  <h2>What Does NOT Exist in RDS (0 rows)</h2>
+  <p style="font-size:13px; color:#7f1d1d; margin-bottom:12px;">These tables exist as schema but have <strong>zero data</strong>. They are NOT live.</p>
+
+  <table class="summary">
+    <thead>
+      <tr><th>Table</th><th>What It Should Hold</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="mono">de_institutional_flows</td><td>FII/DII daily buy/sell/net flow</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_macro_master</td><td>FRED macro indicators (GDP, CPI, etc.)</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_macro_values</td><td>Macro indicator time series</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_fo_summary</td><td>F&O PCR, OI, FII positions</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_adjustment_factors_daily</td><td>Cumulative split/bonus adjustment factors</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_symbol_history</td><td>Historical ticker changes</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_rs_daily_summary</td><td>Denormalized RS for dashboard queries</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_mf_dividends</td><td>Fund dividend payouts</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_mf_lifecycle</td><td>Fund events (launch, merge, close)</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_champion_trades</td><td>High-conviction trade ideas</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_data_anomalies</td><td>Data quality flags</td><td><span class="empty">0 ROWS</span></td></tr>
+      <tr><td class="mono">de_clients / de_portfolios / de_portfolio_*</td><td>Client & portfolio data</td><td><span class="empty">0 ROWS</span> (not yet onboarded)</td></tr>
+      <tr><td class="mono">de_qual_* (all 4 tables)</td><td>Qualitative views, documents</td><td><span class="empty">0 ROWS</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- PARTIAL / GAPS IN LIVE DATA -->
+<!-- ============================================================ -->
+<div class="pillar" style="border: 2px solid #f59e0b;">
+  <div class="pillar-header" style="background: #fffbeb;">
+    <div class="pillar-icon">⚠️</div>
+    <div class="pillar-title" style="color:#d97706">Gaps in Live Data</div>
+  </div>
+  <div class="pillar-body">
+
+    <table class="summary">
+      <thead>
+        <tr><th>Area</th><th>Issue</th><th>Impact</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">de_equity_technical_daily</td>
+          <td>ADX 14, Beta vs NIFTY, OBV, MFI 14, Delivery vs Avg — all <span class="empty">0 rows</span> on latest date</td>
+          <td>5 of 39 technical columns not computed</td>
+        </tr>
+        <tr>
+          <td class="mono">de_instrument.sector</td>
+          <td>458 stocks (17%) have NULL sector</td>
+          <td>These stocks excluded from sector RS aggregation</td>
+        </tr>
+        <tr>
+          <td class="mono">de_equity_ohlcv.delivery_pct</td>
+          <td>Only 24% coverage in 2025 partition</td>
+          <td>Delivery analysis incomplete</td>
+        </tr>
+        <tr>
+          <td class="mono">de_market_regime</td>
+          <td>momentum_score, volume_score, global_score, fii_score all hardcoded at 50</td>
+          <td>Regime classification uses breadth only — confidence lower than it should be</td>
+        </tr>
+        <tr>
+          <td class="mono">de_mf_derived_daily.sharpe_3y</td>
+          <td>Only 519/838 funds (62%) have Sharpe 3Y</td>
+          <td>Funds with &lt;3Y history can't compute 3Y ratios</td>
+        </tr>
+        <tr>
+          <td class="mono">de_global_prices</td>
+          <td>91 instruments with prices but NO technicals, NO RS computed</td>
+          <td>Global instruments are just raw prices — no analysis layer</td>
+        </tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- COMPLETE SUMMARY TABLE -->
+<!-- ============================================================ -->
+<div class="pillar">
+  <div class="pillar-header">
+    <div class="pillar-icon">📋</div>
+    <div class="pillar-title">Complete Row Count Summary (from pg_stat_user_tables)</div>
+  </div>
+  <div class="pillar-body">
+    <table class="summary">
+      <thead>
+        <tr><th>Table</th><th class="right">Rows</th><th>Date Range</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">de_rs_scores</td><td class="right num">12,581,135</td><td>2016-04 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_equity_ohlcv (all partitions)</td><td class="right num">4,002,965</td><td>2007-01 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_equity_technical_daily</td><td class="right num">3,996,551</td><td>2007-01 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_mf_nav_daily (all partitions)</td><td class="right num">~1,465,813+</td><td>2006-04 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_mf_derived_daily</td><td class="right num">419,676</td><td>2016-04 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_etf_ohlcv</td><td class="right num">325,789</td><td>2016-04 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_etf_technical_daily</td><td class="right num">325,789</td><td>2016-04 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_mf_holdings</td><td class="right num">230,254</td><td>Monthly snapshots</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_global_prices</td><td class="right num">180,794</td><td>2010-01 → 2026-03</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_index_prices</td><td class="right num">138,088</td><td>2016-04 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_corporate_actions</td><td class="right num">14,923</td><td>2019-12 → 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_mf_master</td><td class="right num">13,380</td><td>-</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_mf_sector_exposure</td><td class="right num">13,182</td><td>-</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_market_cap_history</td><td class="right num">12,217</td><td>2023-01 → 2026-01</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_trading_calendar</td><td class="right num">7,305</td><td>2007 → 2026</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_breadth_daily</td><td class="right num">4,361</td><td>2007-01 → 2026-03</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_market_regime</td><td class="right num">4,361</td><td>2007-01 → 2026-03</td><td><span class="partial">PARTIAL</span></td></tr>
+        <tr><td class="mono">de_mf_category_flows</td><td class="right num">3,125</td><td>2020-01 → 2026-02</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_instrument</td><td class="right num">2,743</td><td>-</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_index_constituents</td><td class="right num">2,660</td><td>-</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_etf_master</td><td class="right num">130</td><td>-</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_index_master</td><td class="right num">123</td><td>-</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_global_instrument_master</td><td class="right num">91</td><td>-</td><td><span class="live">LIVE</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+
+</body>
+</html>

@@ -447,6 +447,55 @@ class DeGlobalPrices(Base):
     )
 
 
+class DeGlobalTechnicalDaily(Base):
+    """Daily technical indicators for global instruments."""
+
+    __tablename__ = "de_global_technical_daily"
+
+    date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    ticker: Mapped[str] = mapped_column(
+        sa.String(20),
+        ForeignKey("de_global_instrument_master.ticker", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    close: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    sma_50: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    sma_200: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    ema_10: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    ema_20: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    ema_50: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    ema_200: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    rsi_14: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    rsi_7: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    macd_line: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    macd_signal: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    macd_histogram: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    roc_5: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
+    roc_21: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
+    volatility_20d: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
+    volatility_60d: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
+    bollinger_upper: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    bollinger_lower: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    relative_volume: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
+    adx_14: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    above_50dma: Mapped[Optional[bool]] = mapped_column(
+        sa.Boolean, sa.Computed("close > sma_50", persisted=True), nullable=True
+    )
+    above_200dma: Mapped[Optional[bool]] = mapped_column(
+        sa.Boolean, sa.Computed("close > sma_200", persisted=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+        nullable=False,
+    )
+
+
 class DeMacroValues(Base):
     """Daily macro indicator values."""
 

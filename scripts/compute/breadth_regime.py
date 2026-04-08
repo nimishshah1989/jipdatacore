@@ -16,7 +16,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from scripts.compute.db import get_async_url
 
 BREADTH_SQL = """
-INSERT INTO de_breadth_daily (date, advance, decline, unchanged, total_stocks, ad_ratio, pct_above_200dma, pct_above_50dma, new_52w_highs, new_52w_lows)
+INSERT INTO de_breadth_daily
+    (date, advance, decline, unchanged, total_stocks, ad_ratio,
+     pct_above_200dma, pct_above_50dma, new_52w_highs, new_52w_lows)
 WITH pc AS (
     SELECT date, COALESCE(close_adj,close) AS c,
         LAG(COALESCE(close_adj,close)) OVER(PARTITION BY instrument_id ORDER BY date) AS pc
@@ -46,21 +48,84 @@ ON CONFLICT (date) DO UPDATE SET
 """
 
 REGIME_SQL = """
-INSERT INTO de_market_regime (computed_at, date, regime, confidence, breadth_score, momentum_score, volume_score, global_score, fii_score, indicator_detail, computation_version)
-SELECT
-    (date::text || ' 23:30:00')::timestamptz, date,
-    CASE WHEN bs >= 60 THEN 'BULL' WHEN bs <= 40 THEN 'BEAR' ELSE 'SIDEWAYS' END,
-    ROUND((bs*0.30 + 50*0.70)::numeric, 2),
-    ROUND(bs::numeric, 2), 50, 50, 50, 50, '{}'::jsonb, 1
-FROM (
+INSERT INTO de_market_regime
+    (computed_at, date, regime, confidence, breadth_score, momentum_score,
+     volume_score, global_score, fii_score, indicator_detail, computation_version)
+WITH breadth AS (
     SELECT date,
         (advance::float / NULLIF(total_stocks, 0) * 100 * 0.5 +
         LEAST(100, GREATEST(0, 50 + (COALESCE(CAST(ad_ratio AS FLOAT), 1) - 1) * 25)) * 0.5) AS bs
     FROM de_breadth_daily WHERE total_stocks > 0
-) b
+),
+-- Momentum: median RS composite of NIFTY 50 constituents → 0-100
+momentum AS (
+    SELECT r.date,
+        LEAST(100, GREATEST(0,
+            50 + COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.rs_composite), 0) * 5
+        )) AS ms
+    FROM de_rs_scores r
+    JOIN de_index_constituents ic ON ic.instrument_id::text = r.entity_id
+        AND ic.index_code = 'NIFTY 50'
+    WHERE r.entity_type = 'equity' AND r.vs_benchmark = 'NIFTY 50'
+    GROUP BY r.date
+),
+-- Volume: average relative volume of top stocks → 0-100
+volume AS (
+    SELECT date,
+        LEAST(100, GREATEST(0,
+            AVG(CASE WHEN relative_volume IS NOT NULL THEN relative_volume ELSE NULL END) * 50
+        )) AS vs
+    FROM de_equity_technical_daily
+    WHERE close_adj IS NOT NULL
+    GROUP BY date
+),
+-- Global: 5-day avg return of SPY → 0-100
+global_sig AS (
+    SELECT date,
+        LEAST(100, GREATEST(0,
+            50 + COALESCE(
+                AVG(close / NULLIF(LAG(close, 1) OVER (ORDER BY date), 0) - 1)
+                OVER (ORDER BY date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW)
+            , 0) * 1000
+        )) AS gs
+    FROM de_global_prices
+    WHERE ticker = '^SPX' AND close IS NOT NULL
+),
+-- FII: use global_score as proxy (FII flows table is empty)
+combined AS (
+    SELECT b.date, b.bs,
+        COALESCE(m.ms, 50) AS ms,
+        COALESCE(v.vs, 50) AS vs,
+        COALESCE(g.gs, 50) AS gs,
+        COALESCE(g.gs, 50) AS fs  -- FII proxy = global
+    FROM breadth b
+    LEFT JOIN momentum m ON m.date = b.date
+    LEFT JOIN volume v ON v.date = b.date
+    LEFT JOIN global_sig g ON g.date = b.date
+)
+SELECT
+    (date::text || ' 23:30:00')::timestamptz, date,
+    CASE
+        WHEN (bs*0.30 + ms*0.25 + vs*0.10 + gs*0.20 + fs*0.15) >= 60 THEN 'BULL'
+        WHEN (bs*0.30 + ms*0.25 + vs*0.10 + gs*0.20 + fs*0.15) <= 40 THEN 'BEAR'
+        ELSE 'SIDEWAYS'
+    END,
+    ROUND((bs*0.30 + ms*0.25 + vs*0.10 + gs*0.20 + fs*0.15)::numeric, 2),
+    ROUND(bs::numeric, 2),
+    ROUND(ms::numeric, 2),
+    ROUND(vs::numeric, 2),
+    ROUND(gs::numeric, 2),
+    ROUND(fs::numeric, 2),
+    '{}'::jsonb, 2
+FROM combined
 ON CONFLICT (computed_at) DO UPDATE SET
     regime=EXCLUDED.regime, confidence=EXCLUDED.confidence,
-    breadth_score=EXCLUDED.breadth_score
+    breadth_score=EXCLUDED.breadth_score,
+    momentum_score=EXCLUDED.momentum_score,
+    volume_score=EXCLUDED.volume_score,
+    global_score=EXCLUDED.global_score,
+    fii_score=EXCLUDED.fii_score,
+    computation_version=EXCLUDED.computation_version
 """
 
 
