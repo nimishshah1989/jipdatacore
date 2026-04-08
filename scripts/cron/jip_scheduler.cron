@@ -57,8 +57,9 @@ LOG_DIR=/home/ubuntu/jip-data-engine/logs
 # WEEKLY (Sunday)
 # ============================================================
 
-# Full RS rebuild (IST 02:00 Sunday = UTC 20:30 Saturday)
-30 20 * * 6 docker exec $CONTAINER python3 -m scripts.compute.rs_scores >> $LOG_DIR/rs_full.log 2>&1
+# Note: Full RS rebuild removed — daily RS already recomputes all scores.
+# If daily becomes incremental in future, re-enable:
+# 30 20 * * 6 docker exec $CONTAINER python3 -m scripts.compute.rs_scores >> $LOG_DIR/rs_full.log 2>&1
 
 # Morningstar refresh (IST 04:00 Sunday = UTC 22:30 Saturday)
 30 22 * * 6 docker exec $CONTAINER python3 -m app.pipelines.morningstar.fund_master >> $LOG_DIR/mstar.log 2>&1
