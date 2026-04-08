@@ -195,6 +195,7 @@ ON CONFLICT (date, entity_type, entity_id, vs_benchmark) DO UPDATE SET
 
 async def compute_etf_rs_spy(lookback_start: str = "2015-01-01", compute_start: str = "2016-04-01") -> None:
     """Compute ETF RS scores benchmarked against SPY (from de_etf_ohlcv)."""
+    from datetime import date as date_type
     engine = create_async_engine(get_async_url(), pool_size=1)
     t0 = time.time()
     print("  ETF RS vs SPY...", flush=True)
@@ -203,7 +204,8 @@ async def compute_etf_rs_spy(lookback_start: str = "2015-01-01", compute_start: 
         await conn.execute(sa.text("SET LOCAL statement_timeout = '1200s'"))
         await conn.execute(
             sa.text(ETF_RS_SPY_SQL),
-            {"lookback_start": lookback_start, "compute_start": compute_start},
+            {"lookback_start": date_type.fromisoformat(lookback_start),
+             "compute_start": date_type.fromisoformat(compute_start)},
         )
     await engine.dispose()
     print(f"    Done in {time.time()-t0:.0f}s", flush=True)
@@ -211,6 +213,7 @@ async def compute_etf_rs_spy(lookback_start: str = "2015-01-01", compute_start: 
 
 async def compute_etf_rs_spx(lookback_start: str = "2015-01-01", compute_start: str = "2016-04-01") -> None:
     """Compute ETF RS scores benchmarked against ^SPX (from de_global_prices)."""
+    from datetime import date as date_type
     engine = create_async_engine(get_async_url(), pool_size=1)
     t0 = time.time()
     print("  ETF RS vs ^SPX...", flush=True)
@@ -219,7 +222,8 @@ async def compute_etf_rs_spx(lookback_start: str = "2015-01-01", compute_start: 
         await conn.execute(sa.text("SET LOCAL statement_timeout = '1200s'"))
         await conn.execute(
             sa.text(ETF_RS_SPX_SQL),
-            {"lookback_start": lookback_start, "compute_start": compute_start},
+            {"lookback_start": date_type.fromisoformat(lookback_start),
+             "compute_start": date_type.fromisoformat(compute_start)},
         )
     await engine.dispose()
     print(f"    Done in {time.time()-t0:.0f}s", flush=True)

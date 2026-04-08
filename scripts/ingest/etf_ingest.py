@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import gc
 import io
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -30,7 +31,7 @@ from scripts.compute.db import get_sync_url
 # Data directory
 # ---------------------------------------------------------------------------
 
-DATA_ROOT = Path("/Users/nimishshah/projects/global-pulse/data")
+DATA_ROOT = Path(os.environ.get("ETF_DATA_DIR", "/Users/nimishshah/projects/global-pulse/data"))
 NYSE_ETF_DIRS = [
     DATA_ROOT / "us" / "nyse etfs" / "1",
     DATA_ROOT / "us" / "nyse etfs" / "2",
@@ -267,15 +268,20 @@ def parse_ohlcv_file(path: Path, ticker: str, min_date: str = MIN_DATE) -> pd.Da
     df["ticker"] = ticker
     df = df[["ticker", "date", "open", "high", "low", "close", "volume"]].copy()
     df["date"] = df["date"].dt.date
-    # Replace 0 volume with NULL
-    df["volume"] = df["volume"].replace(0, None)
+    # Cast volume to int (stooq stores as float), replace 0 with NULL
+    df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0).astype(int)
+    df.loc[df["volume"] == 0, "volume"] = None
     return df
 
 
 def copy_df_to_table(cur, df: pd.DataFrame, table: str, columns: list[str]) -> int:
     """Bulk-load a DataFrame into a PostgreSQL table via COPY."""
+    out = df[columns].copy()
+    # Fix: volume as float with None → convert to nullable Int64 to avoid "123.0" in CSV
+    if "volume" in out.columns:
+        out["volume"] = out["volume"].astype("Int64")
     buf = io.StringIO()
-    df[columns].to_csv(buf, index=False, header=False, na_rep="\\N")
+    out.to_csv(buf, index=False, header=False, na_rep="\\N")
     buf.seek(0)
     col_str = ",".join(columns)
     cur.copy_expert(f"COPY {table} ({col_str}) FROM STDIN WITH (FORMAT CSV, NULL '\\N')", buf)
@@ -448,7 +454,8 @@ def ingest_world_indices(conn) -> None:
         df = df.dropna(subset=["date"])
         df = df[df["date"] >= pd.Timestamp(MIN_DATE)].copy()
         df["ticker"] = ticker
-        df["volume"] = df["volume"].replace(0, None)
+        df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0).astype(int)
+        df.loc[df["volume"] == 0, "volume"] = None
         df["date"] = df["date"].dt.date
 
         if df.empty:

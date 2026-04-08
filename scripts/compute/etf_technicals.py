@@ -171,14 +171,14 @@ def write_etf_technicals_via_staging(conn, df: pd.DataFrame, filter_date: str = 
         col_list = "ticker,date," + ",".join(ETF_INDICATOR_COLS)
         cur.copy_expert(f"COPY tmp_etf_tech_staging ({col_list}) FROM STDIN WITH (FORMAT CSV, NULL '\\N')", f)
 
-    set_clause = ", ".join([f"{c} = s.{c}" for c in ETF_INDICATOR_COLS])
+    set_clause = ", ".join([f"{c} = EXCLUDED.{c}" for c in ETF_INDICATOR_COLS])
     indicator_insert_cols = ", ".join(ETF_INDICATOR_COLS)
     indicator_vals = ", ".join([f"s.{c}" for c in ETF_INDICATOR_COLS])
 
     cur.execute(
         f"""
         INSERT INTO de_etf_technical_daily (ticker, date, {indicator_insert_cols})
-        SELECT ticker, date, {indicator_vals} FROM tmp_etf_tech_staging
+        SELECT s.ticker, s.date, {indicator_vals} FROM tmp_etf_tech_staging s
         ON CONFLICT (date, ticker) DO UPDATE SET
             {set_clause},
             updated_at = NOW()
