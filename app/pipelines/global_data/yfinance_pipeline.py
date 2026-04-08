@@ -1,4 +1,4 @@
-"""yfinance pipeline — global indices, commodities, and FX rates.
+"""yfinance pipeline — global indices, bonds, commodities, FX, and crypto.
 
 Trigger: 07:30 IST.
 SLA: 08:00 IST.
@@ -38,7 +38,7 @@ GLOBAL_INDEX_TICKERS = [
     "URTH",     # MSCI World ETF
 ]
 
-# Commodities and FX
+# Commodities and FX (original set)
 COMMODITY_FX_TICKERS = [
     "DX-Y.NYB",   # US Dollar Index
     "CL=F",       # Crude Oil (WTI)
@@ -51,7 +51,51 @@ COMMODITY_FX_TICKERS = [
     "USDCNH=X",   # USD/CNH (offshore RMB)
 ]
 
-ALL_TICKERS = GLOBAL_INDEX_TICKERS + COMMODITY_FX_TICKERS
+# US Treasury yield indices (CBOE)
+BOND_TICKERS = [
+    "^TNX",   # US 10-Year Treasury Yield
+    "^TYX",   # US 30-Year Treasury Yield
+    "^IRX",   # US 13-Week Treasury Bill
+    "^FVX",   # US 5-Year Treasury Yield
+]
+
+# Additional commodity futures
+COMMODITY_EXTRA_TICKERS = [
+    "HG=F",   # Copper Futures
+    "NG=F",   # Natural Gas Futures
+    "ZC=F",   # Corn Futures
+    "ZW=F",   # Wheat Futures
+    "ZS=F",   # Soybean Futures
+    "KC=F",   # Coffee Futures
+    "CT=F",   # Cotton Futures
+    "PL=F",   # Platinum Futures
+]
+
+# Additional FX pairs
+FOREX_EXTRA_TICKERS = [
+    "GBPUSD=X",   # GBP/USD
+    "AUDUSD=X",   # AUD/USD
+    "USDCAD=X",   # USD/CAD
+    "USDCHF=X",   # USD/CHF
+    "USDBRL=X",   # USD/BRL
+    "USDKRW=X",   # USD/KRW
+    "USDMXN=X",   # USD/MXN
+]
+
+# Crypto
+CRYPTO_TICKERS = [
+    "BTC-USD",   # Bitcoin
+    "ETH-USD",   # Ethereum
+]
+
+ALL_TICKERS = (
+    GLOBAL_INDEX_TICKERS
+    + COMMODITY_FX_TICKERS
+    + BOND_TICKERS
+    + COMMODITY_EXTRA_TICKERS
+    + FOREX_EXTRA_TICKERS
+    + CRYPTO_TICKERS
+)
 
 
 def _safe_decimal(value: Any) -> Decimal | None:
@@ -205,10 +249,12 @@ async def upsert_global_prices(
 
 
 class YfinancePipeline(BasePipeline):
-    """Downloads global index, commodity, and FX prices via yfinance.
+    """Downloads global index, bond, commodity, FX, and crypto prices via yfinance.
 
     Covers S&P 500, NASDAQ, Nikkei, Hang Seng, European indices,
-    crude oil, gold, silver, USD index, and key FX pairs.
+    US Treasury yield indices (10Y/30Y/5Y/13W), crude oil, gold, silver,
+    copper, natural gas, agricultural commodities, platinum, USD index,
+    key FX pairs (12 pairs), and Bitcoin/Ethereum.
 
     Trigger: 07:30 IST.
     SLA: 08:00 IST.

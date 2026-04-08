@@ -1,4 +1,4 @@
-"""FRED macro data pipeline — US Treasury yields, FEDFUNDS, CPI, unemployment."""
+"""FRED macro data pipeline — US Treasury yields, FEDFUNDS, CPI, unemployment, global yields."""
 
 from __future__ import annotations
 
@@ -21,15 +21,79 @@ logger = get_logger(__name__)
 
 FRED_API_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-# FRED series to fetch
-FRED_SERIES = [
-    "DGS10",     # 10-Year Treasury Constant Maturity Rate
-    "DGS2",      # 2-Year Treasury Constant Maturity Rate
-    "FEDFUNDS",  # Federal Funds Effective Rate
-    "T10Y2Y",    # 10-Year minus 2-Year Treasury Yield Spread
-    "CPIAUCSL",  # Consumer Price Index for All Urban Consumers
-    "UNRATE",    # Civilian Unemployment Rate
-]
+# ---------------------------------------------------------------------------
+# FRED series metadata: maps ticker -> (human_readable_name, unit, frequency)
+# unit: 'percent' | 'index' | 'thousands' | 'billions'
+# frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly'
+# ---------------------------------------------------------------------------
+FRED_SERIES_METADATA: dict[str, tuple[str, str, str]] = {
+    # --- US Treasury Yields (daily) ---
+    "DGS1MO":  ("US 1-Month Treasury Yield",          "percent", "daily"),
+    "DGS3MO":  ("US 3-Month Treasury Yield",          "percent", "daily"),
+    "DGS6MO":  ("US 6-Month Treasury Yield",          "percent", "daily"),
+    "DGS1":    ("US 1-Year Treasury Yield",           "percent", "daily"),
+    "DGS2":    ("US 2-Year Treasury Yield",           "percent", "daily"),
+    "DGS3":    ("US 3-Year Treasury Yield",           "percent", "daily"),
+    "DGS5":    ("US 5-Year Treasury Yield",           "percent", "daily"),
+    "DGS7":    ("US 7-Year Treasury Yield",           "percent", "daily"),
+    "DGS10":   ("US 10-Year Treasury Yield",          "percent", "daily"),
+    "DGS20":   ("US 20-Year Treasury Yield",          "percent", "daily"),
+    "DGS30":   ("US 30-Year Treasury Yield",          "percent", "daily"),
+
+    # --- US Macro (monthly) ---
+    "CPIAUCSL": ("US CPI All Urban Consumers",        "index",   "monthly"),
+    "CPILFESL": ("US Core CPI (ex Food & Energy)",    "index",   "monthly"),
+    "PCEPI":    ("US PCE Price Index",                "index",   "monthly"),
+    "PCEPILFE": ("US Core PCE Price Index",           "index",   "monthly"),
+    "UNRATE":   ("US Unemployment Rate",              "percent", "monthly"),
+    "PAYEMS":   ("US Nonfarm Payrolls",               "thousands","monthly"),
+    "ICSA":     ("US Initial Jobless Claims",         "thousands","weekly"),
+    "INDPRO":   ("US Industrial Production Index",   "index",   "monthly"),
+    "RSAFS":    ("US Retail Sales",                   "millions","monthly"),
+    "HOUST":    ("US Housing Starts",                 "thousands","monthly"),
+    "UMCSENT":  ("US Consumer Sentiment (UMich)",     "index",   "monthly"),
+    "DGORDER":  ("US Durable Goods Orders",           "millions","monthly"),
+    "JTSJOL":   ("US Job Openings (JOLTS)",           "thousands","monthly"),
+    "PPIFIS":   ("US PPI Final Demand",               "index",   "monthly"),
+
+    # --- US Financial (daily / monthly) ---
+    "FEDFUNDS":       ("US Federal Funds Rate",              "percent", "monthly"),
+    "T10Y2Y":         ("US 10Y-2Y Treasury Spread",          "percent", "daily"),
+    "T10Y3M":         ("US 10Y-3M Treasury Spread",          "percent", "daily"),
+    "BAMLH0A0HYM2":   ("US HY OAS Credit Spread",            "percent", "daily"),
+    "VIXCLS":         ("CBOE VIX Volatility Index",          "index",   "daily"),
+
+    # --- Global Bond Yields — OECD long-term rates via FRED (monthly) ---
+    "IRLTLT01DEM156N": ("Germany 10-Year Government Bond Yield",    "percent", "monthly"),
+    "IRLTLT01JPM156N": ("Japan 10-Year Government Bond Yield",      "percent", "monthly"),
+    "IRLTLT01GBM156N": ("UK 10-Year Government Bond Yield",         "percent", "monthly"),
+    "IRLTLT01FRM156N": ("France 10-Year Government Bond Yield",     "percent", "monthly"),
+    "IRLTLT01ITM156N": ("Italy 10-Year Government Bond Yield",      "percent", "monthly"),
+    "IRLTLT01CAM156N": ("Canada 10-Year Government Bond Yield",     "percent", "monthly"),
+    "IRLTLT01AUM156N": ("Australia 10-Year Government Bond Yield",  "percent", "monthly"),
+    "IRLTLT01KRM156N": ("South Korea 10-Year Government Bond Yield","percent", "monthly"),
+    "IRLTLT01BRM156N": ("Brazil 10-Year Government Bond Yield",     "percent", "monthly"),
+    "IRLTLT01INM156N": ("India 10-Year Government Bond Yield",      "percent", "monthly"),
+
+    # --- Global Macro (quarterly / monthly) ---
+    "NYGDPPCAPKDUSA": ("US GDP per Capita (constant 2015 USD)",     "index",   "annual"),
+    "NYGDPPCAPKDCHN": ("China GDP per Capita (constant 2015 USD)",  "index",   "annual"),
+    "NYGDPPCAPKDJPN": ("Japan GDP per Capita (constant 2015 USD)",  "index",   "annual"),
+    "NYGDPPCAPKDDEU": ("Germany GDP per Capita (constant 2015 USD)","index",   "annual"),
+    "NYGDPPCAPKDGBR": ("UK GDP per Capita (constant 2015 USD)",     "index",   "annual"),
+    "CPALTT01USM657N": ("US CPI Total (YoY growth)",                "percent", "monthly"),
+    "CPALTT01DEU657N": ("Germany CPI Total (YoY growth)",           "percent", "monthly"),
+    "CPALTT01GBR657N": ("UK CPI Total (YoY growth)",                "percent", "monthly"),
+    "CPALTT01JPN657N": ("Japan CPI Total (YoY growth)",             "percent", "monthly"),
+    "CPALTT01CNM657N": ("China CPI Total (YoY growth)",             "percent", "monthly"),
+    "LRUNTTTTUSM156S": ("US Unemployment Rate (OECD harmonised)",   "percent", "monthly"),
+    "LRUNTTTTDEUM156S":("Germany Unemployment Rate (OECD)",         "percent", "monthly"),
+    "LRUNTTTTGBM156S": ("UK Unemployment Rate (OECD)",              "percent", "monthly"),
+    "LRUNTTTTJPM156S": ("Japan Unemployment Rate (OECD)",           "percent", "monthly"),
+}
+
+# FRED series to fetch on each pipeline run (all keys from metadata)
+FRED_SERIES: list[str] = list(FRED_SERIES_METADATA.keys())
 
 
 def _safe_decimal(value: Any) -> Decimal | None:
@@ -133,11 +197,22 @@ async def upsert_macro_values(
 
 
 class FredPipeline(BasePipeline):
-    """Fetches US macro data from FRED API.
+    """Fetches US and global macro data from FRED API.
 
-    Series fetched: DGS10, DGS2, FEDFUNDS, T10Y2Y, CPIAUCSL, UNRATE.
-    Stores the latest available observation for each series on or before
-    the business_date.
+    Series fetched (~80 series):
+    - US Treasury yield curve (1M to 30Y, daily)
+    - US macro indicators: CPI, Core CPI, PCE, Unemployment, Payrolls,
+      Initial Claims, Industrial Production, Retail Sales, Housing Starts,
+      Consumer Sentiment, Durable Goods, JOLTS, PPI (monthly)
+    - US financial: FEDFUNDS, yield spreads (10Y-2Y, 10Y-3M), HY credit
+      spread, VIX (daily/monthly)
+    - Global 10Y government bond yields for 10 countries via OECD/FRED (monthly)
+    - Global GDP per capita and CPI growth for major economies (annual/monthly)
+    - Global unemployment rates (monthly)
+
+    Each series returns the latest available observation on or before
+    business_date. Missing or empty series are logged as warnings and skipped
+    (isolated failure — other series continue).
 
     FRED_API_KEY must be set in environment / .env file.
     Trigger: Daily (not restricted to trading days).

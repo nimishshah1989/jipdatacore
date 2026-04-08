@@ -13,10 +13,9 @@ Tests cover:
 from __future__ import annotations
 
 import sys
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -111,7 +110,8 @@ class TestMakeRunLog:
 # ---------------------------------------------------------------------------
 
 class TestGlobalInstrumentsData:
-    VALID_TYPES = {"index", "etf"}
+    # Mirrors the expanded check constraint added in migration 002
+    VALID_TYPES = {"index", "etf", "bond", "commodity", "forex", "crypto"}
 
     def test_all_have_ticker(self) -> None:
         for inst in GLOBAL_INSTRUMENTS:
@@ -132,8 +132,60 @@ class TestGlobalInstrumentsData:
         tickers = [inst["ticker"] for inst in GLOBAL_INSTRUMENTS]
         assert len(tickers) == len(set(tickers)), "Duplicate tickers in GLOBAL_INSTRUMENTS"
 
-    def test_count_is_21(self) -> None:
-        assert len(GLOBAL_INSTRUMENTS) == 21
+    def test_count_is_42(self) -> None:
+        # 10 indices + 2 ETFs + 9 original commodity/FX + 4 bonds
+        # + 8 extra commodities + 7 extra FX + 2 crypto = 42
+        assert len(GLOBAL_INSTRUMENTS) == 42
+
+    def test_bond_instruments_present(self) -> None:
+        tickers = {inst["ticker"] for inst in GLOBAL_INSTRUMENTS}
+        for ticker in ("^TNX", "^TYX", "^IRX", "^FVX"):
+            assert ticker in tickers, f"Missing bond ticker: {ticker}"
+
+    def test_bond_instruments_have_correct_type(self) -> None:
+        bond_tickers = {"^TNX", "^TYX", "^IRX", "^FVX"}
+        for inst in GLOBAL_INSTRUMENTS:
+            if inst["ticker"] in bond_tickers:
+                assert inst["instrument_type"] == "bond"
+
+    def test_extra_commodity_instruments_present(self) -> None:
+        tickers = {inst["ticker"] for inst in GLOBAL_INSTRUMENTS}
+        for ticker in ("HG=F", "NG=F", "ZC=F", "ZW=F", "ZS=F", "KC=F", "CT=F", "PL=F"):
+            assert ticker in tickers, f"Missing commodity ticker: {ticker}"
+
+    def test_extra_commodity_instruments_have_correct_type(self) -> None:
+        commodity_tickers = {"HG=F", "NG=F", "ZC=F", "ZW=F", "ZS=F", "KC=F", "CT=F", "PL=F"}
+        for inst in GLOBAL_INSTRUMENTS:
+            if inst["ticker"] in commodity_tickers:
+                assert inst["instrument_type"] == "commodity"
+
+    def test_extra_forex_instruments_present(self) -> None:
+        tickers = {inst["ticker"] for inst in GLOBAL_INSTRUMENTS}
+        for ticker in ("GBPUSD=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "USDBRL=X", "USDKRW=X", "USDMXN=X"):
+            assert ticker in tickers, f"Missing FX ticker: {ticker}"
+
+    def test_original_fx_instruments_updated_to_forex_type(self) -> None:
+        original_fx = {"DX-Y.NYB", "USDINR=X", "USDJPY=X", "EURUSD=X", "USDCNH=X"}
+        for inst in GLOBAL_INSTRUMENTS:
+            if inst["ticker"] in original_fx:
+                assert inst["instrument_type"] == "forex"
+
+    def test_crypto_instruments_present(self) -> None:
+        tickers = {inst["ticker"] for inst in GLOBAL_INSTRUMENTS}
+        assert "BTC-USD" in tickers
+        assert "ETH-USD" in tickers
+
+    def test_crypto_instruments_have_correct_type(self) -> None:
+        crypto_tickers = {"BTC-USD", "ETH-USD"}
+        for inst in GLOBAL_INSTRUMENTS:
+            if inst["ticker"] in crypto_tickers:
+                assert inst["instrument_type"] == "crypto"
+
+    def test_original_commodities_updated_to_commodity_type(self) -> None:
+        original_commodities = {"CL=F", "BZ=F", "GC=F", "SI=F"}
+        for inst in GLOBAL_INSTRUMENTS:
+            if inst["ticker"] in original_commodities:
+                assert inst["instrument_type"] == "commodity"
 
     def test_all_have_currency(self) -> None:
         for inst in GLOBAL_INSTRUMENTS:
@@ -176,10 +228,50 @@ class TestMacroSeriesData:
         tickers = [s["ticker"] for s in MACRO_SERIES]
         assert len(tickers) == len(set(tickers))
 
-    def test_fred_tickers_present(self) -> None:
+    def test_fred_core_tickers_present(self) -> None:
+        """All original 6 FRED series must still be present after expansion."""
         fred_tickers = {s["ticker"] for s in MACRO_SERIES if s["source"] == "FRED"}
-        expected = {"DGS10", "DGS2", "FEDFUNDS", "T10Y2Y", "CPIAUCSL", "UNRATE"}
-        assert expected == fred_tickers
+        original_six = {"DGS10", "DGS2", "FEDFUNDS", "T10Y2Y", "CPIAUCSL", "UNRATE"}
+        assert original_six.issubset(fred_tickers)
+
+    def test_fred_tickers_count_expanded(self) -> None:
+        """MACRO_SERIES must now contain many more FRED series (>6)."""
+        fred_tickers = [s for s in MACRO_SERIES if s["source"] == "FRED"]
+        assert len(fred_tickers) >= 50
+
+    def test_fred_full_treasury_curve_in_macro_series(self) -> None:
+        """Full US Treasury yield curve must be seeded."""
+        fred_tickers = {s["ticker"] for s in MACRO_SERIES if s["source"] == "FRED"}
+        curve = {"DGS1MO", "DGS3MO", "DGS6MO", "DGS1", "DGS2", "DGS3", "DGS5", "DGS7", "DGS10", "DGS20", "DGS30"}
+        assert curve.issubset(fred_tickers)
+
+    def test_fred_global_bond_yields_in_macro_series(self) -> None:
+        """All 10 OECD country bond yield series must be seeded."""
+        fred_tickers = {s["ticker"] for s in MACRO_SERIES if s["source"] == "FRED"}
+        global_bonds = {
+            "IRLTLT01DEM156N", "IRLTLT01JPM156N", "IRLTLT01GBM156N",
+            "IRLTLT01FRM156N", "IRLTLT01ITM156N", "IRLTLT01CAM156N",
+            "IRLTLT01AUM156N", "IRLTLT01KRM156N", "IRLTLT01BRM156N",
+            "IRLTLT01INM156N",
+        }
+        assert global_bonds.issubset(fred_tickers)
+
+    def test_ticker_lengths_within_varchar20(self) -> None:
+        """All tickers must fit in the VARCHAR(20) column of de_macro_master."""
+        for s in MACRO_SERIES:
+            assert len(s["ticker"]) <= 20, (
+                f"Ticker '{s['ticker']}' has {len(s['ticker'])} chars (max 20)"
+            )
+
+    def test_stooq_rows_coexist_via_manual_source(self) -> None:
+        """MACRO_SERIES with source='manual' may coexist with FRED rows.
+        The INDIAVIX row uses source='NSE'; stooq rows use source='manual'.
+        Neither conflicts with FRED tickers (different ticker namespaces).
+        """
+        fred_tickers = {s["ticker"] for s in MACRO_SERIES if s["source"] == "FRED"}
+        non_fred_tickers = {s["ticker"] for s in MACRO_SERIES if s["source"] != "FRED"}
+        # No overlap between FRED and non-FRED tickers
+        assert fred_tickers.isdisjoint(non_fred_tickers)
 
 
 # ---------------------------------------------------------------------------

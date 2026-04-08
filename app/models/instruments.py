@@ -272,12 +272,12 @@ class DeMacroMaster(Base):
 
 
 class DeGlobalInstrumentMaster(Base):
-    """Global instruments — indices and ETFs for global market signals."""
+    """Global instruments — indices, ETFs, bonds, commodities, FX, and crypto."""
 
     __tablename__ = "de_global_instrument_master"
     __table_args__ = (
         sa.CheckConstraint(
-            "instrument_type IN ('index','etf')",
+            "instrument_type IN ('index','etf','bond','commodity','forex','crypto')",
             name="chk_global_instrument_type",
         ),
     )

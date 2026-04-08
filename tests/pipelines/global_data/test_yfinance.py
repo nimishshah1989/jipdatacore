@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.pipelines.global_data.fred_pipeline import (
+    FRED_SERIES,
+    FRED_SERIES_METADATA,
     FredPipeline,
     _get_latest_observation,
     _safe_decimal,
@@ -16,7 +18,11 @@ from app.pipelines.global_data.fred_pipeline import (
 )
 from app.pipelines.global_data.yfinance_pipeline import (
     ALL_TICKERS,
+    BOND_TICKERS,
+    COMMODITY_EXTRA_TICKERS,
     COMMODITY_FX_TICKERS,
+    CRYPTO_TICKERS,
+    FOREX_EXTRA_TICKERS,
     GLOBAL_INDEX_TICKERS,
     YfinancePipeline,
     _safe_decimal as yf_safe_decimal,
@@ -86,7 +92,86 @@ def test_all_tickers_contains_fx_pairs() -> None:
 
 
 def test_all_tickers_total_count() -> None:
-    assert len(ALL_TICKERS) == len(GLOBAL_INDEX_TICKERS) + len(COMMODITY_FX_TICKERS)
+    expected = (
+        len(GLOBAL_INDEX_TICKERS)
+        + len(COMMODITY_FX_TICKERS)
+        + len(BOND_TICKERS)
+        + len(COMMODITY_EXTRA_TICKERS)
+        + len(FOREX_EXTRA_TICKERS)
+        + len(CRYPTO_TICKERS)
+    )
+    assert len(ALL_TICKERS) == expected
+
+
+# ---------------------------------------------------------------------------
+# New ticker group tests
+# ---------------------------------------------------------------------------
+
+
+def test_bond_tickers_contains_treasury_yields() -> None:
+    assert "^TNX" in BOND_TICKERS   # 10-Year
+    assert "^TYX" in BOND_TICKERS   # 30-Year
+    assert "^IRX" in BOND_TICKERS   # 13-Week T-Bill
+    assert "^FVX" in BOND_TICKERS   # 5-Year
+
+
+def test_bond_tickers_count() -> None:
+    assert len(BOND_TICKERS) == 4
+
+
+def test_commodity_extra_tickers_contains_key_futures() -> None:
+    assert "HG=F" in COMMODITY_EXTRA_TICKERS   # Copper
+    assert "NG=F" in COMMODITY_EXTRA_TICKERS   # Natural Gas
+    assert "ZC=F" in COMMODITY_EXTRA_TICKERS   # Corn
+    assert "PL=F" in COMMODITY_EXTRA_TICKERS   # Platinum
+
+
+def test_commodity_extra_tickers_count() -> None:
+    assert len(COMMODITY_EXTRA_TICKERS) == 8
+
+
+def test_forex_extra_tickers_contains_major_pairs() -> None:
+    assert "GBPUSD=X" in FOREX_EXTRA_TICKERS
+    assert "AUDUSD=X" in FOREX_EXTRA_TICKERS
+    assert "USDCAD=X" in FOREX_EXTRA_TICKERS
+    assert "USDMXN=X" in FOREX_EXTRA_TICKERS
+
+
+def test_forex_extra_tickers_count() -> None:
+    assert len(FOREX_EXTRA_TICKERS) == 7
+
+
+def test_crypto_tickers_contains_bitcoin_and_ethereum() -> None:
+    assert "BTC-USD" in CRYPTO_TICKERS
+    assert "ETH-USD" in CRYPTO_TICKERS
+
+
+def test_crypto_tickers_count() -> None:
+    assert len(CRYPTO_TICKERS) == 2
+
+
+def test_all_tickers_no_duplicates() -> None:
+    assert len(ALL_TICKERS) == len(set(ALL_TICKERS))
+
+
+def test_all_tickers_contains_bonds() -> None:
+    assert "^TNX" in ALL_TICKERS
+    assert "^TYX" in ALL_TICKERS
+
+
+def test_all_tickers_contains_extra_commodities() -> None:
+    assert "HG=F" in ALL_TICKERS
+    assert "NG=F" in ALL_TICKERS
+
+
+def test_all_tickers_contains_extra_forex() -> None:
+    assert "GBPUSD=X" in ALL_TICKERS
+    assert "USDKRW=X" in ALL_TICKERS
+
+
+def test_all_tickers_contains_crypto() -> None:
+    assert "BTC-USD" in ALL_TICKERS
+    assert "ETH-USD" in ALL_TICKERS
 
 
 # ---------------------------------------------------------------------------
@@ -336,8 +421,8 @@ async def test_fred_execute_success_upserts_all_series() -> None:
         pipeline = FredPipeline()
         result = await pipeline.execute(BUSINESS_DATE, mock_session, mock_run_log)
 
-    # 6 FRED series, all return data
-    assert result.rows_processed == 6
+    # All FRED series return data — count matches FRED_SERIES length
+    assert result.rows_processed == len(FRED_SERIES)
     assert result.rows_failed == 0
 
 
@@ -375,9 +460,9 @@ async def test_fred_execute_partial_failure_counts_failed() -> None:
         pipeline = FredPipeline()
         result = await pipeline.execute(BUSINESS_DATE, mock_session, mock_run_log)
 
-    # 1 failed + 5 succeeded
+    # 1 failed + (len(FRED_SERIES) - 1) succeeded
     assert result.rows_failed == 1
-    assert result.rows_processed == 5
+    assert result.rows_processed == len(FRED_SERIES) - 1
 
 
 def test_fred_pipeline_name() -> None:
@@ -386,6 +471,119 @@ def test_fred_pipeline_name() -> None:
 
 def test_fred_requires_trading_day_false() -> None:
     assert FredPipeline.requires_trading_day is False
+
+
+# ---------------------------------------------------------------------------
+# FRED_SERIES and FRED_SERIES_METADATA expansion tests
+# ---------------------------------------------------------------------------
+
+
+def test_fred_series_count_expanded() -> None:
+    """FRED_SERIES should now contain ~54 series (well above the original 6)."""
+    assert len(FRED_SERIES) >= 50
+
+
+def test_fred_series_metadata_keys_match_series_list() -> None:
+    """Every entry in FRED_SERIES must have a matching entry in FRED_SERIES_METADATA."""
+    assert set(FRED_SERIES) == set(FRED_SERIES_METADATA.keys())
+
+
+def test_fred_series_metadata_structure() -> None:
+    """Each metadata value must be a 3-tuple of (name, unit, frequency)."""
+    for ticker, meta in FRED_SERIES_METADATA.items():
+        assert isinstance(meta, tuple), f"{ticker}: metadata must be a tuple"
+        assert len(meta) == 3, f"{ticker}: tuple must have 3 elements (name, unit, frequency)"
+        name, unit, frequency = meta
+        assert isinstance(name, str) and name, f"{ticker}: name must be non-empty string"
+        assert isinstance(unit, str) and unit, f"{ticker}: unit must be non-empty string"
+        assert isinstance(frequency, str) and frequency, f"{ticker}: frequency must be non-empty string"
+
+
+def test_fred_series_metadata_valid_frequencies() -> None:
+    """All frequencies must match the de_macro_master CHECK constraint."""
+    allowed = {"daily", "weekly", "monthly", "quarterly", "annual"}
+    for ticker, (_, _, frequency) in FRED_SERIES_METADATA.items():
+        assert frequency in allowed, (
+            f"{ticker}: frequency '{frequency}' not in allowed set {allowed}"
+        )
+
+
+def test_fred_series_ticker_lengths_within_varchar20() -> None:
+    """All tickers must fit in VARCHAR(20) — the de_macro_master column size."""
+    for ticker in FRED_SERIES:
+        assert len(ticker) <= 20, f"Ticker '{ticker}' exceeds VARCHAR(20): {len(ticker)} chars"
+
+
+def test_fred_series_contains_us_treasury_curve() -> None:
+    """Full US Treasury yield curve (1M to 30Y) must be present."""
+    expected = ["DGS1MO", "DGS3MO", "DGS6MO", "DGS1", "DGS2", "DGS3", "DGS5", "DGS7", "DGS10", "DGS20", "DGS30"]
+    for ticker in expected:
+        assert ticker in FRED_SERIES, f"Missing Treasury series: {ticker}"
+
+
+def test_fred_series_contains_us_macro_indicators() -> None:
+    """Key US macro indicators must be present."""
+    expected = ["CPIAUCSL", "CPILFESL", "PCEPI", "PCEPILFE", "UNRATE", "PAYEMS",
+                "INDPRO", "HOUST", "UMCSENT", "JTSJOL", "PPIFIS"]
+    for ticker in expected:
+        assert ticker in FRED_SERIES, f"Missing US macro series: {ticker}"
+
+
+def test_fred_series_contains_financial_indicators() -> None:
+    """Key US financial indicators must be present."""
+    expected = ["FEDFUNDS", "T10Y2Y", "T10Y3M", "BAMLH0A0HYM2", "VIXCLS"]
+    for ticker in expected:
+        assert ticker in FRED_SERIES, f"Missing financial series: {ticker}"
+
+
+def test_fred_series_contains_global_bond_yields() -> None:
+    """All 10 OECD country bond yield series must be present."""
+    expected = [
+        "IRLTLT01DEM156N",  # Germany
+        "IRLTLT01JPM156N",  # Japan
+        "IRLTLT01GBM156N",  # UK
+        "IRLTLT01FRM156N",  # France
+        "IRLTLT01ITM156N",  # Italy
+        "IRLTLT01CAM156N",  # Canada
+        "IRLTLT01AUM156N",  # Australia
+        "IRLTLT01KRM156N",  # South Korea
+        "IRLTLT01BRM156N",  # Brazil
+        "IRLTLT01INM156N",  # India
+    ]
+    for ticker in expected:
+        assert ticker in FRED_SERIES, f"Missing global bond yield series: {ticker}"
+
+
+def test_fred_series_daily_tickers_have_daily_frequency() -> None:
+    """Known daily series must be tagged as 'daily' in metadata."""
+    daily_tickers = ["DGS10", "DGS2", "T10Y2Y", "T10Y3M", "VIXCLS", "BAMLH0A0HYM2"]
+    for ticker in daily_tickers:
+        _, _, frequency = FRED_SERIES_METADATA[ticker]
+        assert frequency == "daily", f"{ticker}: expected daily, got {frequency}"
+
+
+def test_fred_series_monthly_tickers_have_monthly_frequency() -> None:
+    """Known monthly series must be tagged as 'monthly' in metadata."""
+    monthly_tickers = ["CPIAUCSL", "UNRATE", "PAYEMS", "INDPRO", "HOUST"]
+    for ticker in monthly_tickers:
+        _, _, frequency = FRED_SERIES_METADATA[ticker]
+        assert frequency == "monthly", f"{ticker}: expected monthly, got {frequency}"
+
+
+def test_fred_series_global_bond_yields_have_monthly_frequency() -> None:
+    """OECD global bond yield series are published monthly."""
+    global_bond_tickers = [
+        "IRLTLT01DEM156N", "IRLTLT01JPM156N", "IRLTLT01GBM156N",
+        "IRLTLT01FRM156N", "IRLTLT01INM156N",
+    ]
+    for ticker in global_bond_tickers:
+        _, _, frequency = FRED_SERIES_METADATA[ticker]
+        assert frequency == "monthly", f"{ticker}: expected monthly, got {frequency}"
+
+
+def test_fred_series_no_duplicates() -> None:
+    """FRED_SERIES list must not contain duplicate tickers."""
+    assert len(FRED_SERIES) == len(set(FRED_SERIES)), "FRED_SERIES contains duplicate tickers"
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,8 @@ Values of -2 in the source data are null markers and are skipped.
 OPEN/HIGH/LOW always equal CLOSE in this dataset — only CLOSE is ingested.
 """
 
+from __future__ import annotations
+
 import argparse
 import gc
 import io

@@ -49,40 +49,145 @@ def _gi(ticker: str, name: str, itype: str, exch: str, curr: str, ctry: str, cat
 
 
 GLOBAL_INSTRUMENTS: list[dict[str, str]] = [
-    # Global equity indices
-    _gi("^GSPC",     "S&P 500",                       "index", "NYSE",     "USD", "US", "broad"),
-    _gi("^IXIC",     "NASDAQ Composite",               "index", "NASDAQ",   "USD", "US", "broad"),
-    _gi("^DJI",      "Dow Jones Industrial Average",   "index", "NYSE",     "USD", "US", "broad"),
-    _gi("^FTSE",     "FTSE 100",                       "index", "LSE",      "GBP", "UK", "broad"),
-    _gi("^GDAXI",    "DAX",                            "index", "XETRA",    "EUR", "DE", "broad"),
-    _gi("^FCHI",     "CAC 40",                         "index", "EURONEXT", "EUR", "FR", "broad"),
-    _gi("^N225",     "Nikkei 225",                     "index", "TSE",      "JPY", "JP", "broad"),
-    _gi("^HSI",      "Hang Seng",                      "index", "HKEX",     "HKD", "HK", "broad"),
-    _gi("000001.SS", "Shanghai Composite",             "index", "SSE",      "CNY", "CN", "broad"),
-    _gi("^AXJO",     "ASX 200",                        "index", "ASX",      "AUD", "AU", "broad"),
-    # Emerging / world ETFs
-    _gi("EEM",       "MSCI Emerging Markets ETF",      "etf",   "NYSE",     "USD", "US", "emerging"),
-    _gi("URTH",      "MSCI World ETF",                 "etf",   "NYSE",     "USD", "US", "world"),
-    # Commodities + FX — check constraint only allows 'index'/'etf'; using 'index'
-    _gi("DX-Y.NYB",  "US Dollar Index",                "index", "ICE",      "USD", "US", "fx"),
-    _gi("CL=F",      "Crude Oil WTI",                  "index", "NYMEX",    "USD", "US", "commodity"),
-    _gi("BZ=F",      "Crude Oil Brent",                "index", "ICE",      "USD", "US", "commodity"),
-    _gi("GC=F",      "Gold",                           "index", "COMEX",    "USD", "US", "commodity"),
-    _gi("SI=F",      "Silver",                         "index", "COMEX",    "USD", "US", "commodity"),
-    _gi("USDINR=X",  "USD/INR",                        "index", "FX",       "INR", "IN", "fx"),
-    _gi("USDJPY=X",  "USD/JPY",                        "index", "FX",       "JPY", "JP", "fx"),
-    _gi("EURUSD=X",  "EUR/USD",                        "index", "FX",       "USD", "US", "fx"),
-    _gi("USDCNH=X",  "USD/CNH",                        "index", "FX",       "CNH", "CN", "fx"),
+    # Global equity indices (10)
+    _gi("^GSPC",     "S&P 500",                       "index",     "NYSE",     "USD", "US", "broad"),
+    _gi("^IXIC",     "NASDAQ Composite",               "index",     "NASDAQ",   "USD", "US", "broad"),
+    _gi("^DJI",      "Dow Jones Industrial Average",   "index",     "NYSE",     "USD", "US", "broad"),
+    _gi("^FTSE",     "FTSE 100",                       "index",     "LSE",      "GBP", "UK", "broad"),
+    _gi("^GDAXI",    "DAX",                            "index",     "XETRA",    "EUR", "DE", "broad"),
+    _gi("^FCHI",     "CAC 40",                         "index",     "EURONEXT", "EUR", "FR", "broad"),
+    _gi("^N225",     "Nikkei 225",                     "index",     "TSE",      "JPY", "JP", "broad"),
+    _gi("^HSI",      "Hang Seng",                      "index",     "HKEX",     "HKD", "HK", "broad"),
+    _gi("000001.SS", "Shanghai Composite",             "index",     "SSE",      "CNY", "CN", "broad"),
+    _gi("^AXJO",     "ASX 200",                        "index",     "ASX",      "AUD", "AU", "broad"),
+    # Emerging / world ETFs (2)
+    _gi("EEM",       "MSCI Emerging Markets ETF",      "etf",       "NYSE",     "USD", "US", "emerging"),
+    _gi("URTH",      "MSCI World ETF",                 "etf",       "NYSE",     "USD", "US", "world"),
+    # Commodities + FX — original set with correct instrument_type (9)
+    _gi("DX-Y.NYB",  "US Dollar Index",                "forex",     "ICE",      "USD", "US", "fx"),
+    _gi("CL=F",      "Crude Oil WTI",                  "commodity", "NYMEX",    "USD", "US", "energy"),
+    _gi("BZ=F",      "Crude Oil Brent",                "commodity", "ICE",      "USD", "US", "energy"),
+    _gi("GC=F",      "Gold",                           "commodity", "COMEX",    "USD", "US", "precious_metal"),
+    _gi("SI=F",      "Silver",                         "commodity", "COMEX",    "USD", "US", "precious_metal"),
+    _gi("USDINR=X",  "USD/INR",                        "forex",     "FX",       "INR", "IN", "fx"),
+    _gi("USDJPY=X",  "USD/JPY",                        "forex",     "FX",       "JPY", "JP", "fx"),
+    _gi("EURUSD=X",  "EUR/USD",                        "forex",     "FX",       "USD", "US", "fx"),
+    _gi("USDCNH=X",  "USD/CNH",                        "forex",     "FX",       "CNH", "CN", "fx"),
+    # Bond yield indices — CBOE (4)
+    _gi("^TNX",      "US 10-Year Treasury Yield",      "bond",      "CBOE",     "USD", "US", "treasury"),
+    _gi("^TYX",      "US 30-Year Treasury Yield",      "bond",      "CBOE",     "USD", "US", "treasury"),
+    _gi("^IRX",      "US 13-Week Treasury Bill",       "bond",      "CBOE",     "USD", "US", "treasury"),
+    _gi("^FVX",      "US 5-Year Treasury Yield",       "bond",      "CBOE",     "USD", "US", "treasury"),
+    # Additional commodity futures (8)
+    _gi("HG=F",      "Copper Futures",                 "commodity", "COMEX",    "USD", "US", "base_metal"),
+    _gi("NG=F",      "Natural Gas Futures",            "commodity", "NYMEX",    "USD", "US", "energy"),
+    _gi("ZC=F",      "Corn Futures",                   "commodity", "CBOT",     "USD", "US", "agricultural"),
+    _gi("ZW=F",      "Wheat Futures",                  "commodity", "CBOT",     "USD", "US", "agricultural"),
+    _gi("ZS=F",      "Soybean Futures",                "commodity", "CBOT",     "USD", "US", "agricultural"),
+    _gi("KC=F",      "Coffee Futures",                 "commodity", "ICE",      "USD", "US", "agricultural"),
+    _gi("CT=F",      "Cotton Futures",                 "commodity", "ICE",      "USD", "US", "agricultural"),
+    _gi("PL=F",      "Platinum Futures",               "commodity", "NYMEX",    "USD", "US", "precious_metal"),
+    # Additional FX pairs (7)
+    _gi("GBPUSD=X",  "GBP/USD",                        "forex",     "FX",       "USD", "GB", "fx"),
+    _gi("AUDUSD=X",  "AUD/USD",                        "forex",     "FX",       "USD", "AU", "fx"),
+    _gi("USDCAD=X",  "USD/CAD",                        "forex",     "FX",       "CAD", "CA", "fx"),
+    _gi("USDCHF=X",  "USD/CHF",                        "forex",     "FX",       "CHF", "CH", "fx"),
+    _gi("USDBRL=X",  "USD/BRL",                        "forex",     "FX",       "BRL", "BR", "fx"),
+    _gi("USDKRW=X",  "USD/KRW",                        "forex",     "FX",       "KRW", "KR", "fx"),
+    _gi("USDMXN=X",  "USD/MXN",                        "forex",     "FX",       "MXN", "MX", "fx"),
+    # Crypto (2)
+    _gi("BTC-USD",   "Bitcoin",                        "crypto",    "CRYPTO",   "USD", "US", "crypto"),
+    _gi("ETH-USD",   "Ethereum",                       "crypto",    "CRYPTO",   "USD", "US", "crypto"),
 ]
 
+def _ms(
+    ticker: str,
+    name: str,
+    source: str,
+    unit: str,
+    frequency: str,
+) -> dict[str, str]:
+    """Build a MACRO_SERIES entry dict (reduces repetitive key noise)."""
+    return {
+        "ticker": ticker,
+        "name": name,
+        "source": source,
+        "unit": unit,
+        "frequency": frequency,
+    }
+
+
 MACRO_SERIES: list[dict[str, str]] = [
-    {"ticker": "DGS10", "name": "10-Year Treasury Yield", "source": "FRED", "unit": "percent", "frequency": "daily"},
-    {"ticker": "DGS2", "name": "2-Year Treasury Yield", "source": "FRED", "unit": "percent", "frequency": "daily"},
-    {"ticker": "FEDFUNDS", "name": "Federal Funds Rate", "source": "FRED", "unit": "percent", "frequency": "monthly"},
-    {"ticker": "T10Y2Y", "name": "10Y-2Y Treasury Spread", "source": "FRED", "unit": "percent", "frequency": "daily"},
-    {"ticker": "CPIAUCSL", "name": "Consumer Price Index", "source": "FRED", "unit": "index", "frequency": "monthly"},
-    {"ticker": "UNRATE", "name": "Unemployment Rate", "source": "FRED", "unit": "percent", "frequency": "monthly"},
-    {"ticker": "INDIAVIX", "name": "India VIX", "source": "NSE", "unit": "index", "frequency": "daily"},
+    # --- US Treasury Yields (daily) ---
+    _ms("DGS1MO",  "US 1-Month Treasury Yield",  "FRED", "percent",   "daily"),
+    _ms("DGS3MO",  "US 3-Month Treasury Yield",  "FRED", "percent",   "daily"),
+    _ms("DGS6MO",  "US 6-Month Treasury Yield",  "FRED", "percent",   "daily"),
+    _ms("DGS1",    "US 1-Year Treasury Yield",   "FRED", "percent",   "daily"),
+    _ms("DGS2",    "US 2-Year Treasury Yield",   "FRED", "percent",   "daily"),
+    _ms("DGS3",    "US 3-Year Treasury Yield",   "FRED", "percent",   "daily"),
+    _ms("DGS5",    "US 5-Year Treasury Yield",   "FRED", "percent",   "daily"),
+    _ms("DGS7",    "US 7-Year Treasury Yield",   "FRED", "percent",   "daily"),
+    _ms("DGS10",   "US 10-Year Treasury Yield",  "FRED", "percent",   "daily"),
+    _ms("DGS20",   "US 20-Year Treasury Yield",  "FRED", "percent",   "daily"),
+    _ms("DGS30",   "US 30-Year Treasury Yield",  "FRED", "percent",   "daily"),
+
+    # --- US Macro (monthly / weekly) ---
+    _ms("CPIAUCSL", "US CPI All Urban Consumers",     "FRED", "index",     "monthly"),
+    _ms("CPILFESL", "US Core CPI (ex Food & Energy)", "FRED", "index",     "monthly"),
+    _ms("PCEPI",    "US PCE Price Index",              "FRED", "index",     "monthly"),
+    _ms("PCEPILFE", "US Core PCE Price Index",         "FRED", "index",     "monthly"),
+    _ms("UNRATE",   "US Unemployment Rate",            "FRED", "percent",   "monthly"),
+    _ms("PAYEMS",   "US Nonfarm Payrolls",             "FRED", "thousands", "monthly"),
+    _ms("ICSA",     "US Initial Jobless Claims",       "FRED", "thousands", "weekly"),
+    _ms("INDPRO",   "US Industrial Production Index",  "FRED", "index",     "monthly"),
+    _ms("RSAFS",    "US Retail Sales",                 "FRED", "millions",  "monthly"),
+    _ms("HOUST",    "US Housing Starts",               "FRED", "thousands", "monthly"),
+    _ms("UMCSENT",  "US Consumer Sentiment (UMich)",   "FRED", "index",     "monthly"),
+    _ms("DGORDER",  "US Durable Goods Orders",         "FRED", "millions",  "monthly"),
+    _ms("JTSJOL",   "US Job Openings (JOLTS)",         "FRED", "thousands", "monthly"),
+    _ms("PPIFIS",   "US PPI Final Demand",             "FRED", "index",     "monthly"),
+
+    # --- US Financial (daily / monthly) ---
+    _ms("FEDFUNDS",     "US Federal Funds Rate",     "FRED", "percent", "monthly"),
+    _ms("T10Y2Y",       "US 10Y-2Y Treasury Spread", "FRED", "percent", "daily"),
+    _ms("T10Y3M",       "US 10Y-3M Treasury Spread", "FRED", "percent", "daily"),
+    _ms("BAMLH0A0HYM2", "US HY OAS Credit Spread",   "FRED", "percent", "daily"),
+    _ms("VIXCLS",       "CBOE VIX Volatility Index", "FRED", "index",   "daily"),
+
+    # --- Global Bond Yields — OECD long-term rates via FRED (monthly) ---
+    _ms("IRLTLT01DEM156N", "Germany 10-Year Government Bond Yield",     "FRED", "percent", "monthly"),
+    _ms("IRLTLT01JPM156N", "Japan 10-Year Government Bond Yield",       "FRED", "percent", "monthly"),
+    _ms("IRLTLT01GBM156N", "UK 10-Year Government Bond Yield",          "FRED", "percent", "monthly"),
+    _ms("IRLTLT01FRM156N", "France 10-Year Government Bond Yield",      "FRED", "percent", "monthly"),
+    _ms("IRLTLT01ITM156N", "Italy 10-Year Government Bond Yield",       "FRED", "percent", "monthly"),
+    _ms("IRLTLT01CAM156N", "Canada 10-Year Government Bond Yield",      "FRED", "percent", "monthly"),
+    _ms("IRLTLT01AUM156N", "Australia 10-Year Government Bond Yield",   "FRED", "percent", "monthly"),
+    _ms("IRLTLT01KRM156N", "South Korea 10-Year Government Bond Yield", "FRED", "percent", "monthly"),
+    _ms("IRLTLT01BRM156N", "Brazil 10-Year Government Bond Yield",      "FRED", "percent", "monthly"),
+    _ms("IRLTLT01INM156N", "India 10-Year Government Bond Yield",       "FRED", "percent", "monthly"),
+
+    # --- Global GDP per Capita (annual) ---
+    _ms("NYGDPPCAPKDUSA", "US GDP per Capita (constant 2015 USD)",      "FRED", "index", "annual"),
+    _ms("NYGDPPCAPKDCHN", "China GDP per Capita (constant 2015 USD)",   "FRED", "index", "annual"),
+    _ms("NYGDPPCAPKDJPN", "Japan GDP per Capita (constant 2015 USD)",   "FRED", "index", "annual"),
+    _ms("NYGDPPCAPKDDEU", "Germany GDP per Capita (constant 2015 USD)", "FRED", "index", "annual"),
+    _ms("NYGDPPCAPKDGBR", "UK GDP per Capita (constant 2015 USD)",      "FRED", "index", "annual"),
+
+    # --- Global CPI Growth (monthly) ---
+    _ms("CPALTT01USM657N", "US CPI Total YoY Growth",      "FRED", "percent", "monthly"),
+    _ms("CPALTT01DEU657N", "Germany CPI Total YoY Growth", "FRED", "percent", "monthly"),
+    _ms("CPALTT01GBR657N", "UK CPI Total YoY Growth",      "FRED", "percent", "monthly"),
+    _ms("CPALTT01JPN657N", "Japan CPI Total YoY Growth",   "FRED", "percent", "monthly"),
+    _ms("CPALTT01CNM657N", "China CPI Total YoY Growth",   "FRED", "percent", "monthly"),
+
+    # --- Global Unemployment (monthly) ---
+    _ms("LRUNTTTTUSM156S",  "US Unemployment Rate (OECD harmonised)", "FRED", "percent", "monthly"),
+    _ms("LRUNTTTTDEUM156S", "Germany Unemployment Rate (OECD)",       "FRED", "percent", "monthly"),
+    _ms("LRUNTTTTGBM156S",  "UK Unemployment Rate (OECD)",            "FRED", "percent", "monthly"),
+    _ms("LRUNTTTTJPM156S",  "Japan Unemployment Rate (OECD)",         "FRED", "percent", "monthly"),
+
+    # --- Non-FRED series (coexist with stooq 'manual' rows — different ticker namespace) ---
+    _ms("INDIAVIX", "India VIX", "NSE", "index", "daily"),
 ]
 
 NSE_EQUITY_CSV_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
@@ -317,7 +422,7 @@ async def _truncate_global_tables(sf: async_sessionmaker) -> None:
 
 
 async def _seed_global_instruments(sf: async_sessionmaker) -> int:
-    """Upsert 21 global instrument master rows."""
+    """Upsert 42 global instrument master rows (indices, ETFs, bonds, commodities, FX, crypto)."""
     rows = [
         {
             "ticker": inst["ticker"],
