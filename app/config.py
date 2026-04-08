@@ -1,13 +1,16 @@
-from pydantic_settings import BaseSettings
+import os
+
 from functools import lru_cache
 
+from pydantic_settings import BaseSettings
 
-# Platform secrets for JWT auth — stored in config for now, move to vault later
+
+# Platform secrets for JWT auth — loaded from environment variables
 PLATFORM_SECRETS: dict[str, str] = {
-    "marketpulse": "marketpulse-secret-change-in-prod",
-    "mfpulse": "mfpulse-secret-change-in-prod",
-    "champion_trader": "champion-trader-secret-change-in-prod",
-    "admin": "admin-secret-change-in-prod",
+    "marketpulse": os.environ.get("PLATFORM_SECRET_MARKETPULSE", ""),
+    "mfpulse": os.environ.get("PLATFORM_SECRET_MFPULSE", ""),
+    "champion_trader": os.environ.get("PLATFORM_SECRET_CHAMPION", ""),
+    "admin": os.environ.get("PLATFORM_SECRET_ADMIN", ""),
 }
 
 # Platforms with admin privileges
@@ -16,14 +19,14 @@ ADMIN_PLATFORMS: set[str] = {"admin"}
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql+asyncpg://fie_admin:password@localhost:5432/data_engine"
-    database_url_sync: str = "postgresql+psycopg2://fie_admin:password@localhost:5432/data_engine"
+    database_url: str = ""
+    database_url_sync: str = ""
 
     # Redis
-    redis_url: str = "redis://127.0.0.1:6379/0"
+    redis_url: str = ""
 
     # JWT
-    jwt_secret: str = "change-me-in-production"
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expiry_hours: int = 24
     jwt_refresh_expiry_days: int = 30
