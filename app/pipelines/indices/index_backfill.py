@@ -14,14 +14,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 import httpx
 import structlog
-from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 

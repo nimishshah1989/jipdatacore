@@ -175,11 +175,11 @@ def _build_amfi_date_str(effective_from: date) -> str:
         Date string like "30Jun2025" or "31Dec2025".
     """
     if effective_from.month == 1:
-        # Effective Jan 1 → based on data for Jul-Dec of PRIOR year → "31Dec{YYYY-1}"
-        return f"31Dec{effective_from.year - 1}"
-    else:
-        # Effective Jul 1 → based on data for Jan-Jun of SAME year → "30Jun{YYYY}"
+        # Effective Jan 1 → file covers Jan–Jun → "30Jun{YYYY}"
         return f"30Jun{effective_from.year}"
+    else:
+        # Effective Jul 1 → file covers Jul–Dec → "31Dec{YYYY}"
+        return f"31Dec{effective_from.year}"
 
 
 def _build_amfi_urls(effective_from: date) -> list[str]:

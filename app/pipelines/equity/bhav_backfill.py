@@ -26,14 +26,13 @@ import threading
 import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 import structlog
-from sqlalchemy import select, text, func
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -528,7 +527,10 @@ async def _worker(
                     failed_date_list=failed_dates[-50:],
                 )
                 _update_worker(worker_id, failed=failed, last_error=error_msg)
-                logger.warning("date_failed_http", worker=worker_id, date=business_date.isoformat(), status=e.response.status_code)
+                logger.warning(
+                    "date_failed_http", worker=worker_id,
+                    date=business_date.isoformat(), status=e.response.status_code,
+                )
 
                 if e.response.status_code in (403, 429):
                     await asyncio.sleep(30)
