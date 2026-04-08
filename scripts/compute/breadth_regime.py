@@ -80,16 +80,20 @@ volume AS (
     GROUP BY date
 ),
 -- Global: 5-day avg return of SPY → 0-100
+global_ret AS (
+    SELECT date,
+        close / NULLIF(LAG(close, 1) OVER (ORDER BY date), 0) - 1 AS daily_ret
+    FROM de_global_prices
+    WHERE ticker = '^SPX' AND close IS NOT NULL
+),
 global_sig AS (
     SELECT date,
         LEAST(100, GREATEST(0,
             50 + COALESCE(
-                AVG(close / NULLIF(LAG(close, 1) OVER (ORDER BY date), 0) - 1)
-                OVER (ORDER BY date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW)
+                AVG(daily_ret) OVER (ORDER BY date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW)
             , 0) * 1000
         )) AS gs
-    FROM de_global_prices
-    WHERE ticker = '^SPX' AND close IS NOT NULL
+    FROM global_ret
 ),
 -- FII: use global_score as proxy (FII flows table is empty)
 combined AS (
