@@ -23,12 +23,28 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from sqlalchemy.ext.asyncio import create_async_engine
+
 from app.logging import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/observatory", tags=["observatory"])
+
+# Observatory uses its own connection to avoid session poisoning from shared pool.
+_obs_engine = None
+
+
+async def get_observatory_db():
+    """Yield a fresh, isolated async connection for observatory queries."""
+    global _obs_engine
+    if _obs_engine is None:
+        from app.config import get_settings
+        _obs_engine = create_async_engine(
+            get_settings().database_url, pool_size=2, max_overflow=0,
+        )
+    async with _obs_engine.connect() as conn:
+        yield conn
 
 # ---------------------------------------------------------------------------
 # Static column descriptions for the data dictionary
@@ -160,7 +176,7 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
     {
         "stream_id": "equity_ohlcv",
         "label": "Equity OHLCV",
-        "table": "de_equity_ohlcv",
+        "table": "de_equity_ohlcv_y2026",
         "date_col": "date",
         "category": "equity",
     },
@@ -174,21 +190,21 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
     {
         "stream_id": "rs_scores",
         "label": "RS Scores",
-        "table": "de_rs_score_daily",
+        "table": "de_rs_scores",
         "date_col": "date",
         "category": "equity",
     },
     {
         "stream_id": "market_breadth",
         "label": "Breadth / Regime",
-        "table": "de_market_breadth_daily",
+        "table": "de_breadth_daily",
         "date_col": "date",
         "category": "equity",
     },
     {
         "stream_id": "mf_nav",
         "label": "MF NAV",
-        "table": "de_mf_nav",
+        "table": "de_mf_nav_daily_y2026",
         "date_col": "nav_date",
         "category": "mf",
     },
@@ -203,14 +219,14 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "stream_id": "mf_holdings",
         "label": "MF Holdings",
         "table": "de_mf_holdings",
-        "date_col": "report_date",
+        "date_col": "as_of_date",
         "category": "mf",
     },
     {
         "stream_id": "mf_flows",
         "label": "MF Category Flows",
         "table": "de_mf_category_flows",
-        "date_col": "flow_date",
+        "date_col": "month_date",
         "category": "mf",
     },
     {
@@ -224,21 +240,21 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "stream_id": "global_prices",
         "label": "Global Prices",
         "table": "de_global_prices",
-        "date_col": "price_date",
+        "date_col": "date",
         "category": "global",
     },
     {
         "stream_id": "macro_values",
         "label": "Macro Values",
         "table": "de_macro_values",
-        "date_col": "report_date",
+        "date_col": "date",
         "category": "macro",
     },
     {
         "stream_id": "qualitative",
         "label": "Qualitative",
-        "table": "de_qualitative_items",
-        "date_col": "published_at",
+        "table": "de_qual_documents",
+        "date_col": "created_at",
         "category": "qualitative",
     },
 ]
@@ -280,7 +296,7 @@ async def _table_exists(db: AsyncSession, table_name: str) -> bool:
     summary="Data stream freshness — one card per stream",
 )
 async def get_pulse(
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_observatory_db),
 ) -> dict[str, Any]:
     """
     Query MAX(date) for each critical data stream and return freshness status.
@@ -381,7 +397,7 @@ async def get_pulse(
     summary="Quality check results grouped by category",
 )
 async def get_quality(
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_observatory_db),
 ) -> dict[str, Any]:
     """
     Query de_data_quality_checks for latest check results.
@@ -465,7 +481,7 @@ async def get_quality(
     summary="Coverage matrix — row counts and date ranges per table",
 )
 async def get_coverage(
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_observatory_db),
 ) -> dict[str, Any]:
     """
     Query pg_stat_user_tables for all de_* tables and return coverage info.
@@ -542,7 +558,7 @@ async def get_coverage(
     summary="7-day pipeline health heatmap data",
 )
 async def get_pipelines(
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_observatory_db),
 ) -> dict[str, Any]:
     """
     Query de_pipeline_log for the last 7 days.
@@ -645,7 +661,7 @@ async def get_pipelines(
     summary="Data dictionary — all de_* table columns with descriptions",
 )
 async def get_dictionary(
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_observatory_db),
 ) -> dict[str, Any]:
     """
     Query information_schema.columns for all de_* tables.
