@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JIP Data Observatory</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<style>
+/* ─── Reset & base ─── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --teal:     #1D9E75;
+  --teal-lt:  #e6f7f1;
+  --teal-md:  #a7f3d0;
+  --navy:     #0f172a;
+  --navy-2:   #1e293b;
+  --slate:    #475569;
+  --slate-lt: #94a3b8;
+  --border:   #e2e8f0;
+  --bg:       #f8fafc;
+  --white:    #ffffff;
+  --red:      #ef4444;
+  --red-lt:   #fee2e2;
+  --amber:    #f59e0b;
+  --amber-lt: #fef3c7;
+  --green:    #22c55e;
+  --green-lt: #dcfce7;
+  --radius:   12px;
+  --shadow:   0 2px 8px rgba(15,23,42,.07), 0 4px 16px rgba(15,23,42,.04);
+  --shadow-lg: 0 8px 32px rgba(15,23,42,.12);
+}
+
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--navy);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* ─── Topbar ─── */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(15,23,42,.97);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(29,158,117,.25);
+  height: 52px;
+  display: flex; align-items: center; gap: 0; padding: 0 24px;
+}
+.tb-brand {
+  font-weight: 800; font-size: 14px; color: var(--white);
+  margin-right: 32px; letter-spacing: -.3px; white-space: nowrap;
+}
+.tb-brand span { color: var(--teal); }
+.tb-nav { display: flex; gap: 2px; overflow-x: auto; }
+.tb-nav a {
+  color: var(--slate-lt); text-decoration: none;
+  font-size: 12px; font-weight: 600;
+  padding: 5px 12px; border-radius: 6px;
+  white-space: nowrap; transition: all .15s;
+}
+.tb-nav a:hover { color: var(--white); background: rgba(255,255,255,.08); }
+.tb-right {
+  margin-left: auto; display: flex; align-items: center; gap: 16px;
+}
+.refresh-btn {
+  background: rgba(29,158,117,.15);
+  border: 1px solid rgba(29,158,117,.4);
+  color: var(--teal-md);
+  font-size: 11px; font-weight: 700;
+  padding: 5px 14px; border-radius: 6px; cursor: pointer;
+  transition: all .15s;
+}
+.refresh-btn:hover { background: rgba(29,158,117,.25); }
+#last-refreshed { color: var(--slate-lt); font-size: 11px; white-space: nowrap; }
+#overall-badge {
+  font-size: 10px; font-weight: 800; padding: 4px 10px;
+  border-radius: 100px; text-transform: uppercase; letter-spacing: .5px;
+}
+.badge-healthy  { background: var(--green-lt); color: #15803d; }
+.badge-degraded { background: var(--amber-lt); color: #92400e; }
+.badge-critical { background: var(--red-lt);   color: #b91c1c; }
+.badge-unknown  { background: #f1f5f9;          color: var(--slate); }
+
+/* ─── Layout ─── */
+main { padding-top: 52px; }
+.section {
+  padding: 32px 24px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+}
+.section-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--teal); margin-bottom: 4px;
+}
+.section-title {
+  font-size: 20px; font-weight: 800; color: var(--navy); letter-spacing: -.4px;
+}
+.section-sub { font-size: 12px; color: var(--slate-lt); }
+.divider { border: none; border-top: 1px solid var(--border); margin: 0 24px; }
+
+/* ─── Loading skeleton ─── */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── Pulse Grid ─── */
+.pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.pulse-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  transition: transform .15s, box-shadow .15s;
+  position: relative;
+  overflow: hidden;
+}
+.pulse-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.pulse-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.pulse-card.fresh::before   { background: var(--green); }
+.pulse-card.stale::before   { background: var(--amber); }
+.pulse-card.critical::before { background: var(--red); }
+.pulse-card.unknown::before { background: var(--slate-lt); }
+.pulse-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pulse-category {
+  font-size: 9px; font-weight: 800; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--slate-lt);
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-fresh   { background: var(--green); box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
+.dot-stale   { background: var(--amber); box-shadow: 0 0 0 3px rgba(245,158,11,.2); }
+.dot-critical { background: var(--red); box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
+.dot-unknown { background: var(--slate-lt); }
+.pulse-name {
+  font-size: 13px; font-weight: 700; color: var(--navy);
+  margin-bottom: 8px; line-height: 1.3;
+}
+.pulse-count {
+  font-size: 22px; font-weight: 900; color: var(--teal);
+  letter-spacing: -.5px; line-height: 1;
+}
+.pulse-count-label { font-size: 10px; color: var(--slate-lt); margin-bottom: 4px; }
+.pulse-footer {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.pulse-date { font-size: 11px; color: var(--slate); font-weight: 600; }
+.pulse-age  { font-size: 11px; color: var(--slate-lt); }
+
+/* ─── Summary bar ─── */
+.summary-bar {
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+  border-radius: var(--radius);
+  padding: 16px 24px;
+  display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.sum-item { display: flex; align-items: center; gap: 10px; }
+.sum-num { font-size: 28px; font-weight: 900; letter-spacing: -.5px; line-height: 1; }
+.sum-fresh   { color: var(--green); }
+.sum-stale   { color: var(--amber); }
+.sum-critical { color: var(--red); }
+.sum-label { font-size: 11px; color: var(--slate-lt); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.sum-divider { width: 1px; height: 32px; background: rgba(255,255,255,.1); }
+
+/* ─── Quality Scorecard ─── */
+.quality-table-wrap {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.quality-table {
+  width: 100%; border-collapse: collapse;
+}
+.quality-table th {
+  background: var(--bg);
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--slate);
+  padding: 10px 14px; text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.quality-table td {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  font-size: 12px; vertical-align: middle;
+}
+.quality-table tr:last-child td { border-bottom: none; }
+.quality-table tr.row-pass { background: rgba(34,197,94,.03); }
+.quality-table tr.row-warn { background: rgba(245,158,11,.05); }
+.quality-table tr.row-fail { background: rgba(239,68,68,.05); }
+.quality-table tr:hover { background: var(--bg); }
+.status-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+}
+.badge-pass { background: var(--green-lt); color: #15803d; }
+.badge-warn { background: var(--amber-lt); color: #92400e; }
+.badge-fail { background: var(--red-lt); color: #b91c1c; }
+.badge-unknown { background: #f1f5f9; color: var(--slate); }
+.quality-summary {
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
+.q-sum-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 20px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--shadow);
+}
+.q-sum-num { font-size: 28px; font-weight: 900; letter-spacing: -.5px; }
+.q-sum-pass { color: var(--green); }
+.q-sum-warn { color: var(--amber); }
+.q-sum-fail { color: var(--red); }
+.q-sum-label { font-size: 11px; color: var(--slate-lt); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px; }
+.quality-no-table {
+  padding: 32px; text-align: center; color: var(--slate-lt);
+  font-size: 13px;
+}
+
+/* ─── Coverage chart ─── */
+.coverage-chart-wrap {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 24px;
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+#coverage-svg { width: 100%; display: block; }
+
+/* ─── Pipeline heatmap ─── */
+.pipeline-wrap {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 24px;
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+#pipeline-svg { width: 100%; display: block; }
+.pipeline-legend {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  margin-top: 12px;
+}
+.pl-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--slate); }
+.pl-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+/* ─── Dictionary ─── */
+.dict-search-wrap {
+  margin-bottom: 16px;
+}
+.dict-search {
+  width: 100%; max-width: 400px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px; color: var(--navy);
+  outline: none;
+  box-shadow: var(--shadow);
+  transition: border-color .15s;
+}
+.dict-search:focus { border-color: var(--teal); }
+.dict-table-container {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.dict-table-group {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.dict-table-header {
+  background: var(--navy);
+  color: var(--white);
+  padding: 10px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.dict-table-name { font-size: 13px; font-weight: 700; font-family: monospace; }
+.dict-col-count { font-size: 11px; color: var(--slate-lt); }
+.dict-chevron { transition: transform .2s; font-size: 12px; color: var(--slate-lt); }
+.dict-chevron.open { transform: rotate(180deg); }
+.dict-table-body { display: none; }
+.dict-table-body.open { display: block; }
+.dict-inner {
+  width: 100%; border-collapse: collapse;
+}
+.dict-inner th {
+  background: var(--bg);
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--slate);
+  padding: 8px 14px; text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.dict-inner td {
+  padding: 8px 14px; border-bottom: 1px solid #f1f5f9;
+  font-size: 12px; vertical-align: middle;
+}
+.dict-inner tr:last-child td { border-bottom: none; }
+.dict-inner tr:hover { background: var(--bg); }
+.dict-col-name { font-family: monospace; font-size: 12px; color: var(--teal); font-weight: 600; }
+.dict-type { font-family: monospace; font-size: 11px; color: var(--slate-lt); }
+.dict-nullable { font-size: 10px; color: var(--slate-lt); }
+.dict-desc { font-size: 12px; color: var(--slate); font-style: italic; }
+.hidden { display: none !important; }
+
+/* ─── Error state ─── */
+.error-card {
+  background: var(--red-lt);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .section { padding: 24px 16px; }
+  .tb-nav { display: none; }
+  .pulse-grid { grid-template-columns: 1fr 1fr; }
+  .summary-bar { gap: 20px; }
+}
+@media (max-width: 480px) {
+  .pulse-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ─── Top navigation bar ─── -->
+<nav id="topbar">
+  <div class="tb-brand">JIP <span>Observatory</span></div>
+  <nav class="tb-nav">
+    <a href="#pulse">Pulse</a>
+    <a href="#quality">Quality</a>
+    <a href="#coverage">Coverage</a>
+    <a href="#pipelines">Pipelines</a>
+    <a href="#dictionary">Dictionary</a>
+  </nav>
+  <div class="tb-right">
+    <span id="last-refreshed">Loading...</span>
+    <span id="overall-badge" class="badge-unknown">—</span>
+    <button class="refresh-btn" onclick="fetchAll()">Refresh</button>
+  </div>
+</nav>
+
+<main>
+
+  <!-- ─── PULSE ─── -->
+  <section class="section" id="pulse">
+    <div class="section-header">
+      <div>
+        <div class="section-label">Data Freshness</div>
+        <div class="section-title">Stream Pulse</div>
+      </div>
+      <div class="section-sub" id="pulse-as-of"></div>
+    </div>
+    <div id="pulse-summary" class="summary-bar">
+      <div class="skeleton" style="width:300px;height:40px;"></div>
+    </div>
+    <div id="pulse-grid" class="pulse-grid">
+      <!-- skeleton cards -->
+      <div class="skeleton" style="height:140px;"></div>
+      <div class="skeleton" style="height:140px;"></div>
+      <div class="skeleton" style="height:140px;"></div>
+      <div class="skeleton" style="height:140px;"></div>
+      <div class="skeleton" style="height:140px;"></div>
+      <div class="skeleton" style="height:140px;"></div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ─── QUALITY ─── -->
+  <section class="section" id="quality">
+    <div class="section-header">
+      <div>
+        <div class="section-label">Data Integrity</div>
+        <div class="section-title">Quality Scorecard</div>
+      </div>
+      <div id="quality-summary" class="quality-summary">
+        <div class="skeleton" style="width:200px;height:60px;border-radius:8px;"></div>
+      </div>
+    </div>
+    <div id="quality-body">
+      <div class="skeleton" style="height:200px;"></div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ─── COVERAGE ─── -->
+  <section class="section" id="coverage">
+    <div class="section-header">
+      <div>
+        <div class="section-label">Table Inventory</div>
+        <div class="section-title">Coverage Matrix</div>
+      </div>
+      <div class="section-sub" id="coverage-sub"></div>
+    </div>
+    <div class="coverage-chart-wrap">
+      <svg id="coverage-svg" height="500">
+        <rect x="0" y="0" width="100%" height="100%" fill="#f1f5f9" rx="6"/>
+        <text x="50%" y="50%" text-anchor="middle" fill="#94a3b8" font-size="13">Loading coverage data…</text>
+      </svg>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ─── PIPELINES ─── -->
+  <section class="section" id="pipelines">
+    <div class="section-header">
+      <div>
+        <div class="section-label">7-Day Health</div>
+        <div class="section-title">Pipeline Heatmap</div>
+      </div>
+      <div class="pipeline-legend">
+        <div class="pl-item"><div class="pl-dot" style="background:#22c55e"></div>Success</div>
+        <div class="pl-item"><div class="pl-dot" style="background:#f59e0b"></div>Partial</div>
+        <div class="pl-item"><div class="pl-dot" style="background:#ef4444"></div>Failed</div>
+        <div class="pl-item"><div class="pl-dot" style="background:#3b82f6"></div>Running</div>
+        <div class="pl-item"><div class="pl-dot" style="background:#e2e8f0"></div>Not Run</div>
+      </div>
+    </div>
+    <div class="pipeline-wrap">
+      <svg id="pipeline-svg" height="300">
+        <rect x="0" y="0" width="100%" height="100%" fill="#f1f5f9" rx="6"/>
+        <text x="50%" y="50%" text-anchor="middle" fill="#94a3b8" font-size="13">Loading pipeline data…</text>
+      </svg>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ─── DICTIONARY ─── -->
+  <section class="section" id="dictionary">
+    <div class="section-header">
+      <div>
+        <div class="section-label">Schema Reference</div>
+        <div class="section-title">Data Dictionary</div>
+      </div>
+      <div class="section-sub" id="dict-sub"></div>
+    </div>
+    <div class="dict-search-wrap">
+      <input type="text" class="dict-search" id="dict-search"
+             placeholder="Search tables, columns, or descriptions…"
+             oninput="filterDictionary(this.value)">
+    </div>
+    <div id="dict-body" class="dict-table-container">
+      <div class="skeleton" style="height:200px;"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────
+let _pulseData     = null;
+let _qualityData   = null;
+let _coverageData  = null;
+let _pipelineData  = null;
+let _dictData      = null;
+
+// ─── Utilities ────────────────────────────────────────────────────────────
+function fmt_num(n) {
+  if (n == null) return '—';
+  if (n >= 1e7)  return (n/1e7).toFixed(1) + 'Cr rows';
+  if (n >= 1e5)  return (n/1e5).toFixed(1) + 'L rows';
+  if (n >= 1e3)  return (n/1e3).toFixed(1) + 'K rows';
+  return n.toLocaleString('en-IN') + ' rows';
+}
+
+function fmt_rows(n) {
+  if (n == null) return '—';
+  if (n >= 1e7)  return (n/1e7).toFixed(2) + ' Cr';
+  if (n >= 1e5)  return (n/1e5).toFixed(2) + ' L';
+  if (n >= 1e3)  return (n/1e3).toFixed(1) + 'K';
+  return n.toLocaleString('en-IN');
+}
+
+function fmt_age(h) {
+  if (h == null) return '—';
+  if (h < 1)     return Math.round(h * 60) + 'm ago';
+  if (h < 24)    return Math.round(h) + 'h ago';
+  return Math.round(h / 24) + 'd ago';
+}
+
+function fmt_date(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function status_dot_class(st) {
+  if (st === 'fresh')    return 'dot-fresh';
+  if (st === 'stale')    return 'dot-stale';
+  if (st === 'critical') return 'dot-critical';
+  return 'dot-unknown';
+}
+
+function now_ist_str() {
+  return new Date().toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }) + ' IST';
+}
+
+// ─── Fetch ────────────────────────────────────────────────────────────────
+async function safeFetch(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    console.error('Fetch failed:', url, e);
+    return null;
+  }
+}
+
+async function fetchAll() {
+  document.getElementById('last-refreshed').textContent = 'Refreshing…';
+  const [pulse, quality, coverage, pipelines, dictionary] = await Promise.all([
+    safeFetch('/api/v1/observatory/pulse'),
+    safeFetch('/api/v1/observatory/quality'),
+    safeFetch('/api/v1/observatory/coverage'),
+    safeFetch('/api/v1/observatory/pipelines'),
+    safeFetch('/api/v1/observatory/dictionary'),
+  ]);
+
+  _pulseData    = pulse;
+  _qualityData  = quality;
+  _coverageData = coverage;
+  _pipelineData = pipelines;
+  _dictData     = dictionary;
+
+  renderPulse(pulse);
+  renderQuality(quality);
+  renderCoverage(coverage);
+  renderPipelines(pipelines);
+  renderDictionary(dictionary);
+
+  document.getElementById('last-refreshed').textContent = 'Refreshed ' + now_ist_str();
+}
+
+// ─── Render Pulse ─────────────────────────────────────────────────────────
+function renderPulse(data) {
+  if (!data) {
+    document.getElementById('pulse-grid').innerHTML =
+      '<div class="error-card">Failed to load pulse data.</div>';
+    return;
+  }
+
+  // Overall badge
+  const badge = document.getElementById('overall-badge');
+  badge.textContent = data.overall_status.toUpperCase();
+  badge.className = '';
+  if (data.overall_status === 'healthy')  badge.classList.add('badge-healthy');
+  else if (data.overall_status === 'degraded') badge.classList.add('badge-degraded');
+  else badge.classList.add('badge-critical');
+
+  // Summary bar
+  const s = data.summary;
+  document.getElementById('pulse-summary').innerHTML = `
+    <div class="sum-item">
+      <div>
+        <div class="sum-num sum-fresh">${s.fresh}</div>
+        <div class="sum-label">Fresh</div>
+      </div>
+    </div>
+    <div class="sum-divider"></div>
+    <div class="sum-item">
+      <div>
+        <div class="sum-num sum-stale">${s.stale}</div>
+        <div class="sum-label">Stale</div>
+      </div>
+    </div>
+    <div class="sum-divider"></div>
+    <div class="sum-item">
+      <div>
+        <div class="sum-num sum-critical">${s.critical}</div>
+        <div class="sum-label">Critical</div>
+      </div>
+    </div>
+    <div style="margin-left:auto;color:var(--slate-lt);font-size:11px;">
+      ${data.streams.length} streams monitored
+    </div>
+  `;
+
+  document.getElementById('pulse-as-of').textContent = 'as of ' + fmt_date(data.as_of);
+
+  // Cards
+  const grid = document.getElementById('pulse-grid');
+  grid.innerHTML = data.streams.map(st => `
+    <div class="pulse-card ${st.status}">
+      <div class="pulse-top">
+        <span class="pulse-category">${st.category}</span>
+        <span class="status-dot ${status_dot_class(st.status)}"></span>
+      </div>
+      <div class="pulse-name">${st.label}</div>
+      <div class="pulse-count-label">Row count</div>
+      <div class="pulse-count">${fmt_rows(st.row_count)}</div>
+      <div class="pulse-footer">
+        <span class="pulse-date">${fmt_date(st.last_date)}</span>
+        <span class="pulse-age">${fmt_age(st.hours_old)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ─── Render Quality ───────────────────────────────────────────────────────
+function renderQuality(data) {
+  const summaryEl = document.getElementById('quality-summary');
+  const bodyEl    = document.getElementById('quality-body');
+
+  if (!data) {
+    summaryEl.innerHTML = '';
+    bodyEl.innerHTML = '<div class="error-card">Failed to load quality data.</div>';
+    return;
+  }
+
+  // Summary cards
+  const s = data.summary;
+  summaryEl.innerHTML = `
+    <div class="q-sum-card">
+      <div class="q-sum-num q-sum-pass">${s.pass}</div>
+      <div class="q-sum-label">Pass</div>
+    </div>
+    <div class="q-sum-card">
+      <div class="q-sum-num q-sum-warn">${s.warn}</div>
+      <div class="q-sum-label">Warn</div>
+    </div>
+    <div class="q-sum-card">
+      <div class="q-sum-num q-sum-fail">${s.fail}</div>
+      <div class="q-sum-label">Fail</div>
+    </div>
+  `;
+
+  if (!data.table_present) {
+    bodyEl.innerHTML = `
+      <div class="quality-no-table">
+        <strong>de_data_quality_checks</strong> table not yet created.
+        Quality checks will appear here once the table is migrated and populated.
+      </div>
+    `;
+    return;
+  }
+
+  if (!data.checks || data.checks.length === 0) {
+    bodyEl.innerHTML = '<div class="quality-no-table">No quality checks recorded yet.</div>';
+    return;
+  }
+
+  bodyEl.innerHTML = `
+    <div class="quality-table-wrap">
+      <table class="quality-table">
+        <thead>
+          <tr>
+            <th>Check Name</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>Actual Value</th>
+            <th>Threshold</th>
+            <th>Detail</th>
+            <th>Checked At</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.checks.map(c => `
+            <tr class="row-${c.status}">
+              <td><strong>${escHtml(c.check_name)}</strong></td>
+              <td>${escHtml(c.category)}</td>
+              <td><span class="status-badge badge-${c.status}">${c.status}</span></td>
+              <td>${escHtml(c.actual_value || '—')}</td>
+              <td>${escHtml(c.threshold_value || '—')}</td>
+              <td>${escHtml(c.detail || '—')}</td>
+              <td style="white-space:nowrap;color:var(--slate-lt)">${fmt_date(c.checked_at)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ─── Render Coverage ──────────────────────────────────────────────────────
+function renderCoverage(data) {
+  if (!data) {
+    document.getElementById('coverage-svg').innerHTML =
+      '<text x="50%" y="50%" text-anchor="middle" fill="#ef4444" font-size="13">Failed to load coverage data.</text>';
+    return;
+  }
+
+  document.getElementById('coverage-sub').textContent =
+    `${data.table_count} tables · as of ${fmt_date(data.as_of)}`;
+
+  const tables = (data.tables || []).slice(0, 30); // Show top 30
+  if (tables.length === 0) {
+    document.getElementById('coverage-svg').innerHTML =
+      '<text x="50%" y="50%" text-anchor="middle" fill="#94a3b8" font-size="13">No tables found.</text>';
+    return;
+  }
+
+  const svg = d3.select('#coverage-svg');
+  svg.selectAll('*').remove();
+
+  const marginL = 220;
+  const marginR = 120;
+  const marginT = 20;
+  const marginB = 20;
+  const rowH = 28;
+  const chartH = tables.length * rowH + marginT + marginB;
+
+  svg.attr('height', chartH);
+  const svgNode = document.getElementById('coverage-svg');
+  const totalW = svgNode.clientWidth || 900;
+  const chartW = totalW - marginL - marginR;
+
+  const maxVal = d3.max(tables, d => d.row_count_approx || 0);
+  const xScale = d3.scaleLinear().domain([0, maxVal]).range([0, chartW]);
+
+  const g = svg.append('g').attr('transform', `translate(${marginL},${marginT})`);
+
+  // Bars
+  g.selectAll('.bar')
+    .data(tables)
+    .enter()
+    .append('rect')
+    .attr('class', 'bar')
+    .attr('x', 0)
+    .attr('y', (_, i) => i * rowH + 4)
+    .attr('height', rowH - 6)
+    .attr('width', d => Math.max(2, xScale(d.row_count_approx || 0)))
+    .attr('fill', (_, i) => i % 2 === 0 ? '#1D9E75' : '#2dd4bf')
+    .attr('rx', 3)
+    .attr('opacity', 0.85);
+
+  // Table name labels
+  g.selectAll('.name-label')
+    .data(tables)
+    .enter()
+    .append('text')
+    .attr('x', -8)
+    .attr('y', (_, i) => i * rowH + rowH / 2 + 4)
+    .attr('text-anchor', 'end')
+    .attr('fill', '#0f172a')
+    .attr('font-size', '11px')
+    .attr('font-family', 'monospace')
+    .text(d => d.table.replace('de_', ''));
+
+  // Value labels
+  g.selectAll('.val-label')
+    .data(tables)
+    .enter()
+    .append('text')
+    .attr('x', d => Math.max(2, xScale(d.row_count_approx || 0)) + 6)
+    .attr('y', (_, i) => i * rowH + rowH / 2 + 4)
+    .attr('fill', '#475569')
+    .attr('font-size', '11px')
+    .text(d => fmt_rows(d.row_count_approx || 0));
+}
+
+// ─── Render Pipelines ─────────────────────────────────────────────────────
+function renderPipelines(data) {
+  if (!data) {
+    document.getElementById('pipeline-svg').innerHTML =
+      '<text x="50%" y="50%" text-anchor="middle" fill="#ef4444" font-size="13">Failed to load pipeline data.</text>';
+    return;
+  }
+
+  const pipelines = data.pipelines || [];
+  if (pipelines.length === 0) {
+    document.getElementById('pipeline-svg').innerHTML =
+      '<text x="50%" y="50%" text-anchor="middle" fill="#94a3b8" font-size="13">No pipeline runs in the last 7 days.</text>';
+    return;
+  }
+
+  const svg = d3.select('#pipeline-svg');
+  svg.selectAll('*').remove();
+
+  const marginL = 200;
+  const marginT = 40;
+  const marginB = 10;
+  const cellSize = 36;
+  const cellPad = 4;
+
+  // Collect all unique dates (last 7 days)
+  const today = new Date();
+  const dates = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+
+  const totalH = pipelines.length * (cellSize + cellPad) + marginT + marginB;
+  const totalW = marginL + dates.length * (cellSize + cellPad) + 20;
+
+  svg.attr('height', totalH).attr('viewBox', `0 0 ${totalW} ${totalH}`);
+
+  const g = svg.append('g').attr('transform', `translate(${marginL},${marginT})`);
+
+  // Date headers
+  g.selectAll('.date-label')
+    .data(dates)
+    .enter()
+    .append('text')
+    .attr('x', (_, i) => i * (cellSize + cellPad) + cellSize / 2)
+    .attr('y', -10)
+    .attr('text-anchor', 'middle')
+    .attr('fill', '#94a3b8')
+    .attr('font-size', '10px')
+    .text(d => {
+      const dt = new Date(d + 'T00:00:00');
+      return dt.toLocaleDateString('en-IN', { day:'2-digit', month:'short' });
+    });
+
+  const STATUS_COLORS = {
+    success: '#22c55e',
+    partial: '#f59e0b',
+    failed:  '#ef4444',
+    running: '#3b82f6',
+    not_run: '#e2e8f0',
+    unknown: '#e2e8f0',
+  };
+
+  pipelines.forEach((pipe, pi) => {
+    const y = pi * (cellSize + cellPad);
+
+    // Pipeline name
+    svg.append('text')
+      .attr('x', marginL - 10)
+      .attr('y', marginT + y + cellSize / 2 + 4)
+      .attr('text-anchor', 'end')
+      .attr('fill', '#0f172a')
+      .attr('font-size', '11px')
+      .text(pipe.pipeline_name.replace('pipeline_', '').replace(/_/g, ' '));
+
+    // Build a map of date -> cell
+    const cellMap = {};
+    (pipe.days || []).forEach(day => { cellMap[day.date] = day; });
+
+    dates.forEach((date, di) => {
+      const cell = cellMap[date];
+      const st   = cell ? cell.status : 'not_run';
+      const col  = STATUS_COLORS[st] || STATUS_COLORS.unknown;
+      const cx   = di * (cellSize + cellPad);
+
+      const cellG = g.append('g')
+        .attr('transform', `translate(${cx},${y})`)
+        .style('cursor', cell ? 'pointer' : 'default');
+
+      cellG.append('rect')
+        .attr('width', cellSize)
+        .attr('height', cellSize)
+        .attr('rx', 4)
+        .attr('fill', col)
+        .attr('opacity', 0.9);
+
+      if (cell && cell.total_rows > 0) {
+        cellG.append('text')
+          .attr('x', cellSize / 2)
+          .attr('y', cellSize / 2 + 4)
+          .attr('text-anchor', 'middle')
+          .attr('fill', 'white')
+          .attr('font-size', '9px')
+          .text(fmt_rows_tiny(cell.total_rows));
+      }
+
+      // Tooltip via title
+      if (cell) {
+        cellG.append('title')
+          .text(
+            `${pipe.pipeline_name}\n` +
+            `Date: ${date}\n` +
+            `Status: ${st}\n` +
+            `Rows: ${cell.total_rows?.toLocaleString('en-IN') || 0}\n` +
+            `Duration: ${cell.duration_secs != null ? cell.duration_secs + 's' : '—'}`
+          );
+      }
+    });
+  });
+}
+
+function fmt_rows_tiny(n) {
+  if (!n) return '';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
+  return n;
+}
+
+// ─── Render Dictionary ────────────────────────────────────────────────────
+function renderDictionary(data) {
+  if (!data) {
+    document.getElementById('dict-body').innerHTML =
+      '<div class="error-card">Failed to load dictionary data.</div>';
+    return;
+  }
+
+  document.getElementById('dict-sub').textContent =
+    `${data.table_count} tables · ${data.column_count} columns`;
+
+  _dictData = data;
+  filterDictionary('');
+}
+
+function filterDictionary(query) {
+  if (!_dictData) return;
+  const q = query.toLowerCase().trim();
+  const container = document.getElementById('dict-body');
+  container.innerHTML = '';
+
+  (_dictData.tables || []).forEach(tbl => {
+    const matchTable = !q || tbl.table.toLowerCase().includes(q);
+    const matchCols  = tbl.columns.filter(c =>
+      !q ||
+      c.column.toLowerCase().includes(q) ||
+      (c.description || '').toLowerCase().includes(q) ||
+      c.data_type.toLowerCase().includes(q)
+    );
+
+    if (!matchTable && matchCols.length === 0) return;
+    const cols = matchTable ? tbl.columns : matchCols;
+
+    const div = document.createElement('div');
+    div.className = 'dict-table-group';
+    div.innerHTML = `
+      <div class="dict-table-header" onclick="toggleDict(this)">
+        <span class="dict-table-name">${escHtml(tbl.table)}</span>
+        <span style="display:flex;align-items:center;gap:12px">
+          <span class="dict-col-count">${cols.length} columns</span>
+          <span class="dict-chevron open">▼</span>
+        </span>
+      </div>
+      <div class="dict-table-body open">
+        <table class="dict-inner">
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Type</th>
+              <th>Nullable</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cols.map(c => `
+              <tr>
+                <td class="dict-col-name">${escHtml(c.column)}</td>
+                <td class="dict-type">${escHtml(c.data_type)}</td>
+                <td class="dict-nullable">${c.is_nullable ? 'yes' : 'no'}</td>
+                <td class="dict-desc">${escHtml(c.description || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+
+  if (container.children.length === 0) {
+    container.innerHTML = `<div style="color:var(--slate-lt);font-size:13px;padding:24px;">No results for "${escHtml(q)}".</div>`;
+  }
+}
+
+function toggleDict(headerEl) {
+  const chevron = headerEl.querySelector('.dict-chevron');
+  const body    = headerEl.nextElementSibling;
+  const isOpen  = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────
+fetchAll();
+// Auto-refresh every 60 seconds
+setInterval(fetchAll, 60000);
+</script>
+
+</body>
+</html>

@@ -13,6 +13,8 @@ from app.api.v1.equity import router as equity_router
 from app.api.v1.flows import router as flows_router
 from app.api.v1.market import router as market_router
 from app.api.v1.mf import router as mf_router
+from app.api.v1.observatory import router as observatory_router
+from app.api.v1.observatory_ui import router as observatory_ui_router
 from app.api.v1.qualitative import router as qualitative_router
 
 all_routers = [
@@ -23,6 +25,8 @@ all_routers = [
     flows_router,
     qualitative_router,
     admin_router,
+    observatory_router,
+    observatory_ui_router,
 ]
 
 __all__ = [
@@ -34,4 +38,6 @@ __all__ = [
     "flows_router",
     "qualitative_router",
     "admin_router",
+    "observatory_router",
+    "observatory_ui_router",
 ]
