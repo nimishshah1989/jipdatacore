@@ -186,7 +186,7 @@ async def compute_breadth(
             SELECT
                 instrument_id,
                 close
-            FROM de_equity_price_daily
+            FROM de_equity_ohlcv
             WHERE date = :bdate
               AND data_status = 'validated'
               AND close IS NOT NULL
@@ -195,10 +195,10 @@ async def compute_breadth(
             SELECT
                 instrument_id,
                 close AS prev_close
-            FROM de_equity_price_daily
+            FROM de_equity_ohlcv
             WHERE date = (
                 SELECT MAX(date)
-                FROM de_equity_price_daily
+                FROM de_equity_ohlcv
                 WHERE date < :bdate AND data_status = 'validated'
             )
               AND data_status = 'validated'
@@ -235,14 +235,14 @@ async def compute_breadth(
                 instrument_id,
                 MAX(high) AS high_52w,
                 MIN(low) AS low_52w
-            FROM de_equity_price_daily
+            FROM de_equity_ohlcv
             WHERE date >= :start_52w AND date < :bdate
               AND data_status = 'validated'
             GROUP BY instrument_id
         ),
         today AS (
             SELECT instrument_id, high, low
-            FROM de_equity_price_daily
+            FROM de_equity_ohlcv
             WHERE date = :bdate
               AND data_status = 'validated'
         )

@@ -153,7 +153,7 @@ async def compute_rs_scores(
 ) -> int:
     """Compute and persist RS scores for all active entities vs all benchmarks.
 
-    Reads validated close_adj prices from de_equity_price_daily (or relevant table).
+    Reads validated close_adj prices from de_equity_ohlcv (or relevant table).
     Skips computation if >5% of universe is quarantined.
     Writes to de_rs_scores ON CONFLICT DO UPDATE.
 
@@ -174,7 +174,7 @@ async def compute_rs_scores(
     # Fetch validated status counts to check quarantine threshold
     status_query = sa.text("""
         SELECT data_status, COUNT(*) as cnt
-        FROM de_equity_price_daily
+        FROM de_equity_ohlcv
         WHERE date = :bdate
         GROUP BY data_status
     """)
@@ -204,7 +204,7 @@ async def compute_rs_scores(
             ep.date,
             CAST(COALESCE(ep.close_adj, ep.close) AS FLOAT) AS close_adj,
             i.symbol
-        FROM de_equity_price_daily ep
+        FROM de_equity_ohlcv ep
         JOIN de_instrument i ON i.id = ep.instrument_id
         WHERE ep.data_status = 'validated'
           AND ep.date <= :bdate

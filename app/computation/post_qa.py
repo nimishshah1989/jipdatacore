@@ -33,7 +33,7 @@ CONFIDENCE_WEIGHTS = {
 async def check_technicals_populated(
     session: AsyncSession, business_date: date
 ) -> StepResult:
-    """Check coverage of de_equity_technical_daily vs de_equity_price_daily.
+    """Check coverage of de_equity_technical_daily vs de_equity_ohlcv.
 
     <80% coverage = warning, 0 rows = failed.
     """
@@ -49,7 +49,7 @@ async def check_technicals_populated(
 
         price_count_row = await session.execute(
             sa.text(
-                "SELECT COUNT(*) FROM de_equity_price_daily WHERE date = :d"
+                "SELECT COUNT(*) FROM de_equity_ohlcv WHERE date = :d"
             ),
             {"d": business_date},
         )

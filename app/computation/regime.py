@@ -160,13 +160,13 @@ async def _fetch_volume_score(session: AsyncSession, business_date: date) -> Opt
         sa.text("""
             WITH recent AS (
                 SELECT AVG(CAST(volume AS FLOAT)) AS avg_vol_5d
-                FROM de_equity_price_daily
+                FROM de_equity_ohlcv
                 WHERE date >= :start_5d AND date <= :bdate
                   AND data_status = 'validated'
             ),
             historical AS (
                 SELECT AVG(CAST(volume AS FLOAT)) AS avg_vol_20d
-                FROM de_equity_price_daily
+                FROM de_equity_ohlcv
                 WHERE date >= :start_20d AND date < :start_5d
                   AND data_status = 'validated'
             )
@@ -259,7 +259,7 @@ async def _check_data_staleness(session: AsyncSession, business_date: date) -> b
     result = await session.execute(
         sa.text("""
             SELECT MAX(date) AS last_date
-            FROM de_equity_price_daily
+            FROM de_equity_ohlcv
             WHERE data_status = 'validated'
         """)
     )

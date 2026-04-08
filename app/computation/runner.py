@@ -51,7 +51,7 @@ async def run_technicals_for_date(
 ) -> int:
     """Compute and persist SMA50, SMA200, EMA20, close_adj for all instruments.
 
-    Queries all validated OHLCV rows from de_equity_price_daily for the given
+    Queries all validated OHLCV rows from de_equity_ohlcv for the given
     business_date and the preceding HISTORY_DAYS of history.  For each instrument
     the last row in the window is the one written to de_equity_technical_daily.
 
@@ -76,7 +76,7 @@ async def run_technicals_for_date(
             ep.instrument_id,
             ep.date,
             CAST(ep.close_adj AS FLOAT) AS close_adj
-        FROM de_equity_price_daily ep
+        FROM de_equity_ohlcv ep
         WHERE ep.data_status = 'validated'
           AND ep.close_adj IS NOT NULL
           AND ep.date <= :bdate
@@ -90,7 +90,7 @@ async def run_technicals_for_date(
             ep.instrument_id,
             ep.date,
             CAST(COALESCE(ep.close_adj, ep.close) AS FLOAT) AS close_adj
-        FROM de_equity_price_daily ep
+        FROM de_equity_ohlcv ep
         WHERE ep.data_status = 'validated'
           AND COALESCE(ep.close_adj, ep.close) IS NOT NULL
           AND ep.date <= :bdate

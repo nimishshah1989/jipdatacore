@@ -162,7 +162,7 @@ async def _process_single_item(
             # Fetch price history for this instrument from from_date
             price_query = sa.text("""
                 SELECT date, CAST(close_adj AS FLOAT) AS close_adj
-                FROM de_equity_price_daily
+                FROM de_equity_ohlcv
                 WHERE instrument_id = :iid
                   AND date >= :from_date
                   AND close_adj IS NOT NULL

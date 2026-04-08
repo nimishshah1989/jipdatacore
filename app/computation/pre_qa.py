@@ -48,7 +48,7 @@ async def check_ohlcv_coverage(
     step = StepResult(step_name="check_ohlcv_coverage", status="running")
     result = await session.execute(
         sa.text(
-            "SELECT COUNT(*) AS cnt FROM de_equity_price_daily"
+            "SELECT COUNT(*) AS cnt FROM de_equity_ohlcv"
             " WHERE date = :bdate AND data_status = 'validated'"
         ),
         {"bdate": business_date},
@@ -79,7 +79,7 @@ async def check_no_negative_prices(
     step = StepResult(step_name="check_no_negative_prices", status="running")
     result = await session.execute(
         sa.text(
-            "SELECT COUNT(*) AS cnt FROM de_equity_price_daily"
+            "SELECT COUNT(*) AS cnt FROM de_equity_ohlcv"
             " WHERE date = :bdate"
             "   AND (close < 0 OR open < 0 OR high < 0 OR low < 0)"
         ),
@@ -106,7 +106,7 @@ async def check_high_low_consistency(
     step = StepResult(step_name="check_high_low_consistency", status="running")
     result = await session.execute(
         sa.text(
-            "SELECT i.symbol FROM de_equity_price_daily p"
+            "SELECT i.symbol FROM de_equity_ohlcv p"
             " JOIN de_instrument i ON i.id = p.instrument_id"
             " WHERE p.date = :bdate AND p.high < p.low"
             " LIMIT 50"
@@ -138,7 +138,7 @@ async def check_zero_volume_pct(
             "SELECT"
             "  COUNT(*) FILTER (WHERE volume = 0 OR volume IS NULL) AS zero_vol,"
             "  COUNT(*) AS total"
-            " FROM de_equity_price_daily"
+            " FROM de_equity_ohlcv"
             " WHERE date = :bdate"
         ),
         {"bdate": business_date},
@@ -175,13 +175,13 @@ async def check_price_spikes(
             "WITH prev AS ("
             "  SELECT DISTINCT ON (instrument_id)"
             "    instrument_id, close AS prev_close"
-            "  FROM de_equity_price_daily"
+            "  FROM de_equity_ohlcv"
             "  WHERE date < :bdate AND close IS NOT NULL AND close > 0"
             "  ORDER BY instrument_id, date DESC"
             "),"
             "today AS ("
             "  SELECT instrument_id, close"
-            "  FROM de_equity_price_daily"
+            "  FROM de_equity_ohlcv"
             "  WHERE date = :bdate AND close IS NOT NULL AND close > 0"
             "),"
             "joined AS ("
