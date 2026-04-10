@@ -175,7 +175,7 @@ table.summary .right { text-align: right; }
   <div class="stat-box"><div class="big">~1.4M+</div><div class="lbl">MF NAV Rows</div><div class="sub-num">2006 &rarr; 2026</div></div>
   <div class="stat-box"><div class="big">826</div><div class="lbl">Macro Indicators</div><div class="sub-num">NEW &middot; 38 countries</div></div>
   <div class="stat-box"><div class="big">115,445</div><div class="lbl">Macro Value Rows</div><div class="sub-num">NEW &middot; 1802 &rarr; 2026</div></div>
-  <div class="stat-box"><div class="big">325,789</div><div class="lbl">ETF OHLCV Rows</div><div class="sub-num">130 ETFs</div></div>
+  <div class="stat-box"><div class="big">435,746</div><div class="lbl">ETF OHLCV Rows</div><div class="sub-num">220 ETFs</div></div>
   <div class="stat-box"><div class="big">180,794</div><div class="lbl">Global Price Rows</div><div class="sub-num">42 tickers</div></div>
 </div>
 
@@ -381,19 +381,19 @@ table.summary .right { text-align: right; }
 
       <div class="node">ETF Master</div>
       <div class="branch">
-        <div class="leaf"><span class="tbl">de_etf_master</span> <span class="live">LIVE</span> <span class="num">130</span> curated ETFs</div>
+        <div class="leaf"><span class="tbl">de_etf_master</span> <span class="live">LIVE</span> <span class="num">258</span> curated ETFs (220 active)</div>
         <div class="leaf"><span class="dim">Source:</span> Stooq flat files (local, not API)</div>
       </div>
 
       <div class="node">OHLCV Prices</div>
       <div class="branch">
-        <div class="leaf"><span class="tbl">de_etf_ohlcv</span> <span class="live">LIVE</span> <span class="num">325,789</span> rows, <span class="num">130</span> tickers</div>
+        <div class="leaf"><span class="tbl">de_etf_ohlcv</span> <span class="live">LIVE</span> <span class="num">435,746</span> rows, <span class="num">220</span> tickers</div>
         <div class="leaf"><span class="dim">Date range:</span> 2016-04-01 to 2026-04-06</div>
       </div>
 
       <div class="node">Technical Indicators (20 columns)</div>
       <div class="branch">
-        <div class="leaf"><span class="tbl">de_etf_technical_daily</span> <span class="live">LIVE</span> <span class="num">325,789</span> rows, <span class="num">130</span> tickers</div>
+        <div class="leaf"><span class="tbl">de_etf_technical_daily</span> <span class="live">LIVE</span> <span class="num">435,746</span> rows, <span class="num">220</span> tickers</div>
         <div class="leaf"><span class="dim">Date range:</span> 2016-04-01 to 2026-04-06</div>
         <div class="branch">
           <div class="leaf">SMA 50/200, EMA 10/20/50/200: <span class="num">130</span> <span class="live">100%</span></div>
@@ -405,7 +405,7 @@ table.summary .right { text-align: right; }
       <div class="node">RS Scores (ETF)</div>
       <div class="branch">
         <div class="leaf"><span class="tbl">de_rs_scores</span> entity_type='etf' <span class="live">LIVE</span> <span class="num">322,628</span> rows</div>
-        <div class="leaf"><span class="dim">Distinct ETFs:</span> <span class="num">129</span> (SPY excluded &mdash; it is the benchmark)</div>
+        <div class="leaf"><span class="dim">Distinct ETFs:</span> <span class="num">185</span> (SPY excluded &mdash; it is the benchmark)</div>
         <div class="leaf"><span class="dim">Date range:</span> 2016-04-08 to 2026-04-06 &middot; Benchmark: SPY</div>
       </div>
 
@@ -603,7 +603,7 @@ table.summary .right { text-align: right; }
         <div class="cron-dot"></div>
         <div>
           <div class="cron-label">ETF Technicals + RS <span class="cron-tag" style="background:#fefce8;color:#a16207">etf</span></div>
-          <div class="cron-detail">20-column technicals and RS vs SPY for all 130 ETFs</div>
+          <div class="cron-detail">20-column technicals and RS vs SPY for all 220 ETFs</div>
         </div>
       </div>
 
@@ -744,8 +744,8 @@ table.summary .right { text-align: right; }
         <tr><td class="mono">de_equity_technical_daily</td><td class="right num">3,996,551</td><td>2007-01 &rarr; 2026-04</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_mf_nav_daily (all partitions)</td><td class="right num">~1.4M+</td><td>2006-04 &rarr; 2026-04</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_mf_derived_daily</td><td class="right num">419,676</td><td>2016-04 &rarr; 2026-04</td><td><span class="live">LIVE</span></td></tr>
-        <tr><td class="mono">de_etf_ohlcv</td><td class="right num">325,789</td><td>2016-04 &rarr; 2026-04</td><td><span class="live">LIVE</span></td></tr>
-        <tr><td class="mono">de_etf_technical_daily</td><td class="right num">325,789</td><td>2016-04 &rarr; 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_etf_ohlcv</td><td class="right num">435,746</td><td>2016-04 &rarr; 2026-04</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_etf_technical_daily</td><td class="right num">435,746</td><td>2016-04 &rarr; 2026-04</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_mf_holdings</td><td class="right num">230,254</td><td>Monthly snapshots</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_global_prices</td><td class="right num">180,794</td><td>2010-01 &rarr; 2026-03</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_global_technical_daily</td><td class="right num">180,794</td><td>2010-01 &rarr; 2026-03</td><td><span class="live new-tag" style="background:#1D9E75;color:white;">NEW</span></td></tr>
@@ -762,7 +762,7 @@ table.summary .right { text-align: right; }
         <tr><td class="mono">de_instrument</td><td class="right num">2,743</td><td>&mdash;</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_index_constituents</td><td class="right num">2,660</td><td>&mdash;</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_macro_master</td><td class="right num">826</td><td>&mdash;</td><td><span class="live new-tag" style="background:#1D9E75;color:white;">NEW</span></td></tr>
-        <tr><td class="mono">de_etf_master</td><td class="right num">130</td><td>&mdash;</td><td><span class="live">LIVE</span></td></tr>
+        <tr><td class="mono">de_etf_master</td><td class="right num">258</td><td>&mdash;</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_index_master</td><td class="right num">123</td><td>&mdash;</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_global_instrument_master</td><td class="right num">91</td><td>&mdash;</td><td><span class="live">LIVE</span></td></tr>
         <tr><td class="mono">de_qual_documents</td><td class="right num">~59</td><td>&mdash;</td><td><span class="live new-tag" style="background:#1D9E75;color:white;">NEW</span></td></tr>
