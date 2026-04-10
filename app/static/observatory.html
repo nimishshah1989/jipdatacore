@@ -729,7 +729,7 @@ async function fetchPulse() {
     const r = await fetch('/api/v1/observatory/pulse');
     if (!r.ok) return null;
     const j = await r.json();
-    return j.data || null;
+    return j.data || j;
   } catch { return null; }
 }
 
@@ -738,7 +738,7 @@ async function fetchCoverage() {
     const r = await fetch('/api/v1/observatory/coverage');
     if (!r.ok) return null;
     const j = await r.json();
-    return j.data || null;
+    return j.data || j;
   } catch { return null; }
 }
 
@@ -747,7 +747,7 @@ async function fetchPipelines() {
     const r = await fetch('/api/v1/observatory/pipelines');
     if (!r.ok) return null;
     const j = await r.json();
-    return j.data || null;
+    return j.data || j;
   } catch { return null; }
 }
 
