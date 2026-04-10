@@ -168,9 +168,12 @@ async def _run_computation_script(
 
     cmd = [sys.executable, "-m", module]
 
-    # Some scripts accept --date argument
-    if name not in ("regime_detection",):
-        cmd.extend(["--date", business_date.isoformat()])
+    # Map script-specific CLI arguments
+    if name in ("equity_technicals_sql", "equity_technicals_pandas"):
+        cmd.extend(["--start-date", business_date.isoformat()])
+    elif name in ("relative_strength",):
+        cmd.extend(["--entity-type", "all"])
+    # breadth_regime, fund_metrics, etf/global scripts: no date arg needed
 
     logger.info("computation_script_start", name=name, module=module, cmd=cmd)
 
