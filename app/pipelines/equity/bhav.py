@@ -467,6 +467,23 @@ class BhavPipeline(BasePipeline):
                 }
             )
 
+        # Deduplicate by (date, instrument_id) — standard format may have
+        # duplicate rows (e.g. same symbol in EQ and BE series).
+        # Keep last occurrence (typically the most complete row).
+        seen_keys: dict[tuple, int] = {}
+        for idx, row_dict in enumerate(insert_rows):
+            key = (row_dict["date"], row_dict["instrument_id"])
+            seen_keys[key] = idx
+        if len(seen_keys) < len(insert_rows):
+            dedup_count = len(insert_rows) - len(seen_keys)
+            logger.info(
+                "bhav_dedup_rows",
+                original=len(insert_rows),
+                deduped=dedup_count,
+                business_date=business_date.isoformat(),
+            )
+            insert_rows = [insert_rows[i] for i in sorted(seen_keys.values())]
+
         # Batch upsert
         if insert_rows:
             stmt = pg_insert(DeEquityOhlcv).values(insert_rows)
