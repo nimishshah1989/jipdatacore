@@ -172,7 +172,7 @@ async def _run_computation_script(
     if name in ("equity_technicals_sql", "equity_technicals_pandas"):
         cmd.extend(["--start-date", business_date.isoformat()])
     elif name in ("relative_strength",):
-        cmd.extend(["--entity-type", "all"])
+        cmd.extend(["--entity-type", "all", "--start-date", business_date.isoformat()])
     # breadth_regime, fund_metrics, etf/global scripts: no date arg needed
 
     logger.info("computation_script_start", name=name, module=module, cmd=cmd)

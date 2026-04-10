@@ -189,14 +189,26 @@ async def compute_sector_rs():
     print(f"    Done in {time.time()-t0:.0f}s", flush=True)
 
 
-async def run(entity_type: str = "all"):
+async def run(entity_type: str = "all", start_date: str | None = None):
+    from datetime import date as date_type, timedelta
+
     t0 = time.time()
+
+    # Incremental mode: only compute from start_date, with 18-month lookback for window functions
+    if start_date:
+        compute_start = start_date
+        lookback_start = (date_type.fromisoformat(start_date) - timedelta(days=550)).isoformat()
+        print(f"Incremental RS from {compute_start} (lookback: {lookback_start})", flush=True)
+    else:
+        compute_start = "2016-04-01"
+        lookback_start = "2015-01-01"
+
     if entity_type in ("all", "equity"):
         print("Equity RS:", flush=True)
-        await compute_equity_rs()
+        await compute_equity_rs(lookback_start=lookback_start, compute_start=compute_start)
     if entity_type in ("all", "mf"):
         print("MF RS:", flush=True)
-        await compute_mf_rs()
+        await compute_mf_rs(lookback_start=lookback_start, compute_start=compute_start)
     if entity_type in ("all", "sector"):
         print("Sector RS:", flush=True)
         await compute_sector_rs()
@@ -206,8 +218,12 @@ async def run(entity_type: str = "all"):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--entity-type", choices=["all", "equity", "mf", "sector"], default="all")
+    parser.add_argument(
+        "--start-date", default=None,
+        help="Compute from this date (incremental). Omit for full rebuild.",
+    )
     args = parser.parse_args()
-    asyncio.run(run(args.entity_type))
+    asyncio.run(run(args.entity_type, args.start_date))
 
 
 if __name__ == "__main__":
