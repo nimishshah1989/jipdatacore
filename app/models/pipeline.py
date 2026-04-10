@@ -189,3 +189,25 @@ class DeRequestLog(Base):
         onupdate=sa.func.now(),
         nullable=False,
     )
+
+
+class DeHealingLog(Base):
+    """Self-healing agent actions — tracks auto-fix attempts and results."""
+
+    __tablename__ = "de_healing_log"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    date: Mapped[date] = mapped_column(sa.Date, nullable=False, index=True)
+    stream_id: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    pipeline_triggered: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    action: Mapped[str] = mapped_column(
+        sa.String(50), nullable=False
+    )  # trigger, retry, escalate
+    result: Mapped[str] = mapped_column(
+        sa.String(50), nullable=False
+    )  # success, failed, timeout
+    retries: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    error_detail: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )

@@ -374,31 +374,8 @@ main{padding-top:56px;}
       <div class="section-sub">Claude-managed ingestion agents. Weekday schedule (IST).</div>
     </div>
   </div>
-  <div class="agent-cards">
-    <div class="agent-card">
-      <div class="agent-name">jip-eod-ingestion</div>
-      <div class="agent-schedule">Runs at <span class="time">18:33 IST</span> weekdays</div>
-      <div class="agent-status-row">
-        <span class="badge grey" id="agent-eod-badge">—</span>
-        <span style="font-size:10px;color:var(--slate-lt)" id="agent-eod-last"></span>
-      </div>
-    </div>
-    <div class="agent-card">
-      <div class="agent-name">jip-computations</div>
-      <div class="agent-schedule">Runs at <span class="time">19:03 IST</span> weekdays</div>
-      <div class="agent-status-row">
-        <span class="badge grey" id="agent-comp-badge">—</span>
-        <span style="font-size:10px;color:var(--slate-lt)" id="agent-comp-last"></span>
-      </div>
-    </div>
-    <div class="agent-card">
-      <div class="agent-name">jip-fund-metrics</div>
-      <div class="agent-schedule">Runs at <span class="time">21:03 IST</span> weekdays</div>
-      <div class="agent-status-row">
-        <span class="badge grey" id="agent-fund-badge">—</span>
-        <span style="font-size:10px;color:var(--slate-lt)" id="agent-fund-last"></span>
-      </div>
-    </div>
+  <div class="agent-cards" id="agent-cards">
+    <!-- Populated dynamically from /observatory/agents -->
   </div>
   <div class="loading-bar" id="pipeline-loading"></div>
   <div class="pipeline-heatmap-wrap">
@@ -410,6 +387,34 @@ main{padding-top:56px;}
       <div class="pl-item"><div class="pl-sq" style="background:#334155"></div>No run</div>
     </div>
   </div>
+</div>
+
+<hr class="divider">
+
+<!-- ─── Section 4: Uptime & Self-Healing ─── -->
+<div class="section" id="sec-uptime">
+  <div class="section-hdr">
+    <div>
+      <div class="section-tag">Resilience</div>
+      <div class="section-title">7-Day Uptime & Self-Healing</div>
+      <div class="section-sub" id="uptime-subtitle">Loading...</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:16px;">
+    <div style="text-align:center;">
+      <div style="font-size:48px;font-weight:700;color:var(--green)" id="uptime-pct">—</div>
+      <div style="font-size:12px;color:var(--slate-lt)">7-day uptime</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:48px;font-weight:700;color:var(--teal)" id="heals-count">0</div>
+      <div style="font-size:12px;color:var(--slate-lt)">auto-fixes today</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:48px;font-weight:700;color:var(--red)" id="failures-count">0</div>
+      <div style="font-size:12px;color:var(--slate-lt)">failures today</div>
+    </div>
+  </div>
+  <div id="healing-log" style="margin-top:16px;"></div>
 </div>
 
 </main>
@@ -1144,26 +1149,61 @@ function renderPipelineHeatmap(pipelines) {
   });
 }
 
-// ─── Agent Status ─────────────────────────────────────────────────────────────
-function updateAgentStatus(pipelines) {
-  if (!pipelines || !pipelines.length) return;
-  const agents = [
-    { key: 'eod', match: 'eod', badgeId: 'agent-eod-badge', lastId: 'agent-eod-last' },
-    { key: 'comp', match: 'computation', badgeId: 'agent-comp-badge', lastId: 'agent-comp-last' },
-    { key: 'fund', match: 'fund', badgeId: 'agent-fund-badge', lastId: 'agent-fund-last' }
-  ];
-  agents.forEach(a => {
-    const p = pipelines.find ? pipelines.find(p => (p.name || p.pipeline_name || '').toLowerCase().includes(a.match)) : null;
-    const badge = document.getElementById(a.badgeId);
-    const last = document.getElementById(a.lastId);
-    if (p) {
-      const lastRun = (p.runs || [])[0];
-      const status = lastRun ? (lastRun.status || 'unknown') : 'unknown';
-      badge.textContent = status;
-      badge.className = 'badge ' + (status === 'success' ? 'green' : status === 'failed' ? 'red' : status === 'partial' ? 'amber' : 'grey');
-      if (last) last.textContent = lastRun ? fmtDate(lastRun.date || lastRun.run_date) : '—';
+// ─── Agent Status (from /observatory/agents API) ─────────────────────────────
+async function fetchAgentStatus() {
+  try {
+    const r = await fetch('/api/v1/observatory/agents');
+    if (!r.ok) return;
+    const j = await r.json();
+    const agents = (j.data || j).agents || [];
+    const container = document.getElementById('agent-cards');
+    if (!container) return;
+    container.innerHTML = agents.map(a => {
+      const color = a.health === 'healthy' ? 'green' : a.health === 'stale' ? 'amber' : 'grey';
+      const statusText = a.last_status || 'unknown';
+      const lastRun = a.last_run ? ageLabel(a.last_run.split('T')[0]) : 'never';
+      return `<div class="agent-card">
+        <div class="agent-name">${a.name}</div>
+        <div class="agent-schedule">${a.schedule} | ${a.pipeline_count} pipelines</div>
+        <div class="agent-status-row">
+          <span class="badge ${color}">${statusText}</span>
+          <span style="font-size:10px;color:var(--slate-lt)">${lastRun}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch {}
+}
+
+// ─── Daily Report + Uptime ───────────────────────────────────────────────────
+async function fetchDailyReport() {
+  try {
+    const r = await fetch('/api/v1/observatory/daily-report');
+    if (!r.ok) return;
+    const raw = await r.json();
+    const j = raw.data || raw;
+    const el = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+    el('uptime-pct', (j.overall_uptime_pct || 0) + '%');
+    el('heals-count', j.healing_events_today || 0);
+    el('failures-count', j.failures_today || 0);
+    el('uptime-subtitle', `${j.pipeline_runs_today || 0} pipeline runs today | ${j.overall_uptime_pct || 0}% 7-day uptime`);
+
+    // Color the uptime number
+    const uptimeEl = document.getElementById('uptime-pct');
+    if (uptimeEl) {
+      const pct = j.overall_uptime_pct || 0;
+      uptimeEl.style.color = pct >= 90 ? 'var(--green)' : pct >= 70 ? 'var(--amber)' : 'var(--red)';
     }
-  });
+
+    // Healing log
+    const healLog = document.getElementById('healing-log');
+    if (healLog && j.heals && j.heals.length) {
+      healLog.innerHTML = '<div style="font-size:12px;color:var(--slate-lt);margin-bottom:8px;">Recent auto-fixes:</div>' +
+        j.heals.map(h => {
+          const icon = h.result === 'success' ? '&#x2705;' : '&#x274c;';
+          return `<div style="font-size:11px;color:var(--slate);padding:2px 0;">${icon} ${h.stream} — ${h.action} → ${h.result}</div>`;
+        }).join('');
+    }
+  } catch {}
 }
 
 // ─── Main Load ────────────────────────────────────────────────────────────────
@@ -1177,11 +1217,14 @@ async function loadAll() {
   // Load progressively — render each section as its data arrives (don't wait for all)
   // Pulse is fastest (~8s), pipelines fast (~0.3s), coverage slow (~27s)
 
+  // 0. Agent status + daily report (independent, fast)
+  fetchAgentStatus().catch(() => {});
+  fetchDailyReport().catch(() => {});
+
   // 1. Pipelines first (fastest)
   fetchPipelines().then(pipelines => {
     if (pipelines) {
       renderPipelineHeatmap(pipelines.pipelines || []);
-      updateAgentStatus(pipelines.pipelines || []);
     }
     const el = document.getElementById('pipeline-loading');
     if (el) el.classList.remove('active');

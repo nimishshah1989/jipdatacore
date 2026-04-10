@@ -72,6 +72,7 @@ DAG_ALIAS: dict[str, str] = {
     "yfinance_global": "yfinance_global",
     "fred_macro": "fred_macro",
     "qualitative_rss": "qualitative_rss",
+    "india_vix": "india_vix",
 }
 
 # Reverse map: pipeline_name → DAG alias (for lookups going the other direction)
@@ -87,6 +88,11 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "eod": [
         "nse_bhav", "nse_corporate_actions", "nse_indices",
         "fii_dii_flows", "amfi_nav", "yfinance_global", "fred_macro",
+        "india_vix",
+    ],
+    # Weekend: no Indian equity, but global markets still trade
+    "eod_weekend": [
+        "yfinance_global", "fred_macro",
     ],
     "rs_computation": ["relative_strength"],
     "technicals": ["equity_technicals_sql", "equity_technicals_pandas"],

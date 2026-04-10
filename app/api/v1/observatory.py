@@ -7,11 +7,15 @@ and health checks that run outside the JWT context (e.g., cron checks,
 SRE dashboards). All data returned is operational/structural metadata —
 no financial data, no PII, no client data.
 
-GET /api/v1/observatory/pulse       — Data freshness per stream
-GET /api/v1/observatory/quality     — Quality check results
-GET /api/v1/observatory/coverage    — Table coverage matrix
-GET /api/v1/observatory/pipelines   — 7-day pipeline health
-GET /api/v1/observatory/dictionary  — Data dictionary
+GET  /api/v1/observatory/pulse          — Data freshness per stream
+GET  /api/v1/observatory/quality        — Quality check results
+GET  /api/v1/observatory/coverage       — Table coverage matrix
+GET  /api/v1/observatory/pipelines      — 7-day pipeline health
+GET  /api/v1/observatory/dictionary     — Data dictionary
+GET  /api/v1/observatory/health-action  — Self-healing: what's broken + how to fix
+POST /api/v1/observatory/healing-result — Log a self-healing fix attempt
+GET  /api/v1/observatory/agents         — Managed agent status
+GET  /api/v1/observatory/daily-report   — Daily pipeline summary + 7-day uptime
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from typing import Any, Optional
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -832,4 +837,362 @@ async def get_dictionary(
         "table_count": len(tables_list),
         "column_count": len(columns),
         "tables": tables_list,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Stream → pipeline mapping for self-healing
+# ---------------------------------------------------------------------------
+
+STREAM_PIPELINE_MAP: dict[str, str] = {
+    "equity_ohlcv": "equity_bhav",
+    "equity_technicals": "equity_technicals_sql",
+    "rs_scores": "relative_strength",
+    "market_breadth": "market_breadth",
+    "market_regime": "market_breadth",
+    "mf_nav": "amfi_nav",
+    "mf_derived": "mf_derived",
+    "mf_holdings": "morningstar_portfolio",
+    "mf_flows": "mf_category_flows",
+    "etf_ohlcv": "etf_technicals",
+    "global_prices": "yfinance_global",
+    "global_technicals": "global_technicals",
+    "macro_values": "fred_macro",
+    "index_prices": "nse_indices",
+    "institutional_flows": "fii_dii_flows",
+    "corporate_actions": "nse_corporate_actions",
+    "qualitative": "qualitative_rss",
+    "goldilocks_market_view": "__goldilocks_compute__",
+    "goldilocks_sector_view": "__goldilocks_compute__",
+    "goldilocks_stock_ideas": "__goldilocks_compute__",
+    "oscillator_weekly": "equity_technicals_pandas",
+    "oscillator_monthly": "equity_technicals_pandas",
+    "index_pivots": "equity_technicals_pandas",
+    "intermarket_ratios": "equity_technicals_pandas",
+    "fib_levels": "equity_technicals_pandas",
+    "divergence_signals": "equity_technicals_pandas",
+}
+
+
+# ---------------------------------------------------------------------------
+# Self-healing endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/health-action", status_code=status.HTTP_200_OK)
+async def health_action(
+    db: AsyncSession = Depends(get_observatory_db),
+):
+    """Return actionable fix list for stale/critical streams.
+
+    Used by the self-healing agent (Agent 3) to know what to fix and how.
+    """
+    from datetime import date as date_type
+
+    now_utc = datetime.now(tz=timezone.utc)
+    today = date_type.today()
+    actions: list[dict[str, Any]] = []
+
+    # Get current pulse data
+    for stream_def in STREAM_DEFINITIONS:
+        sid = stream_def["stream_id"]
+        table = stream_def["table"]
+        date_col = stream_def["date_col"]
+
+        # Check if table exists
+        try:
+            exists_result = await db.execute(
+                sa.text(
+                    "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+                    "WHERE table_name = :tbl)"
+                ),
+                {"tbl": table},
+            )
+            if not exists_result.scalar_one():
+                continue
+        except Exception:
+            continue
+
+        # Get latest date
+        try:
+            max_result = await db.execute(
+                sa.text(f"SELECT MAX({date_col}) FROM {table}")  # noqa: S608
+            )
+            max_date = max_result.scalar_one_or_none()
+        except Exception:
+            max_date = None
+
+        if max_date is None:
+            stream_status = "unknown"
+            hours_old = None
+        else:
+            if hasattr(max_date, "timestamp"):
+                hours_old = (now_utc - max_date.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+            else:
+                from datetime import datetime as dt
+                max_dt = dt.combine(max_date, dt.min.time()).replace(tzinfo=timezone.utc)
+                hours_old = (now_utc - max_dt).total_seconds() / 3600
+            stream_status = _freshness_status(hours_old)
+
+        if stream_status in ("stale", "critical", "unknown"):
+            pipeline = STREAM_PIPELINE_MAP.get(sid)
+            if pipeline is None:
+                continue
+
+            # Check today's healing attempts
+            try:
+                heal_result = await db.execute(
+                    sa.text(
+                        "SELECT COUNT(*) FROM de_healing_log "
+                        "WHERE date = :today AND stream_id = :sid"
+                    ),
+                    {"today": today, "sid": sid},
+                )
+                retries_today = heal_result.scalar_one()
+            except Exception:
+                retries_today = 0
+
+            actions.append({
+                "stream_id": sid,
+                "status": stream_status,
+                "hours_old": round(hours_old, 1) if hours_old else None,
+                "last_date": str(max_date) if max_date else None,
+                "pipeline_to_fix": pipeline,
+                "retries_today": retries_today,
+                "max_retries": 2,
+                "should_fix": retries_today < 2,
+            })
+
+    return {
+        "as_of": now_utc.isoformat(),
+        "actions_needed": len(actions),
+        "actions": actions,
+    }
+
+
+class HealingResultRequest(BaseModel):
+    stream_id: str
+    pipeline_triggered: str
+    action: str  # trigger, retry, escalate
+    result: str  # success, failed, timeout
+    retries: int = 0
+    error_detail: Optional[str] = None
+
+
+@router.post("/healing-result", status_code=status.HTTP_201_CREATED)
+async def record_healing_result(
+    body: HealingResultRequest,
+    db: AsyncSession = Depends(get_observatory_db),
+):
+    """Record a self-healing fix attempt by Agent 3."""
+    from datetime import date as date_type
+
+    await db.execute(
+        sa.text(
+            "INSERT INTO de_healing_log "
+            "(date, stream_id, pipeline_triggered, action, result, retries, error_detail) "
+            "VALUES (:date, :sid, :pipeline, :action, :result, :retries, :error)"
+        ),
+        {
+            "date": date_type.today(),
+            "sid": body.stream_id,
+            "pipeline": body.pipeline_triggered,
+            "action": body.action,
+            "result": body.result,
+            "retries": body.retries,
+            "error": body.error_detail,
+        },
+    )
+    await db.commit()
+
+    return {"status": "recorded"}
+
+
+# ---------------------------------------------------------------------------
+# Agent status endpoint
+# ---------------------------------------------------------------------------
+
+AGENT_DEFINITIONS = [
+    {
+        "agent_id": "jip-eod-ingestion",
+        "name": "EOD Ingestion",
+        "schedule": "18:33 IST, Mon-Fri",
+        "pipelines": ["equity_bhav", "nse_indices", "equity_corporate_actions",
+                       "fii_dii_flows", "mf_eod", "yfinance_global", "fred_macro", "india_vix"],
+        "match_patterns": ["eod", "bhav", "amfi", "yfinance", "fred", "fii_dii"],
+    },
+    {
+        "agent_id": "jip-nightly-compute",
+        "name": "Nightly Compute",
+        "schedule": "19:33 IST, Mon-Fri",
+        "pipelines": ["equity_technicals_sql", "relative_strength", "market_breadth",
+                       "mf_derived", "etf_technicals", "global_technicals"],
+        "match_patterns": ["nightly", "technicals", "rs_scores", "breadth", "regime",
+                           "fund_metrics", "etf_", "global_"],
+    },
+    {
+        "agent_id": "jip-health-check",
+        "name": "Health + Self-Heal",
+        "schedule": "23:33 IST, Daily",
+        "pipelines": [],
+        "match_patterns": ["health", "healing", "pulse"],
+    },
+]
+
+
+@router.get("/agents", status_code=status.HTTP_200_OK)
+async def agent_status(
+    db: AsyncSession = Depends(get_observatory_db),
+):
+    """Return managed agent status with last-run info."""
+    now_utc = datetime.now(tz=timezone.utc)
+    agents: list[dict[str, Any]] = []
+
+    for agent_def in AGENT_DEFINITIONS:
+        # Find most recent pipeline log matching this agent's patterns
+        last_run = None
+        last_status = "unknown"
+
+        for pattern in agent_def["match_patterns"]:
+            try:
+                result = await db.execute(
+                    sa.text(
+                        "SELECT pipeline_name, status, completed_at "
+                        "FROM de_pipeline_log "
+                        "WHERE pipeline_name ILIKE :pattern "
+                        "ORDER BY completed_at DESC NULLS LAST LIMIT 1"
+                    ),
+                    {"pattern": f"%{pattern}%"},
+                )
+                row = result.fetchone()
+                if row and row[2]:
+                    if last_run is None or row[2] > last_run:
+                        last_run = row[2]
+                        last_status = row[1]
+            except Exception:
+                continue
+
+        hours_since = None
+        if last_run:
+            if last_run.tzinfo is None:
+                last_run = last_run.replace(tzinfo=timezone.utc)
+            hours_since = round((now_utc - last_run).total_seconds() / 3600, 1)
+
+        agents.append({
+            "agent_id": agent_def["agent_id"],
+            "name": agent_def["name"],
+            "schedule": agent_def["schedule"],
+            "pipeline_count": len(agent_def["pipelines"]),
+            "last_run": last_run.isoformat() if last_run else None,
+            "last_status": last_status,
+            "hours_since_last_run": hours_since,
+            "health": "healthy" if hours_since and hours_since < 36 else
+                      "stale" if hours_since and hours_since < 96 else "unknown",
+        })
+
+    return {
+        "as_of": now_utc.isoformat(),
+        "agents": agents,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Daily report endpoint
+# ---------------------------------------------------------------------------
+
+@router.get("/daily-report", status_code=status.HTTP_200_OK)
+async def daily_report(
+    db: AsyncSession = Depends(get_observatory_db),
+):
+    """Daily pipeline summary with 7-day rolling uptime per stream."""
+    from datetime import date as date_type, timedelta
+
+    now_utc = datetime.now(tz=timezone.utc)
+    today = date_type.today()
+    week_ago = today - timedelta(days=7)
+
+    # Today's pipeline runs
+    try:
+        runs_result = await db.execute(
+            sa.text(
+                "SELECT pipeline_name, status, rows_processed, duration_seconds, error_detail "
+                "FROM de_pipeline_log "
+                "WHERE business_date = :today "
+                "ORDER BY completed_at DESC NULLS LAST"
+            ),
+            {"today": today},
+        )
+        today_runs = [
+            {
+                "pipeline": r[0],
+                "status": r[1],
+                "rows": r[2],
+                "duration_s": float(r[3]) if r[3] else 0,
+                "error": str(r[4])[:200] if r[4] else None,
+            }
+            for r in runs_result.fetchall()
+        ]
+    except Exception:
+        today_runs = []
+
+    # Today's healing events
+    try:
+        heal_result = await db.execute(
+            sa.text(
+                "SELECT stream_id, action, result, error_detail "
+                "FROM de_healing_log WHERE date = :today ORDER BY created_at DESC"
+            ),
+            {"today": today},
+        )
+        today_heals = [
+            {"stream": r[0], "action": r[1], "result": r[2], "error": r[3]}
+            for r in heal_result.fetchall()
+        ]
+    except Exception:
+        today_heals = []
+
+    # 7-day uptime per stream
+    uptime_by_stream: dict[str, dict[str, Any]] = {}
+    for stream_def in STREAM_DEFINITIONS:
+        sid = stream_def["stream_id"]
+        table = stream_def["table"]
+        date_col = stream_def["date_col"]
+
+        # Count distinct dates with data in last 7 days
+        try:
+            result = await db.execute(
+                sa.text(
+                    f"SELECT COUNT(DISTINCT {date_col}::date) "  # noqa: S608
+                    f"FROM {table} "  # noqa: S608
+                    f"WHERE {date_col} >= :week_ago"  # noqa: S608
+                ),
+                {"week_ago": week_ago},
+            )
+            days_with_data = result.scalar_one() or 0
+        except Exception:
+            days_with_data = 0
+
+        # 5 weekdays in 7 days for market data, 7 for global
+        expected_days = 5 if stream_def.get("category") in ("equity", "mf") else 7
+        uptime_pct = round(min(100, days_with_data / max(expected_days, 1) * 100), 1)
+
+        uptime_by_stream[sid] = {
+            "days_with_data": days_with_data,
+            "expected_days": expected_days,
+            "uptime_pct": uptime_pct,
+        }
+
+    # Overall uptime
+    uptimes = [v["uptime_pct"] for v in uptime_by_stream.values()]
+    overall_uptime = round(sum(uptimes) / len(uptimes), 1) if uptimes else 0
+
+    return {
+        "as_of": now_utc.isoformat(),
+        "date": today.isoformat(),
+        "overall_uptime_pct": overall_uptime,
+        "pipeline_runs_today": len(today_runs),
+        "failures_today": sum(1 for r in today_runs if r["status"] == "failed"),
+        "healing_events_today": len(today_heals),
+        "runs": today_runs,
+        "heals": today_heals,
+        "uptime_by_stream": uptime_by_stream,
     }

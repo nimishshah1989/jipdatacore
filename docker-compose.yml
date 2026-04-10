@@ -7,6 +7,7 @@ services:
       - .env
     volumes:
       - ./app:/app/app
+      - ./scripts:/app/scripts
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/health"]

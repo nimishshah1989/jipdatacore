@@ -1,72 +1,65 @@
-# JIP Data Engine — Daily Refresh Crontab
+# JIP Data Engine — Unified Trigger API Crontab
 # Install: crontab /home/ubuntu/jip-data-engine/scripts/cron/jip_scheduler.cron
 # All times in IST (UTC+5:30) — EC2 runs UTC, so subtract 5:30
-# IST 07:30 = UTC 02:00, IST 18:30 = UTC 13:00, etc.
+#
+# SINGLE EXECUTION PATH: everything goes through the trigger API.
+# No docker exec. No direct script calls. API handles logging, SLA, errors.
 
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
-CONTAINER=jip-data-engine
+API_BASE=http://localhost:8010/api/v1/pipeline
 LOG_DIR=/home/ubuntu/jip-data-engine/logs
+
+# API key loaded from env file (not hardcoded in crontab)
+# curl uses --config to hide key from ps output
+
+# Helper: trigger a schedule or single pipeline via API
+# Usage: jip_trigger <schedule|single/name> [business_date]
+# Reads JIP_PIPELINE_KEY from .env file
 
 # ============================================================
 # WEEKDAY INGESTION (Mon-Fri)
 # ============================================================
 
-# Pre-market: BHAV + indices (IST 07:30 = UTC 02:00)
-0 2 * * 1-5 docker exec $CONTAINER python3 -m app.pipelines.equity.bhav >> $LOG_DIR/bhav.log 2>&1
-5 2 * * 1-5 docker exec $CONTAINER python3 -m app.pipelines.indices.index_prices >> $LOG_DIR/indices.log 2>&1
-
-# EOD: Full refresh after market close (IST 18:30 = UTC 13:00)
-0 13 * * 1-5 docker exec $CONTAINER python3 -m app.pipelines.equity.bhav >> $LOG_DIR/bhav.log 2>&1
-5 13 * * 1-5 docker exec $CONTAINER python3 -m app.pipelines.indices.index_prices >> $LOG_DIR/indices.log 2>&1
-10 13 * * 1-5 docker exec $CONTAINER python3 -m app.pipelines.mf.amfi >> $LOG_DIR/amfi_nav.log 2>&1
+# EOD: Full ingestion after market close (IST 18:33 = UTC 13:03)
+# Covers: BHAV, indices, corporate actions, FII/DII, AMFI NAV, yfinance, FRED, VIX
+3 13 * * 1-5 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/eod" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 3600 >> $LOG_DIR/eod.log 2>&1
 
 # ============================================================
-# WEEKDAY COMPUTATION (Mon-Fri, after ingestion)
+# WEEKDAY COMPUTATION (Mon-Fri)
 # ============================================================
 
-# Equity technicals (IST 19:00 = UTC 13:30)
-30 13 * * 1-5 docker exec $CONTAINER python3 -m scripts.compute.technicals_sql >> $LOG_DIR/tech_sql.log 2>&1
-35 13 * * 1-5 cd /home/ubuntu/jip-data-engine && python3 -m scripts.compute.technicals_pandas --start-date 2024-01-01 --filter-date $(date -d 'yesterday' +\%Y-\%m-\%d) >> $LOG_DIR/tech_pandas.log 2>&1
-
-# RS scores (IST 19:30 = UTC 14:00)
-0 14 * * 1-5 docker exec $CONTAINER python3 -m scripts.compute.rs_scores >> $LOG_DIR/rs_scores.log 2>&1
-
-# Breadth + regime (IST 20:30 = UTC 15:00)
-0 15 * * 1-5 docker exec $CONTAINER python3 -m scripts.compute.breadth_regime >> $LOG_DIR/breadth_regime.log 2>&1
-
-# Fund metrics (IST 21:00 = UTC 15:30)
-30 15 * * 1-5 docker exec $CONTAINER python3 -m scripts.compute.fund_metrics >> $LOG_DIR/fund_metrics.log 2>&1
+# Nightly compute: validate → technicals → RS → breadth → fund metrics → ETF → global → goldilocks
+# IST 19:33 = UTC 14:03 (1 hour after EOD to ensure ingestion completes)
+3 14 * * 1-5 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/nightly_compute?business_date=$(TZ=Asia/Kolkata date +\%Y-\%m-\%d)" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 7200 >> $LOG_DIR/nightly_compute.log 2>&1
 
 # ============================================================
-# GLOBAL / ETF (Daily, after US market close — IST 05:30 next day = UTC 00:00)
+# WEEKEND (Sat-Sun) — global markets still trade
 # ============================================================
 
-# yfinance global prices (IST 22:00 = UTC 16:30)
-30 16 * * 1-5 docker exec $CONTAINER python3 -m app.pipelines.global_data.yfinance >> $LOG_DIR/yfinance.log 2>&1
+# Weekend EOD: yfinance + FRED only (IST 18:33 = UTC 13:03)
+3 13 * * 0,6 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/eod_weekend?business_date=$(TZ=Asia/Kolkata date +\%Y-\%m-\%d)" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 1800 >> $LOG_DIR/eod_weekend.log 2>&1
 
-# ETF technicals + RS (IST 23:00 = UTC 17:30)
-30 17 * * 1-5 docker exec $CONTAINER python3 -m scripts.compute.etf_technicals >> $LOG_DIR/etf_tech.log 2>&1
-35 17 * * 1-5 docker exec $CONTAINER python3 -m scripts.compute.etf_rs >> $LOG_DIR/etf_rs.log 2>&1
+# Weekend compute: global technicals + RS only (IST 19:33 = UTC 14:03)
+3 14 * * 0,6 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/etf_global?business_date=$(TZ=Asia/Kolkata date +\%Y-\%m-\%d)" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 1800 >> $LOG_DIR/etf_global_weekend.log 2>&1
 
-# Global technicals + RS (IST 23:30 = UTC 18:00)
-0 18 * * 1-5 docker exec $CONTAINER python3 -m scripts.compute.global_technicals >> $LOG_DIR/global_tech.log 2>&1
-5 18 * * 1-5 docker exec $CONTAINER python3 -m scripts.compute.global_rs >> $LOG_DIR/global_rs.log 2>&1
+# ============================================================
+# DAILY HEALTH CHECK (every day including weekends)
+# ============================================================
+
+# Self-healing agent check (IST 23:33 = UTC 18:03)
+3 18 * * * . /home/ubuntu/jip-data-engine/.env && curl -sf "http://localhost:8010/api/v1/observatory/pulse" >> $LOG_DIR/health_check.log 2>&1
 
 # ============================================================
 # WEEKLY (Sunday)
 # ============================================================
 
-# Note: Full RS rebuild removed — daily RS already recomputes all scores.
-# If daily becomes incremental in future, re-enable:
-# 30 20 * * 6 docker exec $CONTAINER python3 -m scripts.compute.rs_scores >> $LOG_DIR/rs_full.log 2>&1
-
-# Morningstar refresh (IST 04:00 Sunday = UTC 22:30 Saturday)
-30 22 * * 6 docker exec $CONTAINER python3 -m app.pipelines.morningstar.fund_master >> $LOG_DIR/mstar.log 2>&1
+# Morningstar fund master refresh (IST 04:00 Sunday = UTC 22:30 Saturday)
+30 22 * * 6 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/morningstar_weekly" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 3600 >> $LOG_DIR/morningstar.log 2>&1
 
 # ============================================================
 # MONTHLY (1st of month)
 # ============================================================
 
 # MF holdings (IST 03:00 on 1st = UTC 21:30 on last day of prev month)
-30 21 1 * * docker exec $CONTAINER python3 -m app.pipelines.morningstar.holdings >> $LOG_DIR/holdings.log 2>&1
+30 21 1 * * . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/holdings_monthly" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 3600 >> $LOG_DIR/holdings.log 2>&1
