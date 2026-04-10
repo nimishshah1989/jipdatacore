@@ -1,4 +1,4 @@
-"""Ingest 130+ curated ETFs — country broad + US sectors + global sectors + China sectors + commodities + bonds."""
+"""Ingest 161+ curated ETFs — country broad + US sectors + global sectors + China sectors + commodities + bonds."""
 import psycopg2, time, io, os, gc
 from pathlib import Path
 from datetime import date
@@ -86,6 +86,48 @@ ETFS = {
     "TLT": ("US","US Treasury","NASDAQ","iShares 20+ Year Treasury"), "IEF": ("US","US Treasury","NASDAQ","iShares 7-10 Year Treasury"),
     "HYG": ("US","High Yield","NYSE","iShares High Yield Corporate"), "LQD": ("US","Corp Bond","NYSE","iShares Investment Grade Corporate"),
     "EMB": ("EM","EM Bond","NYSE","iShares JP Morgan EM Bond"),
+    # Fixed Income (expanded)
+    "AGG": ("US", "US Aggregate Bond", "NYSE", "iShares Core US Aggregate Bond"),
+    "BND": ("US", "US Total Bond", "NASDAQ", "Vanguard Total Bond Market"),
+    "BNDX": ("INTL", "Intl Bond", "NASDAQ", "Vanguard Total International Bond"),
+    "TIP": ("US", "TIPS", "NYSE", "iShares TIPS Bond"),
+    "SHY": ("US", "Short Treasury", "NASDAQ", "iShares 1-3 Year Treasury"),
+    # Commodities (expanded)
+    "PDBC": ("US", "Commodities", "NYSE", "Invesco Optimum Yield Diversified Commodity"),
+    "PPLT": ("US", "Platinum", "NYSE", "abrdn Physical Platinum Shares"),
+    "WEAT": ("US", "Agriculture", "NYSE", "Teucrium Wheat Fund"),
+    # Thematic — AI & Robotics
+    "ARKK": ("US", "Disruptive Innovation", "NYSE", "ARK Innovation"),
+    "BOTZ": ("GLOBAL", "AI & Robotics", "NASDAQ", "Global X Robotics & AI"),
+    "ROBO": ("GLOBAL", "AI & Robotics", "NYSE", "ROBO Global Robotics & Automation"),
+    "AIQ": ("US", "AI & Big Data", "NYSE", "Global X AI & Technology"),
+    # Thematic — Electric Vehicles & Clean Energy
+    "DRIV": ("GLOBAL", "Electric Vehicles", "NYSE", "Global X Autonomous & Electric Vehicles"),
+    "LIT": ("GLOBAL", "Lithium & Battery", "NYSE", "Global X Lithium & Battery Tech"),
+    "QCLN": ("GLOBAL", "Clean Energy", "NASDAQ", "First Trust NASDAQ Clean Edge Green Energy"),
+    # Thematic — Cybersecurity
+    "CIBR": ("US", "Cybersecurity", "NYSE", "First Trust NASDAQ Cybersecurity"),
+    "BUG": ("GLOBAL", "Cybersecurity", "NYSE", "Global X Cybersecurity"),
+    # Thematic — Biotech & Genomics
+    "GNOM": ("US", "Genomics", "NYSE", "Global X Genomics & Biotechnology"),
+    # Thematic — Blockchain & Crypto
+    "BLOK": ("US", "Blockchain", "NYSE", "Amplify Transformational Data Sharing"),
+    "IBIT": ("US", "Bitcoin", "NASDAQ", "iShares Bitcoin Trust"),
+    # Thematic — Uranium & Nuclear
+    "URA": ("GLOBAL", "Uranium", "NYSE", "Global X Uranium"),
+    # Thematic — Space
+    "ARKX": ("US", "Space Exploration", "NYSE", "ARK Space Exploration & Innovation"),
+    # Thematic — Other
+    "JETS": ("US", "Airlines", "NYSE", "US Global Jets"),
+    "MSOS": ("US", "Cannabis", "NYSE", "AdvisorShares Pure US Cannabis"),
+    "XHE": ("US", "Healthcare Equipment", "NYSE", "SPDR S&P Health Care Equipment"),
+    "CLOU": ("US", "Cloud Computing", "NYSE", "Global X Cloud Computing"),
+    "FINX": ("GLOBAL", "Fintech", "NASDAQ", "Global X FinTech"),
+    # Frontier & Small Markets
+    "FM": ("FM", "Frontier Markets", "NYSE", "iShares MSCI Frontier and Select EM"),
+    "ENZL": ("NZ", "Broad Market", "NYSE", "iShares MSCI New Zealand"),
+    "PAK": ("PK", "Broad Market", "NYSE", "Global X MSCI Pakistan"),
+    "NGE": ("NG", "Broad Market", "NYSE", "Global X MSCI Nigeria"),
 }
 
 # Tier 1 US ETFs — dict format for test compatibility

@@ -126,10 +126,12 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     },
     "de_etf_ohlcv": {
         "date": "Trading date",
-        "symbol": "ETF ticker symbol",
+        "ticker": "ETF ticker symbol (FK to de_etf_master)",
+        "open": "Opening price",
+        "high": "Intraday high",
+        "low": "Intraday low",
         "close": "Closing price",
-        "aum_cr": "ETF AUM in crores INR",
-        "tracking_error": "Annualised tracking error vs index",
+        "volume": "Total traded volume",
     },
     "de_global_prices": {
         "price_date": "Price date",

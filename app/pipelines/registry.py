@@ -51,6 +51,7 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     "morningstar_holdings": ("app.pipelines.morningstar.holdings", "HoldingsPipeline"),
     "morningstar_risk": ("app.pipelines.morningstar.risk", "RiskPipeline"),
     # ETF
+    "nse_etf_sync": ("app.pipelines.etf.nse_etf_sync", "NseEtfSyncPipeline"),
     "etf_prices": ("app.pipelines.etf.etf_prices", "EtfPricePipeline"),
     # Qualitative
     "qualitative_rss": ("app.pipelines.qualitative.rss", "RssPipeline"),
@@ -75,6 +76,8 @@ DAG_ALIAS: dict[str, str] = {
     "fred_macro": "fred_macro",
     "qualitative_rss": "qualitative_rss",
     "india_vix": "india_vix",
+    "nse_etf_sync": "nse_etf_sync",
+    "etf_prices": "etf_prices",
 }
 
 # Reverse map: pipeline_name → DAG alias (for lookups going the other direction)
@@ -87,10 +90,14 @@ _REVERSE_ALIAS: dict[str, str] = {v: k for k, v in DAG_ALIAS.items()}
 SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "pre_market": ["nse_bhav", "nse_corporate_actions", "nse_indices"],
     "t1_delivery": ["fii_dii_flows"],
+    # NOTE: CronSchedule.default() in orchestrator/scheduler.py has a stale eod entry
+    # that is missing india_vix, nse_etf_sync, and etf_prices. This SCHEDULE_REGISTRY
+    # entry is the source of truth. The scheduler.py eod ScheduleEntry should be updated
+    # to match, but that file is owned by the orchestration layer — update separately.
     "eod": [
         "nse_bhav", "nse_corporate_actions", "nse_indices",
         "fii_dii_flows", "amfi_nav", "yfinance_global", "fred_macro",
-        "india_vix", "etf_prices",
+        "india_vix", "nse_etf_sync", "etf_prices",
     ],
     # Weekend: no Indian equity, but global markets still trade
     "eod_weekend": [
@@ -117,6 +124,7 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
         "relative_strength",
         "market_breadth",
         "mf_derived",
+        "nse_etf_sync",
         "etf_technicals",
         "etf_rs",
         "global_technicals",

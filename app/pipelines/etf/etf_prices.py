@@ -162,15 +162,33 @@ class EtfPricePipeline(BasePipeline):
     ) -> ExecutionResult:
         import sqlalchemy as sa
 
-        # Get all active ETF tickers from master
+        # Get all active ETF tickers + exchange from master
         result = await session.execute(
-            sa.text("SELECT ticker FROM de_etf_master WHERE is_active = TRUE ORDER BY ticker")
+            sa.text("SELECT ticker, exchange FROM de_etf_master WHERE is_active = TRUE ORDER BY ticker")
         )
-        tickers = [row[0] for row in result.fetchall()]
+        rows_raw = result.fetchall()
 
-        logger.info("etf_prices_start", ticker_count=len(tickers), business_date=business_date.isoformat())
+        # Build yfinance-compatible ticker list: NSE tickers need .NS suffix
+        yf_to_db: dict[str, str] = {}
+        for db_ticker, exchange in rows_raw:
+            if exchange == "NSE":
+                yf_ticker = db_ticker + ".NS"
+            else:
+                yf_ticker = db_ticker
+            yf_to_db[yf_ticker] = db_ticker
 
-        rows = await fetch_etf_prices(tickers, business_date)
+        yf_tickers = list(yf_to_db.keys())
+
+        logger.info("etf_prices_start", ticker_count=len(yf_tickers), business_date=business_date.isoformat())
+
+        raw_rows = await fetch_etf_prices(yf_tickers, business_date)
+
+        # Map yfinance tickers back to DB tickers
+        rows: list[dict[str, Any]] = []
+        for row in raw_rows:
+            yf_t = row["ticker"]
+            row["ticker"] = yf_to_db.get(yf_t, yf_t)
+            rows.append(row)
 
         if not rows:
             logger.warning("etf_prices_zero_rows", business_date=business_date.isoformat())
