@@ -1019,8 +1019,9 @@ AGENT_DEFINITIONS = [
         "name": "EOD Ingestion",
         "schedule": "18:33 IST, Mon-Fri",
         "pipelines": ["equity_bhav", "nse_indices", "equity_corporate_actions",
-                       "fii_dii_flows", "mf_eod", "yfinance_global", "fred_macro", "india_vix"],
-        "match_patterns": ["eod", "bhav", "amfi", "yfinance", "fred", "fii_dii"],
+                       "fii_dii_flows", "mf_eod", "yfinance_global", "fred_macro",
+                       "india_vix", "nse_etf_sync", "etf_prices"],
+        "match_patterns": ["eod", "bhav", "amfi", "yfinance", "fred", "fii_dii", "etf_price", "nse_etf"],
     },
     {
         "agent_id": "jip-nightly-compute",

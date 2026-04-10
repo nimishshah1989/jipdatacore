@@ -477,7 +477,7 @@ const TREE_DATA = {
     {
       name: "Indian Equities",
       type: "domain",
-      meta: "2,743 instruments",
+      countTable: "de_instrument",
       children: [
         {
           name: "Price Data",
@@ -574,7 +574,7 @@ const TREE_DATA = {
     {
       name: "Mutual Funds",
       type: "domain",
-      meta: "13,380 schemes",
+      countTable: "de_mf_master",
       children: [
         {
           name: "NAV Data",
@@ -637,7 +637,7 @@ const TREE_DATA = {
     {
       name: "Indices",
       type: "domain",
-      meta: "135 indices",
+      countTable: "de_index_master",
       children: [
         {
           name: "Index Prices",
@@ -677,7 +677,8 @@ const TREE_DATA = {
           name: "ETF Data",
           type: "table",
           table: "de_etf_ohlcv",
-          meta: "220 ETFs — OHLCV + technicals (58 NSE India, 162 global)",
+          countTable: "de_etf_master",
+          meta: "OHLCV + technicals",
           columns: ["date","ticker","open","high","low","close","volume"]
         },
         {
@@ -857,6 +858,17 @@ function updateTopbar(pulse, coverage) {
     coverageData = {};
     tables.forEach(t => { coverageData[t.table || t.table_name] = t; });
   }
+}
+
+// ─── Enrich tree meta with live counts from coverage API ─────────────────────
+function enrichTreeMeta(node) {
+  if (!node || !coverageData) return;
+  // If this node has a countTable, look up its row count and set meta dynamically
+  if (node.countTable && coverageData[node.countTable]) {
+    const count = coverageData[node.countTable].row_count_approx || coverageData[node.countTable].exact_count || coverageData[node.countTable].row_count;
+    if (count) node.meta = fmtNum(count) + ' ' + (node.meta || '');
+  }
+  if (node.children) node.children.forEach(enrichTreeMeta);
 }
 
 // ─── D3 Tree ──────────────────────────────────────────────────────────────────
@@ -1240,9 +1252,10 @@ async function loadAll() {
     if (el) el.classList.remove('active');
   }).catch(() => {});
 
-  // 3. Coverage (slowest ~27s) — updates topbar table count
+  // 3. Coverage (slowest ~27s) — updates topbar table count + tree meta
   fetchCoverage().then(coverage => {
     if (coverage) updateTopbar(null, coverage);
+    enrichTreeMeta(TREE_DATA);
     if (treeRoot) updateTree(treeRoot);
     const el = document.getElementById('tree-loading');
     if (el) el.classList.remove('active');
