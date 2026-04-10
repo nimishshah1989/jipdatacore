@@ -772,11 +772,11 @@ function updateTopbar(pulse, coverage) {
   if (coverage && coverage.tables) {
     const tables = coverage.tables;
     document.getElementById('stat-tables').textContent = tables.length;
-    const totalRows = tables.reduce((a, t) => a + (Number(t.row_count) || 0), 0);
+    const totalRows = tables.reduce((a, t) => a + (Number(t.row_count_approx || t.row_count || t.exact_count) || 0), 0);
     document.getElementById('stat-rows').textContent = fmtNum(totalRows);
     // Build lookup
     coverageData = {};
-    tables.forEach(t => { coverageData[t.table_name] = t; });
+    tables.forEach(t => { coverageData[t.table || t.table_name] = t; });
   }
 }
 
@@ -1099,27 +1099,36 @@ async function loadAll() {
     if (el) el.classList.add('active');
   });
 
-  const [pulse, coverage, pipelines] = await Promise.all([
-    fetchPulse(), fetchCoverage(), fetchPipelines()
-  ]);
+  // Load progressively — render each section as its data arrives (don't wait for all)
+  // Pulse is fastest (~8s), pipelines fast (~0.3s), coverage slow (~27s)
 
-  pulseData = pulse ? (pulse.streams || []) : [];
-  updateTopbar(pulse, coverage);
-  renderHeatmap(pulseData);
-
-  if (pipelines) {
-    renderPipelineHeatmap(pipelines.pipelines || []);
-    updateAgentStatus(pipelines.pipelines || []);
-  }
-
-  // Re-render tree to pick up fresh coverage/pulse data
-  if (treeRoot) updateTree(treeRoot);
-
-  // Hide loading bars
-  ['tree-loading','heatmap-loading','pipeline-loading'].forEach(id => {
-    const el = document.getElementById(id);
+  // 1. Pipelines first (fastest)
+  fetchPipelines().then(pipelines => {
+    if (pipelines) {
+      renderPipelineHeatmap(pipelines.pipelines || []);
+      updateAgentStatus(pipelines.pipelines || []);
+    }
+    const el = document.getElementById('pipeline-loading');
     if (el) el.classList.remove('active');
-  });
+  }).catch(() => {});
+
+  // 2. Pulse (medium speed) — drives heatmap + topbar + tree colors
+  fetchPulse().then(pulse => {
+    pulseData = pulse ? (pulse.streams || []) : [];
+    updateTopbar(pulse, null);
+    renderHeatmap(pulseData);
+    if (treeRoot) updateTree(treeRoot);
+    const el = document.getElementById('heatmap-loading');
+    if (el) el.classList.remove('active');
+  }).catch(() => {});
+
+  // 3. Coverage (slowest ~27s) — updates topbar table count
+  fetchCoverage().then(coverage => {
+    if (coverage) updateTopbar(null, coverage);
+    if (treeRoot) updateTree(treeRoot);
+    const el = document.getElementById('tree-loading');
+    if (el) el.classList.remove('active');
+  }).catch(() => {});
 }
 
 // ─── Countdown ────────────────────────────────────────────────────────────────
