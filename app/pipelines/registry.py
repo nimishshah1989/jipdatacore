@@ -98,6 +98,16 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "holdings_monthly": ["morningstar_portfolio"],
     "reconciliation": ["__reconciliation__"],
     "full_rs_rebuild": ["relative_strength"],
+    # Nightly: validate → compute everything → goldilocks scrape
+    "nightly_compute": [
+        "__validate_ohlcv__",
+        "equity_technicals_sql",
+        "relative_strength",
+        "market_breadth",
+        "regime_detection",
+        "mf_derived",
+        "__goldilocks_compute__",
+    ],
 }
 
 # ---------------------------------------------------------------------------

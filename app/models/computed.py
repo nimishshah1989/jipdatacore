@@ -31,6 +31,11 @@ class DeEquityTechnicalDaily(Base):
     sma_200: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     ema_20: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     close_adj: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    stochastic_k: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    stochastic_d: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    disparity_20: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    disparity_50: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    bollinger_width: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
     # GENERATED columns — server-computed; declared via Computed() for ORM reads
     above_50dma: Mapped[Optional[bool]] = mapped_column(
         sa.Boolean,

@@ -16,6 +16,7 @@ from app.api.v1.mf import router as mf_router
 from app.api.v1.observatory import router as observatory_router
 from app.api.v1.observatory_ui import router as observatory_ui_router
 from app.api.v1.pipeline_trigger import router as pipeline_trigger_router
+from app.api.v1.goldilocks import router as goldilocks_router
 from app.api.v1.qualitative import router as qualitative_router
 
 all_routers = [
@@ -29,6 +30,7 @@ all_routers = [
     observatory_router,
     observatory_ui_router,
     pipeline_trigger_router,
+    goldilocks_router,
 ]
 
 __all__ = [

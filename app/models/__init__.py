@@ -61,6 +61,17 @@ from app.models.clients import (  # noqa: F401
     DePortfolios,
     DePortfolioTransactions,
 )
+from app.models.goldilocks import (  # noqa: F401
+    DeDivergenceSignals,
+    DeFibLevels,
+    DeGoldilocksMarketView,
+    DeGoldilocksSectorView,
+    DeGoldilocksStockIdeas,
+    DeIndexPivots,
+    DeIntermarketRatios,
+    DeOscillatorMonthly,
+    DeOscillatorWeekly,
+)
 from app.models.champion import DeChampionTrades  # noqa: F401
 from app.models.holdings import DeMfHoldings  # noqa: F401
 from app.models.mf_derived import DeMfDerivedDaily  # noqa: F401
@@ -120,6 +131,16 @@ __all__ = [
     "DePortfolioTransactions",
     "DePortfolioHoldings",
     "DePortfolioRiskMetrics",
+    # goldilocks
+    "DeGoldilocksMarketView",
+    "DeGoldilocksSectorView",
+    "DeGoldilocksStockIdeas",
+    "DeOscillatorWeekly",
+    "DeOscillatorMonthly",
+    "DeDivergenceSignals",
+    "DeFibLevels",
+    "DeIndexPivots",
+    "DeIntermarketRatios",
     # champion
     "DeChampionTrades",
     # holdings

@@ -91,6 +91,7 @@ class DeQualDocuments(Base):
     # vector(1536) — stored as LargeBinary in ORM; migration uses ALTER TABLE with pgvector type
     embedding: Mapped[Optional[bytes]] = mapped_column(sa.LargeBinary, nullable=True)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(sa.Text), nullable=True)
+    report_type: Mapped[Optional[str]] = mapped_column(sa.String(30), nullable=True)
     processing_status: Mapped[str] = mapped_column(
         sa.String(20), nullable=False, default="pending"
     )

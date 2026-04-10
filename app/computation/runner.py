@@ -24,7 +24,16 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.computation.breadth import compute_breadth
+from app.computation.divergence import detect_divergences
+from app.computation.fibonacci import compute_fib_levels
 from app.computation.fund_derived import compute_fund_derived_metrics
+from app.computation.intermarket import compute_intermarket_ratios
+from app.computation.oscillators import (
+    compute_bollinger_width,
+    compute_disparity,
+    compute_stochastic,
+)
+from app.computation.pivots import compute_index_pivots
 from app.computation.qa_types import QAReport, StepResult
 from app.computation.regime import compute_market_regime
 from app.computation.rs import compute_rs_scores
@@ -423,6 +432,78 @@ async def run_full_computation_pipeline(
             business_date=business_date.isoformat(),
             error=str(exc),
         )
+
+    # --- Step 7: stochastic + disparity + bollinger_width ---
+    try:
+        stoch_rows = await compute_stochastic(session, business_date)
+        disp_rows = await compute_disparity(session, business_date)
+        bw_rows = await compute_bollinger_width(session, business_date)
+        report.steps.append(
+            StepResult(
+                step_name="oscillators",
+                status="passed",
+                rows_affected=stoch_rows + disp_rows + bw_rows,
+                details={"stochastic": stoch_rows, "disparity": disp_rows, "bollinger": bw_rows},
+            )
+        )
+    except Exception as exc:
+        await session.rollback()
+        report.steps.append(
+            StepResult(step_name="oscillators", status="failed", errors=[str(exc)])
+        )
+        logger.error("computation_step_failed", step="oscillators", error=str(exc))
+
+    # --- Step 8: index pivot points ---
+    try:
+        pivot_rows = await compute_index_pivots(session, business_date)
+        report.steps.append(
+            StepResult(step_name="pivots", status="passed", rows_affected=pivot_rows)
+        )
+    except Exception as exc:
+        await session.rollback()
+        report.steps.append(
+            StepResult(step_name="pivots", status="failed", errors=[str(exc)])
+        )
+        logger.error("computation_step_failed", step="pivots", error=str(exc))
+
+    # --- Step 9: intermarket ratios ---
+    try:
+        ratio_rows = await compute_intermarket_ratios(session, business_date)
+        report.steps.append(
+            StepResult(step_name="intermarket", status="passed", rows_affected=ratio_rows)
+        )
+    except Exception as exc:
+        await session.rollback()
+        report.steps.append(
+            StepResult(step_name="intermarket", status="failed", errors=[str(exc)])
+        )
+        logger.error("computation_step_failed", step="intermarket", error=str(exc))
+
+    # --- Step 10: fibonacci retracement levels ---
+    try:
+        fib_rows = await compute_fib_levels(session, business_date)
+        report.steps.append(
+            StepResult(step_name="fibonacci", status="passed", rows_affected=fib_rows)
+        )
+    except Exception as exc:
+        await session.rollback()
+        report.steps.append(
+            StepResult(step_name="fibonacci", status="failed", errors=[str(exc)])
+        )
+        logger.error("computation_step_failed", step="fibonacci", error=str(exc))
+
+    # --- Step 11: divergence detection ---
+    try:
+        div_rows = await detect_divergences(session, business_date)
+        report.steps.append(
+            StepResult(step_name="divergence", status="passed", rows_affected=div_rows)
+        )
+    except Exception as exc:
+        await session.rollback()
+        report.steps.append(
+            StepResult(step_name="divergence", status="failed", errors=[str(exc)])
+        )
+        logger.error("computation_step_failed", step="divergence", error=str(exc))
 
     report.mark_complete()
 

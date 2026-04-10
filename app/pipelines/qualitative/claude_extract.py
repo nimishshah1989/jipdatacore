@@ -84,6 +84,14 @@ _EXTRACT_TOOL = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Goldilocks tool definitions — importable by goldilocks_extractor.py
+# These are module-level constants only; extraction logic lives in goldilocks_extractor.py
+# ---------------------------------------------------------------------------
+GOLDILOCKS_TREND_FRIEND_TOOL_NAME = "extract_trend_friend"
+GOLDILOCKS_STOCK_IDEA_TOOL_NAME = "extract_stock_idea"
+GOLDILOCKS_SECTOR_VIEWS_TOOL_NAME = "extract_sector_views"
+
 _SYSTEM_PROMPT = (
     "You are a financial analyst assistant specializing in Indian and global markets. "
     "Extract specific, actionable investment views from the provided text. "
