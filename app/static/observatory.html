@@ -765,7 +765,7 @@ function updateTopbar(pulse, coverage) {
   // Streams
   const streams = pulse ? (pulse.streams || []) : [];
   document.getElementById('stat-streams').textContent = streams.length || '—';
-  const freshCount = streams.filter(s => ageClass(s.last_date || s.last_updated) === 'fresh').length;
+  const freshCount = streams.filter(s => s.status === 'fresh' || ageClass(s.last_date) === 'fresh').length;
   document.getElementById('stat-fresh').textContent = freshCount || '—';
 
   // Coverage
@@ -823,7 +823,7 @@ function nodeColor(d) {
   // leaf/table — use freshness status
   const tableName = d.data.table;
   if (tableName && pulseData) {
-    const stream = pulseData.find ? pulseData.find(s => s.table_name === tableName || (s.stream_name || '').toLowerCase().includes(tableName.split('_')[1] || '')) : null;
+    const stream = Array.isArray(pulseData) ? pulseData.find(s => s.table === tableName || s.stream_id === tableName || (s.label || '').toLowerCase().replace(/\s+/g,'_').includes(tableName.replace('de_','').split('_')[0])) : null;
     if (stream) {
       const cls = ageClass(stream.last_date || stream.last_updated);
       if (cls === 'fresh') return '#22c55e';
@@ -995,8 +995,8 @@ function renderHeatmap(streams) {
     const dateKey = s.last_date || s.last_updated || null;
     const cls = ageClass(dateKey);
     const age = ageLabel(dateKey);
-    return `<div class="hm-cell ${cls}" title="${s.stream_name || s.name}">
-      <div class="hm-name">${s.stream_name || s.name || '—'}</div>
+    return `<div class="hm-cell ${cls}" title="${s.label || s.stream_id || s.name || ''}">
+      <div class="hm-name">${s.label || s.stream_id || s.name || '—'}</div>
       <div class="hm-date">${fmtDate(dateKey)}</div>
       <div class="hm-age ${cls}">${age}</div>
     </div>`;
