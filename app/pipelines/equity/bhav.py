@@ -327,22 +327,51 @@ class BhavPipeline(BasePipeline):
         """Download, parse, and upsert BHAV copy data."""
         logger.info("bhav_execute_start", business_date=business_date.isoformat())
 
-        # Determine URL based on date
+        # Determine URL based on date — try UDiFF first, fallback to standard
         date_str_std = business_date.strftime("%d%m%Y")
         date_str_udiff = business_date.strftime("%Y%m%d")
 
-        if business_date >= UDIFF_START_DATE:
-            url = NSE_BHAV_URL_UDIFF.format(date_str=date_str_udiff)
-            expected_fmt: BhavFormat | None = BhavFormat.UDIFF
-        elif business_date.year < 2010:
-            url = NSE_BHAV_URL_PRE2010.format(date_str=date_str_std)
-            expected_fmt = BhavFormat.PRE2010
+        if business_date.year < 2010:
+            urls_to_try = [
+                (NSE_BHAV_URL_PRE2010.format(date_str=date_str_std), BhavFormat.PRE2010),
+            ]
+        elif business_date >= UDIFF_START_DATE:
+            # Try UDiFF first, fallback to standard (NSE may revert formats)
+            urls_to_try = [
+                (NSE_BHAV_URL_UDIFF.format(date_str=date_str_udiff), BhavFormat.UDIFF),
+                (NSE_BHAV_URL_STANDARD.format(date_str=date_str_std), BhavFormat.STANDARD),
+            ]
         else:
-            url = NSE_BHAV_URL_STANDARD.format(date_str=date_str_std)
-            expected_fmt = BhavFormat.STANDARD
+            urls_to_try = [
+                (NSE_BHAV_URL_STANDARD.format(date_str=date_str_std), BhavFormat.STANDARD),
+            ]
+
+        raw_bytes: bytes | None = None
+        url: str = ""
+        expected_fmt: BhavFormat | None = None
 
         async with httpx.AsyncClient(headers=NSE_HEADERS, timeout=60.0) as client:
-            raw_bytes = await _download_with_retry(client, url)
+            for try_url, try_fmt in urls_to_try:
+                try:
+                    raw_bytes = await _download_with_retry(client, try_url)
+                    url = try_url
+                    expected_fmt = try_fmt
+                    break
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 404 and len(urls_to_try) > 1:
+                        logger.info(
+                            "bhav_url_404_trying_fallback",
+                            url=try_url,
+                            business_date=business_date.isoformat(),
+                        )
+                        continue
+                    raise
+
+            if raw_bytes is None:
+                raise ValueError(
+                    f"BHAV copy not available for {business_date} at any URL: "
+                    f"{[u for u, _ in urls_to_try]}"
+                )
 
         checksum = _compute_checksum(raw_bytes)
 
