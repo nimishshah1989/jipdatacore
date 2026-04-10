@@ -45,14 +45,18 @@ ON CONFLICT (date, instrument_id) DO UPDATE SET
 
 
 async def run(start_date: str = "2007-01-01") -> None:
+    from datetime import date as date_type
     t0 = time.time()
     print(f"Computing SMA50/200 from {start_date}...", flush=True)
+
+    # asyncpg requires date objects, not strings
+    start_date_obj = date_type.fromisoformat(start_date)
 
     engine = create_async_engine(get_async_url(), pool_size=1)
     async with engine.begin() as conn:
         await conn.execute(sa.text("SET LOCAL work_mem = '512MB'"))
         await conn.execute(sa.text("SET LOCAL statement_timeout = '1800s'"))
-        await conn.execute(sa.text(TECHNICALS_SQL), {"start_date": start_date})
+        await conn.execute(sa.text(TECHNICALS_SQL), {"start_date": start_date_obj})
     await engine.dispose()
 
     # Verify
