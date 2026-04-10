@@ -306,15 +306,19 @@ def main() -> None:
 
         # Print summary
         print("\n--- Computation Pipeline Summary ---")
-        print(f"  Phase         : {report_dict['phase']}")
-        print(f"  Date          : {report_dict['business_date']}")
-        print(f"  Overall pass  : {report_dict['passed']}")
-        print(f"  Total rows    : {report_dict['total_rows']}")
+        print(f"  Phase         : {report_dict.get('phase', '?')}")
+        print(f"  Date          : {report_dict.get('business_date', '?')}")
+        print(f"  Overall pass  : {report_dict.get('passed', report_dict.get('overall_status', '?'))}")
+        total = report_dict.get("total_rows", sum(s.get("rows_affected", 0) for s in report_dict.get("steps", [])))
+        print(f"  Total rows    : {total}")
         print()
-        for step in report_dict["steps"]:
-            status = "PASS" if step["passed"] else "FAIL"
-            err = f"  error={step['error']}" if step["error"] else ""
-            print(f"  [{status}] {step['step']:15s}  rows={step['rows_affected']}{err}")
+        for step in report_dict.get("steps", []):
+            passed = step.get("passed", step.get("status") == "passed")
+            status = "PASS" if passed else "FAIL"
+            err_val = step.get("error") or (step.get("errors", [None])[0] if step.get("errors") else None)
+            err = f"  error={err_val}" if err_val else ""
+            name = step.get("step") or step.get("step_name", "?")
+            print(f"  [{status}] {name:15s}  rows={step.get('rows_affected', 0)}{err}")
 
         print(f"\nResults saved to: {results_path}")
 

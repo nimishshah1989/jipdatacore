@@ -303,6 +303,8 @@ async def _run_computation_script(
         cmd.extend(["--filter-date", business_date.isoformat()])
     elif name in ("etf_rs", "global_rs"):
         cmd.extend(["--compute-start", business_date.isoformat()])
+    elif name == "full_runner":
+        cmd.extend(["--date", business_date.isoformat(), "--step", "all"])
 
     logger.info("computation_script_start", name=name, module=module, cmd=cmd)
 

@@ -121,6 +121,7 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
         "etf_rs",
         "global_technicals",
         "global_rs",
+        "full_runner",
         "__goldilocks_compute__",
     ],
 }
@@ -140,6 +141,9 @@ COMPUTATION_SCRIPTS: dict[str, str] = {
     "etf_rs": "scripts.compute.etf_rs",
     "global_technicals": "scripts.compute.global_technicals",
     "global_rs": "scripts.compute.global_rs",
+    # Full runner — oscillators, pivots, intermarket, fibonacci, divergence
+    # These steps ONLY exist in the in-process runner, not as standalone scripts
+    "full_runner": "scripts.run_computations",
 }
 
 

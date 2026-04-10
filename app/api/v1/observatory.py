@@ -865,12 +865,12 @@ STREAM_PIPELINE_MAP: dict[str, str] = {
     "goldilocks_market_view": "__goldilocks_compute__",
     "goldilocks_sector_view": "__goldilocks_compute__",
     "goldilocks_stock_ideas": "__goldilocks_compute__",
-    "oscillator_weekly": "equity_technicals_pandas",
-    "oscillator_monthly": "equity_technicals_pandas",
-    "index_pivots": "equity_technicals_pandas",
-    "intermarket_ratios": "equity_technicals_pandas",
-    "fib_levels": "equity_technicals_pandas",
-    "divergence_signals": "equity_technicals_pandas",
+    "oscillator_weekly": "full_runner",
+    "oscillator_monthly": "full_runner",
+    "index_pivots": "full_runner",
+    "intermarket_ratios": "full_runner",
+    "fib_levels": "full_runner",
+    "divergence_signals": "full_runner",
 }
 
 
