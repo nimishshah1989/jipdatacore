@@ -167,3 +167,65 @@ async def compute_bollinger_width(session: AsyncSession, business_date: date) ->
     count = result.rowcount
     logger.info("bollinger_width_computed", date=str(business_date), rows=count)
     return count
+
+
+async def compute_oscillator_weekly(session: AsyncSession, business_date: date) -> int:
+    """Snapshot weekly oscillator values into de_oscillator_weekly.
+
+    Takes the last trading day of the week (on or before business_date)
+    and copies stochastic_k, stochastic_d, rsi_14, disparity_20 from
+    de_equity_technical_daily.
+    """
+    result = await session.execute(text("""
+        INSERT INTO de_oscillator_weekly (date, instrument_id, stochastic_k, stochastic_d, rsi_14, disparity_20)
+        SELECT t.date, t.instrument_id, t.stochastic_k, t.stochastic_d, t.rsi_14, t.disparity_20
+        FROM de_equity_technical_daily t
+        WHERE t.date = (
+            SELECT MAX(date) FROM de_equity_technical_daily
+            WHERE date <= :bdate AND date >= :week_start
+        )
+        AND t.stochastic_k IS NOT NULL
+        ON CONFLICT (date, instrument_id) DO UPDATE SET
+            stochastic_k = EXCLUDED.stochastic_k,
+            stochastic_d = EXCLUDED.stochastic_d,
+            rsi_14 = EXCLUDED.rsi_14,
+            disparity_20 = EXCLUDED.disparity_20
+    """), {
+        "bdate": business_date,
+        "week_start": business_date - __import__("datetime").timedelta(days=6),
+    })
+
+    count = result.rowcount
+    logger.info("oscillator_weekly_computed", date=str(business_date), rows=count)
+    return count
+
+
+async def compute_oscillator_monthly(session: AsyncSession, business_date: date) -> int:
+    """Snapshot monthly oscillator values into de_oscillator_monthly.
+
+    Takes the last trading day of the month (on or before business_date)
+    and copies stochastic_k, stochastic_d, rsi_14, disparity_20 from
+    de_equity_technical_daily.
+    """
+    result = await session.execute(text("""
+        INSERT INTO de_oscillator_monthly (date, instrument_id, stochastic_k, stochastic_d, rsi_14, disparity_20)
+        SELECT t.date, t.instrument_id, t.stochastic_k, t.stochastic_d, t.rsi_14, t.disparity_20
+        FROM de_equity_technical_daily t
+        WHERE t.date = (
+            SELECT MAX(date) FROM de_equity_technical_daily
+            WHERE date <= :bdate AND date >= :month_start
+        )
+        AND t.stochastic_k IS NOT NULL
+        ON CONFLICT (date, instrument_id) DO UPDATE SET
+            stochastic_k = EXCLUDED.stochastic_k,
+            stochastic_d = EXCLUDED.stochastic_d,
+            rsi_14 = EXCLUDED.rsi_14,
+            disparity_20 = EXCLUDED.disparity_20
+    """), {
+        "bdate": business_date,
+        "month_start": business_date.replace(day=1),
+    })
+
+    count = result.rowcount
+    logger.info("oscillator_monthly_computed", date=str(business_date), rows=count)
+    return count

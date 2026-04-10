@@ -31,6 +31,8 @@ from app.computation.intermarket import compute_intermarket_ratios
 from app.computation.oscillators import (
     compute_bollinger_width,
     compute_disparity,
+    compute_oscillator_monthly,
+    compute_oscillator_weekly,
     compute_stochastic,
 )
 from app.computation.pivots import compute_index_pivots
@@ -452,6 +454,25 @@ async def run_full_computation_pipeline(
             StepResult(step_name="oscillators", status="failed", errors=[str(exc)])
         )
         logger.error("computation_step_failed", step="oscillators", error=str(exc))
+
+    # --- Step 7b: weekly + monthly oscillator snapshots ---
+    try:
+        weekly_rows = await compute_oscillator_weekly(session, business_date)
+        monthly_rows = await compute_oscillator_monthly(session, business_date)
+        report.steps.append(
+            StepResult(
+                step_name="oscillator_agg",
+                status="passed",
+                rows_affected=weekly_rows + monthly_rows,
+                details={"weekly": weekly_rows, "monthly": monthly_rows},
+            )
+        )
+    except Exception as exc:
+        await session.rollback()
+        report.steps.append(
+            StepResult(step_name="oscillator_agg", status="failed", errors=[str(exc)])
+        )
+        logger.error("computation_step_failed", step="oscillator_agg", error=str(exc))
 
     # --- Step 8: index pivot points ---
     try:
