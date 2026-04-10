@@ -4,6 +4,7 @@ Usage:
   python etf_backfill.py --new-only
   python etf_backfill.py --tickers AGG,BND,ARKK --start-date 2016-04-01
 """
+from __future__ import annotations
 
 import argparse
 import io
@@ -261,7 +262,6 @@ def backfill(
 
     # Build yfinance→DB ticker mapping (NSE tickers get .NS suffix)
     yf_map = _build_yf_mapping(cur, tickers)
-    reverse_map = {v: k for k, v in yf_map.items()}  # db_ticker → yf_ticker
     yf_tickers = list(yf_map.keys())
 
     total_rows = 0
