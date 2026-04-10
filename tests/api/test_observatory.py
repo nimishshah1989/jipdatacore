@@ -111,19 +111,22 @@ async def client():
 
 
 def test_pulse_freshness_logic_fresh():
+    # Threshold: <36h = fresh (covers morning before EOD ingestion)
     assert _freshness_status(0) == "fresh"
     assert _freshness_status(12.5) == "fresh"
-    assert _freshness_status(23.9) == "fresh"
+    assert _freshness_status(24.0) == "fresh"
+    assert _freshness_status(35.9) == "fresh"
 
 
 def test_pulse_freshness_logic_stale():
-    assert _freshness_status(24.0) == "stale"
+    # Thresholds: <36h = fresh, 36-96h = stale, >96h = critical
+    assert _freshness_status(36.0) == "stale"
     assert _freshness_status(48.0) == "stale"
-    assert _freshness_status(72.0) == "stale"
+    assert _freshness_status(96.0) == "stale"
 
 
 def test_pulse_freshness_logic_critical():
-    assert _freshness_status(72.1) == "critical"
+    assert _freshness_status(96.1) == "critical"
     assert _freshness_status(200.0) == "critical"
 
 

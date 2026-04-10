@@ -99,13 +99,20 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "reconciliation": ["__reconciliation__"],
     "full_rs_rebuild": ["relative_strength"],
     # Nightly: validate → compute everything → goldilocks scrape
+    # Full dependency-ordered pipeline (11 steps + goldilocks)
+    # market_breadth runs breadth_regime.py which computes BOTH breadth AND regime
+    # in a single run — no need for separate regime_detection step
     "nightly_compute": [
         "__validate_ohlcv__",
         "equity_technicals_sql",
+        "equity_technicals_pandas",
         "relative_strength",
         "market_breadth",
-        "regime_detection",
         "mf_derived",
+        "etf_technicals",
+        "etf_rs",
+        "global_technicals",
+        "global_rs",
         "__goldilocks_compute__",
     ],
 }
@@ -126,6 +133,22 @@ COMPUTATION_SCRIPTS: dict[str, str] = {
     "global_technicals": "scripts.compute.global_technicals",
     "global_rs": "scripts.compute.global_rs",
 }
+
+
+# ---------------------------------------------------------------------------
+# Special pipeline handlers — not BasePipeline subclasses, not computation
+# scripts. These run inline SQL or subprocess chains.
+# ---------------------------------------------------------------------------
+SPECIAL_HANDLERS: set[str] = {
+    "__validate_ohlcv__",
+    "__goldilocks_compute__",
+    "__reconciliation__",
+}
+
+
+def is_special_handler(name: str) -> bool:
+    """Check if a name is a special inline handler."""
+    return name in SPECIAL_HANDLERS
 
 
 def resolve_name(name: str) -> str:

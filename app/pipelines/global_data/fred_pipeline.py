@@ -170,10 +170,31 @@ async def fetch_fred_series(
         "observation_end": observation_end,
         "sort_order": "asc",
     }
-    response = await client.get(FRED_API_BASE_URL, params=params, timeout=20.0)
-    response.raise_for_status()
-    data = response.json()
-    return data.get("observations", [])
+
+    # Retry up to 3 times with exponential backoff for transient failures
+    import asyncio as _aio
+
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            response = await client.get(FRED_API_BASE_URL, params=params, timeout=20.0)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("observations", [])
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            last_exc = exc
+            if attempt < 2:
+                await _aio.sleep(2 ** attempt)
+                continue
+            raise
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+                last_exc = exc
+                await _aio.sleep(2 ** attempt)
+                continue
+            raise
+
+    raise last_exc  # type: ignore[misc]
 
 
 async def upsert_macro_values(
@@ -295,6 +316,15 @@ class FredPipeline(BasePipeline):
                         "fred_series_http_error",
                         series_id=series_id,
                         status_code=exc.response.status_code,
+                        business_date=business_date.isoformat(),
+                    )
+                    rows_failed += 1
+                    continue
+                except (httpx.TimeoutException, httpx.ConnectError) as exc:
+                    logger.error(
+                        "fred_series_network_error",
+                        series_id=series_id,
+                        error=str(exc),
                         business_date=business_date.isoformat(),
                     )
                     rows_failed += 1

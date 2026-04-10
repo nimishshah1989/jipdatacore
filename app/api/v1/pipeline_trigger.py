@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Annotated, Optional
 
+import sqlalchemy as sa
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,7 @@ from app.pipelines.registry import (
     get_pipeline,
     get_schedule,
     is_computation_script,
+    is_special_handler,
     list_computation_scripts,
     list_pipelines,
     list_schedules,
@@ -101,6 +103,123 @@ class PipelineResultResponse(BaseModel):
 # Pipeline execution helpers
 # ---------------------------------------------------------------------------
 
+async def _run_special_handler(
+    name: str,
+    business_date: date,
+) -> PipelineResultResponse:
+    """Run a special inline handler (validate, goldilocks, reconciliation)."""
+    import time as _time
+
+    from app.db.session import async_session_factory
+
+    t0 = _time.monotonic()
+
+    if name == "__validate_ohlcv__":
+        # Validate raw OHLCV: UPDATE data_status raw → validated for today
+        try:
+            async with async_session_factory() as sess:
+                async with sess.begin():
+                    result = await sess.execute(
+                        sa.text(
+                            "UPDATE de_equity_ohlcv SET data_status = 'validated' "
+                            "WHERE date = :bdate AND data_status = 'raw'"
+                        ),
+                        {"bdate": business_date},
+                    )
+                    rows_affected = result.rowcount
+            duration = _time.monotonic() - t0
+            logger.info(
+                "validate_ohlcv_done",
+                rows_validated=rows_affected,
+                business_date=business_date.isoformat(),
+            )
+            return PipelineResultResponse(
+                pipeline_name=name,
+                business_date=business_date.isoformat(),
+                status="success",
+                rows_processed=rows_affected,
+                duration_seconds=round(duration, 3),
+            )
+        except Exception as exc:
+            logger.error("validate_ohlcv_error", error=str(exc))
+            return PipelineResultResponse(
+                pipeline_name=name,
+                business_date=business_date.isoformat(),
+                status="failed",
+                error=str(exc),
+            )
+
+    elif name == "__goldilocks_compute__":
+        # Run goldilocks scraper + PDF extraction + LLM extraction as subprocesses
+        steps = [
+            ("goldilocks_scraper", [sys.executable, "-m", "scripts.ingest.goldilocks_scraper", "--mode", "daily"]),
+            ("pdf_extraction", [sys.executable, "-m", "scripts.ingest.extract_goldilocks_pdfs"]),
+            ("llm_extraction", [sys.executable, "-m", "scripts.ingest.run_goldilocks_extraction", "--max-docs", "10"]),
+        ]
+        errors: list[str] = []
+        for step_name, cmd in steps:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
+                if proc.returncode != 0:
+                    err = stderr.decode()[-500:] if stderr else f"Exit code {proc.returncode}"
+                    errors.append(f"{step_name}: {err}")
+                    logger.error("goldilocks_step_failed", step=step_name, error=err)
+                else:
+                    logger.info("goldilocks_step_done", step=step_name)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                errors.append(f"{step_name}: timed out after 600s")
+                logger.error("goldilocks_step_timeout", step=step_name)
+            except Exception as exc:
+                errors.append(f"{step_name}: {exc}")
+                logger.error("goldilocks_step_error", step=step_name, error=str(exc))
+
+        duration = _time.monotonic() - t0
+        return PipelineResultResponse(
+            pipeline_name=name,
+            business_date=business_date.isoformat(),
+            status="success" if not errors else "failed",
+            duration_seconds=round(duration, 3),
+            error="; ".join(errors) if errors else None,
+        )
+
+    elif name == "__reconciliation__":
+        try:
+            from app.orchestrator.reconciliation import ReconciliationChecker
+
+            async with async_session_factory() as sess:
+                checker = ReconciliationChecker(sess)
+                await checker.run_all()
+            duration = _time.monotonic() - t0
+            return PipelineResultResponse(
+                pipeline_name=name,
+                business_date=business_date.isoformat(),
+                status="success",
+                duration_seconds=round(duration, 3),
+            )
+        except Exception as exc:
+            logger.error("reconciliation_error", error=str(exc))
+            return PipelineResultResponse(
+                pipeline_name=name,
+                business_date=business_date.isoformat(),
+                status="failed",
+                error=str(exc),
+            )
+
+    return PipelineResultResponse(
+        pipeline_name=name,
+        business_date=business_date.isoformat(),
+        status="failed",
+        error=f"Unknown special handler: {name}",
+    )
+
+
 async def _run_single_pipeline(
     name: str,
     business_date: date,
@@ -112,6 +231,9 @@ async def _run_single_pipeline(
     poisoning when one pipeline fails mid-transaction.
     """
     from app.db.session import async_session_factory
+
+    if is_special_handler(name):
+        return await _run_special_handler(name, business_date)
 
     if is_computation_script(name):
         return await _run_computation_script(name, business_date)
@@ -173,7 +295,14 @@ async def _run_computation_script(
         cmd.extend(["--start-date", business_date.isoformat()])
     elif name in ("relative_strength",):
         cmd.extend(["--entity-type", "all", "--start-date", business_date.isoformat()])
-    # breadth_regime, fund_metrics, etf/global scripts: no date arg needed
+    elif name in ("market_breadth", "regime_detection"):
+        cmd.extend(["--start-date", business_date.isoformat()])
+    elif name in ("mf_derived",):
+        cmd.extend(["--start-date", business_date.isoformat()])
+    elif name in ("etf_technicals", "global_technicals"):
+        cmd.extend(["--filter-date", business_date.isoformat()])
+    elif name in ("etf_rs", "global_rs"):
+        cmd.extend(["--compute-start", business_date.isoformat()])
 
     logger.info("computation_script_start", name=name, module=module, cmd=cmd)
 
@@ -206,6 +335,8 @@ async def _run_computation_script(
                 error=error_msg,
             )
     except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
         logger.error("computation_script_timeout", name=name)
         return PipelineResultResponse(
             pipeline_name=name,
@@ -358,8 +489,12 @@ async def trigger_single(
     """Run a single pipeline by name."""
     resolved = resolve_name(pipeline_name)
 
-    # Check if it's a known pipeline or computation script
-    if not is_computation_script(pipeline_name) and get_pipeline(resolved) is None:
+    # Check if it's a known pipeline, computation script, or special handler
+    if (
+        not is_special_handler(pipeline_name)
+        and not is_computation_script(pipeline_name)
+        and get_pipeline(resolved) is None
+    ):
         all_names = list_pipelines() + list_computation_scripts()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

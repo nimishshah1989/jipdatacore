@@ -5,8 +5,12 @@ Regime: BULL/BEAR/SIDEWAYS from breadth score
 
 Usage:
     python -m scripts.compute.breadth_regime
+    python -m scripts.compute.breadth_regime --start-date 2026-04-01
 """
 
+from __future__ import annotations
+
+import argparse
 import asyncio
 import time
 
@@ -133,23 +137,44 @@ ON CONFLICT (computed_at) DO UPDATE SET
 """
 
 
-async def run():
+async def run(start_date: str | None = None):
     t0 = time.time()
     engine = create_async_engine(get_async_url(), pool_size=1)
 
+    # Build optional date filter for incremental runs
+    params: dict = {}
+    if start_date:
+        params["start_date"] = start_date
+        print(f"Incremental from {start_date}", flush=True)
+
     print("Breadth...", flush=True)
+    # Inject date filter into breadth SQL — filter on the pc CTE
+    breadth_sql = BREADTH_SQL
+    if start_date:
+        # Filter the dc CTE to only compute breadth from start_date onwards
+        breadth_sql = breadth_sql.replace(
+            "FROM pc WHERE pc IS NOT NULL GROUP BY date",
+            "FROM pc WHERE pc IS NOT NULL AND date >= :start_date GROUP BY date",
+        )
     async with engine.begin() as conn:
         await conn.execute(sa.text("SET LOCAL statement_timeout = '600s'"))
-        await conn.execute(sa.text(BREADTH_SQL))
+        await conn.execute(sa.text(breadth_sql), params)
     print(f"  Done ({time.time()-t0:.0f}s)", flush=True)
 
     print("Regime...", flush=True)
     t1 = time.time()
-    # Truncate first (separate statement)
+    # Use ON CONFLICT upsert — NO TRUNCATE (safe incremental)
+    regime_sql = REGIME_SQL
+    if start_date:
+        # Filter combined CTE to only compute regime from start_date onwards
+        regime_sql = regime_sql.replace(
+            "FROM breadth b",
+            "FROM breadth b\n    WHERE b.date >= :start_date",
+            1,  # Only replace in the combined CTE, not subqueries
+        )
     async with engine.begin() as conn:
-        await conn.execute(sa.text("TRUNCATE de_market_regime"))
-    async with engine.begin() as conn:
-        await conn.execute(sa.text(REGIME_SQL))
+        await conn.execute(sa.text("SET LOCAL statement_timeout = '600s'"))
+        await conn.execute(sa.text(regime_sql), params)
     print(f"  Done ({time.time()-t1:.0f}s)", flush=True)
 
     # Verify
@@ -164,7 +189,11 @@ async def run():
 
 
 def main():
-    asyncio.run(run())
+    parser = argparse.ArgumentParser(description="Breadth & regime computation")
+    parser.add_argument("--start-date", type=str, default=None,
+                        help="Compute from this date onwards (YYYY-MM-DD). Omit for full rebuild.")
+    args = parser.parse_args()
+    asyncio.run(run(start_date=args.start_date))
 
 
 if __name__ == "__main__":

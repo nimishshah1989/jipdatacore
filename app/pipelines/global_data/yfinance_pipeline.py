@@ -130,14 +130,31 @@ def parse_yfinance_download(
     if df is None or df.empty:
         return rows
 
-    # Filter to the business_date row(s)
+    # Filter to the business_date — use nearest available date within ±3 days
+    # Non-US tickers may not have data on the exact date (holidays, timezone lag)
     date_str = business_date.isoformat()
     try:
         day_df = df.loc[date_str:date_str]
     except Exception:
-        return rows
+        day_df = None
 
-    if day_df.empty:
+    if day_df is None or day_df.empty:
+        # Search for nearest date within ±3 trading days
+        from datetime import timedelta
+
+        for offset in range(1, 4):
+            for delta in [timedelta(days=-offset), timedelta(days=offset)]:
+                alt_date = (business_date + delta).isoformat()
+                try:
+                    day_df = df.loc[alt_date:alt_date]
+                    if not day_df.empty:
+                        break
+                except Exception:
+                    continue
+            if day_df is not None and not day_df.empty:
+                break
+
+    if day_df is None or day_df.empty:
         return rows
 
     # yfinance multi-ticker: columns are MultiIndex (field, ticker)
