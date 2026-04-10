@@ -1,183 +1,1021 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>JIP Data Core — Forge Status Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--teal:#1D9E75;--teal-light:#E8F7F2;--teal-dark:#157A5A;--text:#1A1A2E;--muted:#6B7280;--border:#E5E7EB;--bg:#FFF;--bg-alt:#F9FAFB;--danger:#DC2626;--warning:#D97706;--success:#16A34A;--running:#2563EB;--pending:#9CA3AF;--radius:6px;--shadow:0 1px 3px rgba(0,0,0,.08)}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;background:var(--bg-alt);color:var(--text)}
-.header{background:var(--bg);border-bottom:2px solid var(--teal);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}
-.header-title{font-size:16px;font-weight:700}.header-sub{font-size:11px;color:var(--muted)}
-.main{max-width:1400px;margin:0 auto;padding:24px}
-.section{margin-bottom:32px}
-.section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:12px}
-.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
-.progress-outer{height:28px;background:var(--bg-alt);border-radius:14px;overflow:hidden;margin:8px 0}
-.progress-inner{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-dark));border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;transition:width .5s}
-.chunk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
-.chunk-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;position:relative;overflow:hidden}
-.chunk-card::before{content:"";position:absolute;top:0;left:0;width:3px;height:100%}
-.chunk-card.done::before{background:var(--success)}.chunk-card.running::before{background:var(--running)}.chunk-card.pending::before{background:var(--pending)}.chunk-card.blocked::before{background:var(--warning)}
-.chunk-name{font-size:14px;font-weight:700;margin-bottom:4px}.chunk-desc{font-size:12px;color:var(--muted);margin-bottom:8px}.chunk-meta{font-size:11px;color:var(--muted)}
-.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700}
-.badge.done{background:#DCFCE7;color:var(--success)}.badge.running{background:#DBEAFE;color:var(--running)}.badge.pending{background:var(--border);color:var(--muted)}.badge.blocked{background:#FEF3C7;color:var(--warning)}
-.timeline{border-left:2px solid var(--teal);padding-left:20px;margin-left:10px}
-.timeline-item{margin-bottom:16px;position:relative}.timeline-item::before{content:"";position:absolute;left:-25px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--teal)}
-.timeline-date{font-size:11px;color:var(--muted);font-weight:600}.timeline-text{font-size:13px;margin-top:2px}
-.stats-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:24px}
-.stat-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center}
-.stat-value{font-size:28px;font-weight:800;color:var(--teal)}.stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
-.audit-table{width:100%;border-collapse:collapse;font-size:12px}
-.audit-table th{text-align:left;padding:6px 10px;font-size:10px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);background:var(--bg-alt)}
-.audit-table td{padding:6px 10px;border-bottom:1px solid var(--border)}
-.audit-table .problem{color:var(--danger);font-weight:600}.audit-table .ok{color:var(--success)}.audit-table .partial{color:var(--warning)}
-.wiki-table{width:100%;border-collapse:collapse}.wiki-table th{text-align:left;padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)}.wiki-table td{padding:8px 12px;font-size:13px;border-bottom:1px solid var(--border)}
-.wiki-cat{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}.wiki-cat.pattern{background:#DCFCE7;color:var(--success)}.wiki-cat.architecture{background:#DBEAFE;color:var(--running)}
-#graph-container{width:100%;height:400px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg)}
-.node-label{font-size:10px;fill:var(--text);pointer-events:none}
-@media(max-width:768px){.chunk-grid{grid-template-columns:1fr}.stats-row{grid-template-columns:repeat(2,1fr)}}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JIP Data Engine — Forge Status</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .page-wrapper {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding-bottom: 24px;
+      border-bottom: 2px solid #1D9E75;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .header-left h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.3px;
+    }
+
+    .header-left .build-label {
+      margin-top: 4px;
+      font-size: 13px;
+      color: #64748b;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .header-left .build-label span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .header-left .build-label .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #1D9E75;
+      display: inline-block;
+    }
+
+    .header-right {
+      text-align: right;
+    }
+
+    .header-right .big-pct {
+      font-size: 36px;
+      font-weight: 800;
+      color: #1D9E75;
+      line-height: 1;
+    }
+
+    .header-right .big-sub {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    /* ── Section wrapper ─────────────────────────────────── */
+    .section {
+      margin-bottom: 40px;
+    }
+
+    .section-header {
+      font-size: 18px;
+      font-weight: 600;
+      color: #0f172a;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #1D9E75;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-header .section-badge {
+      font-size: 12px;
+      font-weight: 500;
+      color: #1D9E75;
+      background: #f0fdf4;
+      padding: 2px 10px;
+      border-radius: 99px;
+      border: 1px solid #bbf7d0;
+    }
+
+    /* ── Progress Bar ────────────────────────────────────── */
+    .progress-wrap {
+      background: #e2e8f0;
+      border-radius: 99px;
+      height: 18px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #1D9E75;
+      border-radius: 99px;
+    }
+
+    .progress-label {
+      font-size: 13px;
+      color: #475569;
+      text-align: right;
+    }
+
+    .progress-label strong {
+      color: #1D9E75;
+      font-weight: 700;
+    }
+
+    /* ── Card Grid ───────────────────────────────────────── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px 18px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .card-id {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1D9E75;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    .card-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #0f172a;
+      flex: 1;
+      line-height: 1.35;
+    }
+
+    .badge-done {
+      display: inline-block;
+      background: #dcfce7;
+      color: #166534;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 9px;
+      border-radius: 99px;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .complexity-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 1px 8px;
+      border-radius: 99px;
+      border: 1px solid #e2e8f0;
+      color: #64748b;
+      white-space: nowrap;
+    }
+
+    .complexity-low      { border-color: #bbf7d0; color: #15803d; background: #f0fdf4; }
+    .complexity-medium   { border-color: #fde68a; color: #92400e; background: #fffbeb; }
+    .complexity-high     { border-color: #fed7aa; color: #9a3412; background: #fff7ed; }
+    .complexity-very-high { border-color: #fecaca; color: #991b1b; background: #fef2f2; }
+
+    .card-meta {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 16px;
+    }
+
+    .card-meta-item {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .card-meta-item .label {
+      font-weight: 600;
+      color: #475569;
+    }
+
+    .card-files {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .card-files .file-list {
+      margin-top: 3px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .file-tag {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      padding: 1px 7px;
+      border-radius: 4px;
+      font-family: "SF Mono", ui-monospace, monospace;
+      font-size: 10.5px;
+      color: #475569;
+    }
+
+    /* ── Historical chunks ───────────────────────────────── */
+    .toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: 1px solid #1D9E75;
+      color: #1D9E75;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-bottom: 16px;
+    }
+
+    .toggle-btn:hover { background: #f0fdf4; }
+
+    .historical-grid {
+      display: none;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 10px;
+    }
+
+    .historical-grid.visible { display: grid; }
+
+    .hist-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    .hist-card-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .hist-card-id {
+      font-size: 10px;
+      font-weight: 700;
+      color: #1D9E75;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .hist-card-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: #0f172a;
+    }
+
+    /* ── Metrics grid ────────────────────────────────────── */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 14px;
+    }
+
+    .metric-box {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      text-align: center;
+    }
+
+    .metric-box .metric-value {
+      font-size: 28px;
+      font-weight: 800;
+      color: #1D9E75;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .metric-box .metric-label {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 500;
+    }
+
+    /* ── Decision timeline ───────────────────────────────── */
+    .timeline {
+      position: relative;
+      padding-left: 28px;
+    }
+
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: 6px;
+      bottom: 6px;
+      width: 2px;
+      background: #e2e8f0;
+    }
+
+    .timeline-item {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .timeline-item:last-child { margin-bottom: 0; }
+
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -24px;
+      top: 5px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #1D9E75;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 2px #1D9E75;
+    }
+
+    .timeline-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 3px;
+    }
+
+    .timeline-body {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .timeline-date {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    /* ── Wiki stats ──────────────────────────────────────── */
+    .wiki-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 640px) {
+      .wiki-grid { grid-template-columns: 1fr; }
+    }
+
+    .wiki-stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+    }
+
+    .wiki-stat-row:last-child { border-bottom: none; }
+
+    .wiki-stat-row .ws-key { color: #64748b; }
+    .wiki-stat-row .ws-val { font-weight: 600; color: #0f172a; }
+
+    .pattern-list { list-style: none; }
+
+    .pattern-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+      color: #0f172a;
+    }
+
+    .pattern-list li:last-child { border-bottom: none; }
+
+    .pattern-list li::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1D9E75;
+      flex-shrink: 0;
+      margin-top: 4px;
+    }
+
+    /* ── D3 Knowledge Graph ──────────────────────────────── */
+    #kg-container {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    #kg-svg {
+      display: block;
+      width: 100%;
+      height: 460px;
+    }
+
+    .kg-tooltip {
+      position: fixed;
+      background: rgba(15, 23, 42, 0.9);
+      color: #fff;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      pointer-events: none;
+      z-index: 9999;
+      max-width: 240px;
+      line-height: 1.4;
+      display: none;
+    }
+
+    .kg-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      padding: 12px 16px;
+      border-top: 1px solid #f1f5f9;
+      background: #fafafa;
+    }
+
+    .kg-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #475569;
+    }
+
+    .kg-legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Print ───────────────────────────────────────────── */
+    @media print {
+      body { background: #fff; }
+      .toggle-btn { display: none; }
+      .historical-grid { display: grid !important; }
+      #kg-container { page-break-inside: avoid; }
+    }
+
+    @media (max-width: 600px) {
+      .header { flex-direction: column; }
+      .header-right { text-align: left; }
+      .card-grid { grid-template-columns: 1fr; }
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
 </head>
 <body>
-<header class="header">
-<div><div class="header-title">JIP Data Core — Forge Status</div><div class="header-sub">Data Fix Sprint — 2026-04-06 overnight build</div></div>
-<div style="font-size:12px;color:var(--muted)">Generated: <span id="gen-time"></span></div>
-</header>
-<main class="main">
+<div class="page-wrapper">
 
-<div class="stats-row">
-<div class="stat-card"><div class="stat-value">9</div><div class="stat-label">Total Chunks</div></div>
-<div class="stat-card"><div class="stat-value" style="color:var(--success)">3</div><div class="stat-label">Completed</div></div>
-<div class="stat-card"><div class="stat-value" style="color:var(--running)">1</div><div class="stat-label">Running</div></div>
-<div class="stat-card"><div class="stat-value" style="color:var(--pending)">5</div><div class="stat-label">Pending</div></div>
-<div class="stat-card"><div class="stat-value">8</div><div class="stat-label">Commits Today</div></div>
-<div class="stat-card"><div class="stat-value">391</div><div class="stat-label">Tests Passing</div></div>
-<div class="stat-card"><div class="stat-value">11</div><div class="stat-label">Wiki Articles</div></div>
-</div>
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <h1>JIP Data Engine — Forge Status</h1>
+      <div class="build-label">
+        <span><span class="dot"></span>Active build: ETF Universe Expansion</span>
+        <span>Date: 2026-04-10</span>
+        <span>Project: jip-data-engine v2.1</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="big-pct">100%</div>
+      <div class="big-sub">22 / 22 chunks complete</div>
+    </div>
+  </header>
 
-<div class="section">
-<div class="section-title">Overall Progress</div>
-<div class="card">
-<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700">Data Fix Sprint</span><span style="font-size:24px;font-weight:800;color:var(--teal)">33%</span></div>
-<div class="progress-outer"><div class="progress-inner" style="width:33%">3/9</div></div>
-<div style="font-size:12px;color:var(--muted);margin-top:8px">Wave 1 (A-D) running in parallel | Wave 2 (E-G) blocked on Wave 1 | Wave 3 (H-I) blocked on Wave 2</div>
-</div>
-</div>
+  <!-- PROGRESS BAR -->
+  <div class="section">
+    <div class="section-header">
+      Overall Progress
+      <span class="section-badge">ETF Universe Expansion</span>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-fill" style="width: 100%;"></div>
+    </div>
+    <div class="progress-label"><strong>22 of 22 chunks complete</strong> — 16 core + 6 ETF expansion</div>
+  </div>
 
-<div class="section">
-<div class="section-title">Chunk Status</div>
-<div class="chunk-grid">
-<div class="chunk-card running"><div style="display:flex;justify-content:space-between"><div class="chunk-name">A: BHAV Re-ingestion</div><span class="badge running">RUNNING</span></div><div class="chunk-desc">2.39M rows, 2,087 instruments. 1,369/2,611 dates (52%). ~1,800 rows/day. 6 workers.</div><div class="chunk-meta">Est completion: ~1 more hour</div></div>
-<div class="chunk-card done"><div style="display:flex;justify-content:space-between"><div class="chunk-name">B: Index Constituents + Sectors</div><span class="badge done">DONE</span></div><div class="chunk-desc">34 CSVs downloaded, 2,660 constituents, 507 unique stocks, 500 with industry, 573 with sector</div><div class="chunk-meta">34/51 indices fetched | 500 stocks got NSE industry field</div></div>
-<div class="chunk-card done"><div style="display:flex;justify-content:space-between"><div class="chunk-name">C: yfinance Sectors</div><span class="badge done">DONE</span></div><div class="chunk-desc">1,712/1,720 mapped (99.5%). Only 8 micro-caps without data. 27 distinct sectors across 2,132 EQ stocks.</div><div class="chunk-meta">Zero failures. Industry→NSE sector mapping working correctly.</div></div>
-<div class="chunk-card done"><div style="display:flex;justify-content:space-between"><div class="chunk-name">D: Intl ISINs + ISIN Resolver</div><span class="badge done">DONE</span></div><div class="chunk-desc">462 intl instruments created. 230,254 MF holdings mapped (100%). 2,743 total instruments</div><div class="chunk-meta">462 intl entries across 14 exchanges | All holdings resolved</div></div>
-<div class="chunk-card blocked"><div style="display:flex;justify-content:space-between"><div class="chunk-name">E: Sector Merge</div><span class="badge blocked">BLOCKED</span></div><div class="chunk-desc">Merge index + yfinance + Morningstar sectors. Priority: index > yfinance > Morningstar</div><div class="chunk-meta">Depends on: B, C</div></div>
-<div class="chunk-card blocked"><div style="display:flex;justify-content:space-between"><div class="chunk-name">F: ISIN Verify</div><span class="badge blocked">BLOCKED</span></div><div class="chunk-desc">Verify ISIN resolution coverage and edge cases</div><div class="chunk-meta">Depends on: D</div></div>
-<div class="chunk-card blocked"><div style="display:flex;justify-content:space-between"><div class="chunk-name">G: Corp Action Adjustments</div><span class="badge blocked">BLOCKED</span></div><div class="chunk-desc">adj_factor for 971 splits+bonuses. Cumulative chain. Backfill close_adj</div><div class="chunk-meta">Depends on: A</div></div>
-<div class="chunk-card pending"><div style="display:flex;justify-content:space-between"><div class="chunk-name">H: Vectorized Recompute</div><span class="badge pending">PENDING</span></div><div class="chunk-desc">All metrics: technicals, RS, breadth, regime, fund derived, sector RS. ~90 min</div><div class="chunk-meta">Depends on: E, F, G</div></div>
-<div class="chunk-card pending"><div style="display:flex;justify-content:space-between"><div class="chunk-name">I: Cross-validation</div><span class="badge pending">PENDING</span></div><div class="chunk-desc">MarketPulse 50% match, Morningstar risk, sector RS comparison</div><div class="chunk-meta">Depends on: H</div></div>
-</div>
-</div>
+  <!-- ETF EXPANSION CHUNKS -->
+  <div class="section">
+    <div class="section-header">
+      Active Build — ETF Expansion Chunks
+      <span class="section-badge">6 chunks · 97 tests</span>
+    </div>
+    <div class="card-grid" id="etf-cards"></div>
+  </div>
 
-<div class="section">
-<div class="section-title">Data Audit — Critical Fields</div>
-<div class="card" style="overflow-x:auto">
-<table class="audit-table">
-<thead><tr><th>Table</th><th>Rows</th><th>Field</th><th>Status</th><th>Fix</th></tr></thead>
-<tbody>
-<tr><td>de_instrument</td><td>2,743</td><td>sector</td><td class="partial">573/2743 (21%) — yfinance running for rest</td><td>B+C+E</td></tr>
-<tr><td>de_instrument</td><td>2,743</td><td>industry</td><td class="partial">500/2743 (18%) — from NIFTY 500 CSV</td><td>B+C</td></tr>
-<tr><td>de_equity_ohlcv</td><td>1.37M</td><td>close_adj</td><td class="problem">ALL NULL</td><td>G</td></tr>
-<tr><td>de_equity_ohlcv</td><td>1.37M</td><td>instruments</td><td class="problem">640/2281 (28%)</td><td>A</td></tr>
-<tr><td>de_mf_holdings</td><td>230K</td><td>instrument_id</td><td class="ok">100% RESOLVED (230,254 mapped)</td><td>D+F</td></tr>
-<tr><td>de_mf_nav_daily</td><td>1.47M</td><td>returns</td><td class="problem">ALL NULL</td><td>H</td></tr>
-<tr><td>de_mf_derived_daily</td><td>330K</td><td>derived_rs</td><td class="problem">ALL NULL</td><td>H</td></tr>
-<tr><td>de_breadth_daily</td><td>3.9K</td><td>pct_above_dma</td><td class="problem">ALL NULL</td><td>H</td></tr>
-<tr><td>de_index_constituents</td><td>2.6K</td><td>coverage</td><td class="partial">17/123 indices</td><td>B</td></tr>
-<tr><td>de_adjustment_factors</td><td>0</td><td>-</td><td class="problem">EMPTY</td><td>G</td></tr>
-</tbody>
-</table>
-</div>
-</div>
+  <!-- HISTORICAL CHUNKS -->
+  <div class="section">
+    <div class="section-header">
+      Historical Build Chunks (C1 – C16)
+      <span class="section-badge">16 chunks · core build</span>
+    </div>
+    <button class="toggle-btn" id="hist-toggle" onclick="toggleHistorical()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      Show 16 historical chunks
+    </button>
+    <div class="historical-grid" id="hist-grid"></div>
+  </div>
 
-<div class="section">
-<div class="section-title">Verified Data (Cross-checked)</div>
-<div class="card" style="overflow-x:auto">
-<table class="audit-table">
-<thead><tr><th>Check</th><th>Result</th><th>Coverage</th></tr></thead>
-<tbody>
-<tr><td>Stock prices vs MarketPulse</td><td class="ok">100% exact match</td><td>862 stocks, 2 dates</td></tr>
-<tr><td>SMA50 vs yfinance</td><td class="ok">Within 2%</td><td>4 blue chips</td></tr>
-<tr><td>RS self-consistency</td><td class="ok">Exact match</td><td>4 stocks</td></tr>
-<tr><td>Breadth arithmetic</td><td class="ok">Exact match</td><td>All dates</td></tr>
-<tr><td>Regime self-consistency</td><td class="ok">delta 0.001</td><td>Confidence weighted sum</td></tr>
-<tr><td>Sharpe vs Morningstar</td><td class="ok">100% within 30%</td><td>10 funds</td></tr>
-<tr><td>Beta (date-aligned)</td><td class="ok">Avg 0.99</td><td>739 funds</td></tr>
-<tr><td>Sector RS direction</td><td class="ok">83% match, rho=0.70</td><td>13 sectors</td></tr>
-</tbody>
-</table>
-</div>
-</div>
+  <!-- BUILD METRICS -->
+  <div class="section">
+    <div class="section-header">Build Metrics</div>
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-value">258</div>
+        <div class="metric-label">Total ETFs in master</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value">220</div>
+        <div class="metric-label">Active ETFs</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value">4,35,746</div>
+        <div class="metric-label">OHLCV rows</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value">97</div>
+        <div class="metric-label">Tests passing</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value">4</div>
+        <div class="metric-label">Commits</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value">0</div>
+        <div class="metric-label">Lint issues</div>
+      </div>
+    </div>
+  </div>
 
-<div class="section">
-<div class="section-title">Decision Timeline</div>
-<div class="card">
-<div class="timeline">
-<div class="timeline-item"><div class="timeline-date">Apr 5 — C1-C10</div><div class="timeline-text">Foundation, pipelines, ingestion, Morningstar, qualitative layer. 63 files, 11K+ LOC.</div></div>
-<div class="timeline-item"><div class="timeline-date">Apr 5 — C11-C16</div><div class="timeline-text">Computation, API, monitoring, E2E tests. Complete codebase scaffolded.</div></div>
-<div class="timeline-item"><div class="timeline-date">Apr 6 AM — Computation Sprint</div><div class="timeline-text">Built QA pipeline (pre/post QA, spot-checks, Morningstar crossval, tracker). 391 tests. 6 agents parallel.</div></div>
-<div class="timeline-item"><div class="timeline-date">Apr 6 PM — Vectorized Compute</div><div class="timeline-text">3.5M rows in 28 min. Fixed RS query perf (7x), beta alignment, sector mapping.</div></div>
-<div class="timeline-item"><div class="timeline-date">Apr 6 PM — Data Audit</div><div class="timeline-text">Full field-level audit exposed: 640/2281 stocks, close_adj NULL, sector NULL, holdings unlinked.</div></div>
-<div class="timeline-item"><div class="timeline-date">Apr 6 22:30 IST — Fix Sprint</div><div class="timeline-text">4 parallel agents launched: BHAV re-ingestion, index constituents, yfinance sectors, intl ISINs. Overnight run.</div></div>
-</div>
-</div>
-</div>
+  <!-- DECISION TIMELINE -->
+  <div class="section">
+    <div class="section-header">Design Decision Timeline</div>
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-title">NSE ETF source: yfinance .NS, not BHAV copy</div>
+        <div class="timeline-body">de_instrument only contains equities. The BHAV master_refresh pipeline loads from EQUITY_L.csv which excludes ETFs. yfinance with .NS suffix is the correct source for NSE ETF OHLCV data.</div>
+        <div class="timeline-date">ETF-C1 · 2026-04-10</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-title">Backfill: yfinance max period, not Stooq tars</div>
+        <div class="timeline-body">Same ticker format works for US ETFs, covers all exchanges, and avoids SCP/parse complexity. yfinance max period provides sufficient historical coverage without additional infrastructure.</div>
+        <div class="timeline-date">ETF-C2 · 2026-04-10</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-title">38 NSE ETFs deactivated (is_active = FALSE)</div>
+        <div class="timeline-body">Smaller AMC ETF variants (ICICI, HDFC, Kotak, UTI series) do not exist on yfinance. Rather than failing silently, set is_active=FALSE so downstream pipelines skip them cleanly.</div>
+        <div class="timeline-date">ETF-C5 · 2026-04-10</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-title">Observatory counts now API-driven, not hardcoded</div>
+        <div class="timeline-body">Removed hardcoded "130 ETFs", "2,743 instruments" etc. from the Observatory frontend. Tree metadata now pulls live from the coverage API, eliminating dashboard-backend name drift.</div>
+        <div class="timeline-date">ETF-C6 · 2026-04-10</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-title">etf_prices pipeline handles all exchanges in one code path</div>
+        <div class="timeline-body">Maps NSE tickers to .NS for yfinance, maps back for DB storage. A single pipeline handles NSE India and Global ETFs without separate code paths, preventing Dual Code Path Divergence.</div>
+        <div class="timeline-date">ETF-C4 · 2026-04-10</div>
+      </div>
+    </div>
+  </div>
 
-<div class="section">
-<div class="section-title">Knowledge Wiki (11 articles)</div>
-<div class="card" style="overflow-x:auto">
-<table class="wiki-table">
-<thead><tr><th>Article</th><th>Category</th></tr></thead>
-<tbody>
-<tr><td>Pipeline ABC Orchestration (22+ refs)</td><td><span class="wiki-cat pattern">pattern</span></td></tr>
-<tr><td>Advisory Lock Concurrency</td><td><span class="wiki-cat pattern">pattern</span></td></tr>
-<tr><td>Fail-Open Trading Calendar</td><td><span class="wiki-cat pattern">pattern</span></td></tr>
-<tr><td>Idempotent Upsert (60+ refs)</td><td><span class="wiki-cat pattern">pattern</span></td></tr>
-<tr><td>Decimal Not Float</td><td><span class="wiki-cat pattern">pattern</span></td></tr>
-<tr><td>Quarantine Threshold</td><td><span class="wiki-cat pattern">pattern</span></td></tr>
-<tr><td>Computation Boundary</td><td><span class="wiki-cat pattern">pattern</span></td></tr>
-<tr><td>Orchestrator Sub-Pipeline</td><td><span class="wiki-cat pattern">pattern</span></td></tr>
-<tr><td>DAG Executor</td><td><span class="wiki-cat architecture">architecture</span></td></tr>
-<tr><td>Envelope Encryption</td><td><span class="wiki-cat architecture">architecture</span></td></tr>
-<tr><td>Migration ABC Framework</td><td><span class="wiki-cat architecture">architecture</span></td></tr>
-</tbody>
-</table>
-</div>
-</div>
+  <!-- WIKI STATS -->
+  <div class="section">
+    <div class="section-header">
+      Forge Knowledge Wiki
+      <span class="section-badge">44 articles</span>
+    </div>
+    <div class="wiki-grid">
+      <div>
+        <div class="wiki-stat-row"><span class="ws-key">Total articles</span><span class="ws-val">44 wiki + 5 staging</span></div>
+        <div class="wiki-stat-row"><span class="ws-key">Last compiled</span><span class="ws-val">2026-04-10</span></div>
+        <div class="wiki-stat-row"><span class="ws-key">Patterns</span><span class="ws-val">20</span></div>
+        <div class="wiki-stat-row"><span class="ws-key">Bug patterns</span><span class="ws-val">17</span></div>
+        <div class="wiki-stat-row"><span class="ws-key">Anti-patterns</span><span class="ws-val">4</span></div>
+        <div class="wiki-stat-row"><span class="ws-key">Architecture decisions</span><span class="ws-val">3</span></div>
+        <div class="wiki-stat-row"><span class="ws-key">Source builds</span><span class="ws-val">C1–C16 + ETF + resilience + goldilocks</span></div>
+      </div>
+      <div>
+        <div style="font-size:13px; font-weight:600; color:#0f172a; margin-bottom:10px;">Top patterns used in this build</div>
+        <ul class="pattern-list">
+          <li>Idempotent Upsert — ON CONFLICT everywhere (7x)</li>
+          <li>Staging Table Bulk Write — etf_backfill COPY pattern (4x)</li>
+          <li>FK Master Data Drift — NSE ETF master seeding before OHLCV (2x)</li>
+          <li>Decimal Not Float — all financial values (Numeric 18,4)</li>
+          <li>Computation Boundary — float to Decimal at storage edge</li>
+        </ul>
+      </div>
+    </div>
+  </div>
 
-<div class="section">
-<div class="section-title">Knowledge Graph</div>
-<div class="card"><div id="graph-container"></div></div>
-</div>
+  <!-- KNOWLEDGE GRAPH -->
+  <div class="section">
+    <div class="section-header">
+      Knowledge Graph — Wiki Articles
+      <span class="section-badge">D3 force-directed · hover for details</span>
+    </div>
+    <div id="kg-container">
+      <svg id="kg-svg"></svg>
+      <div class="kg-legend" id="kg-legend"></div>
+    </div>
+  </div>
 
-</main>
+</div><!-- /page-wrapper -->
+
+<div class="kg-tooltip" id="kg-tooltip"></div>
+
 <script>
-document.getElementById('gen-time').textContent=new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata',hour12:false,day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+' IST';
-const nodes=[{id:"Pipeline ABC",cat:"pattern"},{id:"Advisory Lock",cat:"pattern"},{id:"Fail-Open Calendar",cat:"pattern"},{id:"Idempotent Upsert",cat:"pattern"},{id:"Decimal Not Float",cat:"pattern"},{id:"Quarantine Threshold",cat:"pattern"},{id:"Computation Boundary",cat:"pattern"},{id:"Orchestrator",cat:"pattern"},{id:"DAG Executor",cat:"architecture"},{id:"Envelope Encryption",cat:"architecture"},{id:"Migration ABC",cat:"architecture"}];
-const links=[{source:"Pipeline ABC",target:"Advisory Lock"},{source:"Pipeline ABC",target:"Fail-Open Calendar"},{source:"Pipeline ABC",target:"Idempotent Upsert"},{source:"Pipeline ABC",target:"Quarantine Threshold"},{source:"Orchestrator",target:"DAG Executor"},{source:"Orchestrator",target:"Pipeline ABC"},{source:"Computation Boundary",target:"Decimal Not Float"},{source:"Computation Boundary",target:"Idempotent Upsert"},{source:"DAG Executor",target:"Advisory Lock"},{source:"DAG Executor",target:"Fail-Open Calendar"},{source:"Migration ABC",target:"Pipeline ABC"},{source:"Migration ABC",target:"Idempotent Upsert"}];
-const catColor={pattern:"#16A34A",architecture:"#2563EB",bug:"#DC2626",anti:"#D97706"};
-const container=document.getElementById('graph-container'),width=container.clientWidth,height=400;
-const svg=d3.select('#graph-container').append('svg').attr('width',width).attr('height',height);
-const sim=d3.forceSimulation(nodes).force('link',d3.forceLink(links).id(d=>d.id).distance(100)).force('charge',d3.forceManyBody().strength(-300)).force('center',d3.forceCenter(width/2,height/2)).force('collision',d3.forceCollide(30));
-const link=svg.selectAll('line').data(links).join('line').attr('stroke','#ddd').attr('stroke-width',1.5);
-const node=svg.selectAll('circle').data(nodes).join('circle').attr('r',8).attr('fill',d=>catColor[d.cat]||'#999').attr('stroke','#fff').attr('stroke-width',2).style('cursor','pointer');
-const label=svg.selectAll('text').data(nodes).join('text').text(d=>d.id).attr('class','node-label').attr('dx',12).attr('dy',4);
-node.append('title').text(d=>`${d.id} (${d.cat})`);
-node.call(d3.drag().on('start',(e,d)=>{if(!e.active)sim.alphaTarget(.3).restart();d.fx=d.x;d.fy=d.y}).on('drag',(e,d)=>{d.fx=e.x;d.fy=e.y}).on('end',(e,d)=>{if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null}));
-sim.on('tick',()=>{link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);node.attr('cx',d=>d.x).attr('cy',d=>d.y);label.attr('x',d=>d.x).attr('y',d=>d.y)});
+/* ── DATA ───────────────────────────────────────────────── */
+const ETF_CHUNKS = [
+  {
+    id: "ETF-C1",
+    name: "NSE India ETF Master + OHLCV Sync",
+    complexity: "medium",
+    tests: 28,
+    date: "2026-04-10",
+    files: ["scripts/ingest/nse_etf_master.py", "app/pipelines/etf/nse_etf_sync.py", "app/pipelines/etf/__init__.py"],
+    note: "yfinance .NS suffix for NSE ETFs. DATABASE_URL_SYNC prefix-stripping bug fixed."
+  },
+  {
+    id: "ETF-C2",
+    name: "Global ETF Expansion + Backfill",
+    complexity: "medium",
+    tests: 29,
+    date: "2026-04-10",
+    files: ["scripts/ingest/etf_backfill.py", "scripts/ingest/etf_ingest.py"],
+    note: "31 new global ETFs (fixed income, thematic, frontier). yfinance max period — no Stooq tars."
+  },
+  {
+    id: "ETF-C3",
+    name: "Enrichment Script",
+    complexity: "low",
+    tests: 40,
+    date: "2026-04-10",
+    files: ["scripts/ingest/etf_enrich.py"],
+    note: "expense_ratio=0.0 is valid — use `is not None`. ~60% category coverage, ~40% expense_ratio."
+  },
+  {
+    id: "ETF-C4",
+    name: "Pipeline Wiring + Scheduler",
+    complexity: "low",
+    tests: 0,
+    date: "2026-04-10",
+    files: ["app/pipelines/registry.py"],
+    note: "nse_etf_sync placed before etf_prices in EOD schedule. CronSchedule.default() sync issue documented."
+  },
+  {
+    id: "ETF-C5",
+    name: "Deploy + End-to-End Verification",
+    complexity: "medium",
+    tests: 0,
+    date: "2026-04-10",
+    files: ["scripts/ingest/etf_backfill.py"],
+    note: "258 ETFs · 220 active · 4,35,746 OHLCV rows. Python 3.9 compat: __future__ annotations fix."
+  },
+  {
+    id: "ETF-C6",
+    name: "Observatory Metadata Fix",
+    complexity: "low",
+    tests: 0,
+    date: "2026-04-10",
+    files: ["app/api/v1/observatory.py", "app/static/observatory.html", "docs/data-map.html"],
+    note: "Tree data counts now dynamic from coverage API. Hardcoded numbers removed."
+  }
+];
+
+const HIST_CHUNKS = [
+  { id: "C1",  name: "Project Scaffold",                              complexity: "medium",    date: "2026-04-05" },
+  { id: "C2",  name: "Database Schema",                               complexity: "high",      date: "2026-04-05" },
+  { id: "C3",  name: "API Auth + Middleware",                         complexity: "medium",    date: "2026-04-05" },
+  { id: "C4",  name: "Pipeline Framework",                            complexity: "high",      date: "2026-04-05" },
+  { id: "C5",  name: "Data Migrations",                               complexity: "high",      date: "2026-04-05" },
+  { id: "C6",  name: "PII Encryption",                                complexity: "medium",    date: "2026-04-05" },
+  { id: "C7",  name: "Equity Ingestion Pipeline",                     complexity: "high",      date: "2026-04-05" },
+  { id: "C8",  name: "MF Ingestion Pipeline",                         complexity: "medium",    date: "2026-04-05" },
+  { id: "C9",  name: "Supporting Pipelines",                          complexity: "medium",    date: "2026-04-05" },
+  { id: "C10", name: "Morningstar Integration",                       complexity: "medium",    date: "2026-04-05" },
+  { id: "C11", name: "Technical Indicators + RS + Breadth + Regime",  complexity: "very-high", date: "2026-04-05" },
+  { id: "C12", name: "Sector + Fund Derived Metrics",                 complexity: "high",      date: "2026-04-05" },
+  { id: "C13", name: "Qualitative Pipeline",                          complexity: "high",      date: "2026-04-05" },
+  { id: "C14", name: "Market Pulse + MF Pulse API",                   complexity: "high",      date: "2026-04-05" },
+  { id: "C15", name: "Pipeline Monitoring Dashboard",                 complexity: "medium",    date: "2026-04-05" },
+  { id: "C16", name: "Orchestrator + Monitoring + Operational Readiness", complexity: "high", date: "2026-04-05" }
+];
+
+/* ── WIKI NODES ─────────────────────────────────────────── */
+const WIKI_NODES = [
+  { id: "Reconciliation: Compare Controlled Fields Only", cat: "pattern",      refs: 1 },
+  { id: "Pipeline ABC Orchestration",                     cat: "pattern",      refs: 2 },
+  { id: "Advisory Lock Concurrency",                      cat: "pattern",      refs: 1 },
+  { id: "Fail-Open Trading Calendar",                     cat: "pattern",      refs: 1 },
+  { id: "Idempotent Upsert",                              cat: "pattern",      refs: 7 },
+  { id: "Decimal Not Float",                              cat: "pattern",      refs: 3 },
+  { id: "Quarantine Threshold",                           cat: "pattern",      refs: 1 },
+  { id: "Computation Boundary",                           cat: "pattern",      refs: 2 },
+  { id: "Orchestrator Sub-Pipeline",                      cat: "pattern",      refs: 1 },
+  { id: "Staging Table Bulk Write",                       cat: "pattern",      refs: 4 },
+  { id: "SQL Window Computation",                         cat: "pattern",      refs: 3 },
+  { id: "Sector from Index Constituents",                 cat: "pattern",      refs: 1 },
+  { id: "PRD Golden Example Testing",                     cat: "pattern",      refs: 7 },
+  { id: "PRD Formula vs Golden Example Mismatch",         cat: "pattern",      refs: 2 },
+  { id: "Coverage-Aware Agent Findings",                  cat: "pattern",      refs: 3 },
+  { id: "Binary Identity Tests Drive Config",             cat: "pattern",      refs: 2 },
+  { id: "Bootstrapping Corroboration",                    cat: "pattern",      refs: 1 },
+  { id: "Voice Enforcement Static Rules",                 cat: "pattern",      refs: 1 },
+  { id: "Budget-Aware API Integration",                   cat: "pattern",      refs: 2 },
+  { id: "Cross-Agent Synthesis",                          cat: "pattern",      refs: 2 },
+  { id: "Envelope Encryption",                            cat: "architecture", refs: 1 },
+  { id: "Migration ABC Framework",                        cat: "architecture", refs: 1 },
+  { id: "DAG Executor",                                   cat: "architecture", refs: 1 },
+  { id: "Per-Day Query Loop",                             cat: "bug",          refs: 1 },
+  { id: "Session Poisoning Missing Table",                cat: "bug",          refs: 2 },
+  { id: "Decimal in JSONB Persist",                       cat: "bug",          refs: 5 },
+  { id: "Mapper Registration Order",                      cat: "bug",          refs: 4 },
+  { id: "Asyncpg Date String Parameter",                  cat: "bug",          refs: 3 },
+  { id: "pgvector NULL Type Mismatch",                    cat: "bug",          refs: 4 },
+  { id: "Module-Level Side Effect",                       cat: "bug",          refs: 2 },
+  { id: "SQLAlchemy Param-Cast Collision",                cat: "bug",          refs: 4 },
+  { id: "dict.get() None vs Missing",                     cat: "bug",          refs: 2 },
+  { id: "Batch INSERT Within-Batch Duplicates",           cat: "bug",          refs: 2 },
+  { id: "Session-Level Advisory Lock + Pooling",          cat: "bug",          refs: 2 },
+  { id: "External API Format Drift",                      cat: "bug",          refs: 2 },
+  { id: "Silent KeyError in Loop",                        cat: "bug",          refs: 2 },
+  { id: "Data Status Lifecycle Gap",                      cat: "bug",          refs: 2 },
+  { id: "FK Master Data Drift",                           cat: "bug",          refs: 2 },
+  { id: "Missing Dedup Constraint on Upload Table",       cat: "bug",          refs: 2 },
+  { id: "Hardcoded Column Indices in Parser",             cat: "bug",          refs: 1 },
+  { id: "Load All Then Compute",                          cat: "anti",         refs: 1 },
+  { id: "Dual Code Path Divergence",                      cat: "anti",         refs: 4 },
+  { id: "TRUNCATE Before Rebuild",                        cat: "anti",         refs: 2 },
+  { id: "Next.js Proxy for File Uploads",                 cat: "anti",         refs: 1 },
+  { id: "Importlib Isolation",                            cat: "staging",      refs: 1 },
+  { id: "Local LLM Fallback",                             cat: "staging",      refs: 1 },
+  { id: "Dashboard-Backend Name Drift",                   cat: "staging",      refs: 1 },
+  { id: "Empty Aggregation Table",                        cat: "staging",      refs: 1 },
+  { id: "Self-Healing Circuit Breaker",                   cat: "staging",      refs: 1 }
+];
+
+const WIKI_EDGES = [
+  ["Idempotent Upsert",                          "Batch INSERT Within-Batch Duplicates"],
+  ["Idempotent Upsert",                          "TRUNCATE Before Rebuild"],
+  ["Idempotent Upsert",                          "FK Master Data Drift"],
+  ["Staging Table Bulk Write",                   "Load All Then Compute"],
+  ["Staging Table Bulk Write",                   "Idempotent Upsert"],
+  ["Decimal Not Float",                          "Computation Boundary"],
+  ["Decimal Not Float",                          "Decimal in JSONB Persist"],
+  ["Computation Boundary",                       "Decimal in JSONB Persist"],
+  ["Pipeline ABC Orchestration",                 "Orchestrator Sub-Pipeline"],
+  ["Pipeline ABC Orchestration",                 "DAG Executor"],
+  ["Advisory Lock Concurrency",                  "Session-Level Advisory Lock + Pooling"],
+  ["SQL Window Computation",                     "Load All Then Compute"],
+  ["SQL Window Computation",                     "Per-Day Query Loop"],
+  ["PRD Golden Example Testing",                 "PRD Formula vs Golden Example Mismatch"],
+  ["PRD Golden Example Testing",                 "Binary Identity Tests Drive Config"],
+  ["Coverage-Aware Agent Findings",              "Cross-Agent Synthesis"],
+  ["Quarantine Threshold",                       "Data Status Lifecycle Gap"],
+  ["Fail-Open Trading Calendar",                 "Data Status Lifecycle Gap"],
+  ["Session Poisoning Missing Table",            "Mapper Registration Order"],
+  ["Dual Code Path Divergence",                  "Pipeline ABC Orchestration"],
+  ["Budget-Aware API Integration",               "External API Format Drift"],
+  ["Voice Enforcement Static Rules",             "Bootstrapping Corroboration"],
+  ["Envelope Encryption",                        "Migration ABC Framework"],
+  ["Dashboard-Backend Name Drift",               "Hardcoded Column Indices in Parser"],
+  ["Self-Healing Circuit Breaker",               "Session Poisoning Missing Table"],
+  ["Empty Aggregation Table",                    "Data Status Lifecycle Gap"],
+  ["Importlib Isolation",                        "Module-Level Side Effect"],
+  ["Missing Dedup Constraint on Upload Table",   "Batch INSERT Within-Batch Duplicates"],
+  ["FK Master Data Drift",                       "Session Poisoning Missing Table"],
+  ["Next.js Proxy for File Uploads",             "External API Format Drift"],
+  ["Reconciliation: Compare Controlled Fields Only", "Coverage-Aware Agent Findings"],
+  ["Local LLM Fallback",                         "Budget-Aware API Integration"],
+  ["Sector from Index Constituents",             "Mapper Registration Order"],
+  ["pgvector NULL Type Mismatch",                "SQLAlchemy Param-Cast Collision"],
+  ["Asyncpg Date String Parameter",              "SQLAlchemy Param-Cast Collision"],
+  ["dict.get() None vs Missing",                 "Silent KeyError in Loop"]
+];
+
+/* ── RENDER ETF CARDS ───────────────────────────────────── */
+(function () {
+  const container = document.getElementById("etf-cards");
+  ETF_CHUNKS.forEach(chunk => {
+    const card = document.createElement("div");
+    card.className = "card";
+    const filesHtml = chunk.files
+      .map(f => `<span class="file-tag" title="${f}">${f.split("/").pop()}</span>`)
+      .join("");
+    const testsLine = chunk.tests > 0
+      ? `<div class="card-meta-item"><span class="label">Tests:</span>${chunk.tests}</div>`
+      : `<div class="card-meta-item"><span class="label">Tests:</span><span style="color:#94a3b8">deploy/verify</span></div>`;
+    card.innerHTML = `
+      <div class="card-top">
+        <div>
+          <div class="card-id">${chunk.id}</div>
+          <div class="card-name">${chunk.name}</div>
+        </div>
+        <span class="badge-done">DONE</span>
+      </div>
+      <div style="margin-bottom:8px;">
+        <span class="complexity-badge complexity-${chunk.complexity}">${chunk.complexity}</span>
+      </div>
+      <div class="card-meta">
+        ${testsLine}
+        <div class="card-meta-item"><span class="label">Completed:</span>${chunk.date}</div>
+      </div>
+      <div class="card-files">
+        <div style="font-weight:600;color:#475569;font-size:11px;margin-bottom:3px;">Key files</div>
+        <div class="file-list">${filesHtml}</div>
+      </div>
+      ${chunk.note ? `<div style="margin-top:10px;font-size:11.5px;color:#64748b;line-height:1.45;border-left:2px solid #1D9E75;padding-left:8px;">${chunk.note}</div>` : ""}
+    `;
+    container.appendChild(card);
+  });
+})();
+
+/* ── RENDER HISTORICAL CARDS ────────────────────────────── */
+(function () {
+  const container = document.getElementById("hist-grid");
+  HIST_CHUNKS.forEach(chunk => {
+    const card = document.createElement("div");
+    card.className = "hist-card";
+    card.innerHTML = `
+      <div class="hist-card-left">
+        <div class="hist-card-id">${chunk.id}</div>
+        <div class="hist-card-name">${chunk.name}</div>
+      </div>
+      <span class="badge-done">DONE</span>
+    `;
+    container.appendChild(card);
+  });
+})();
+
+function toggleHistorical() {
+  const grid = document.getElementById("hist-grid");
+  const btn  = document.getElementById("hist-toggle");
+  const open = grid.classList.toggle("visible");
+  btn.innerHTML = open
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg> Hide historical chunks`
+    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg> Show 16 historical chunks`;
+}
+
+/* ── D3 KNOWLEDGE GRAPH ─────────────────────────────────── */
+(function () {
+  const CAT_COLOR = {
+    pattern:      "#22c55e",
+    bug:          "#ef4444",
+    anti:         "#f59e0b",
+    architecture: "#3b82f6",
+    staging:      "#94a3b8"
+  };
+  const CAT_LABEL = {
+    pattern:      "Patterns (20)",
+    bug:          "Bug patterns (17)",
+    anti:         "Anti-patterns (4)",
+    architecture: "Architecture (3)",
+    staging:      "Staging (5)"
+  };
+
+  /* Legend */
+  const legendEl = document.getElementById("kg-legend");
+  Object.entries(CAT_LABEL).forEach(([cat, label]) => {
+    const el = document.createElement("div");
+    el.className = "kg-legend-item";
+    el.innerHTML = `<span class="kg-legend-dot" style="background:${CAT_COLOR[cat]}"></span>${label}`;
+    legendEl.appendChild(el);
+  });
+
+  const svgEl = document.getElementById("kg-svg");
+  const W = svgEl.parentElement.clientWidth || 1100;
+  const H = 460;
+
+  const svg = d3.select("#kg-svg").attr("viewBox", `0 0 ${W} ${H}`);
+
+  const nodeById = {};
+  WIKI_NODES.forEach(n => { nodeById[n.id] = n; });
+
+  const links = WIKI_EDGES
+    .filter(([s, t]) => nodeById[s] && nodeById[t])
+    .map(([source, target]) => ({ source, target }));
+
+  const nodes = WIKI_NODES.map(n => ({ ...n }));
+
+  const rScale = d3.scaleSqrt().domain([1, 7]).range([5, 14]);
+
+  const sim = d3.forceSimulation(nodes)
+    .force("link",      d3.forceLink(links).id(d => d.id).distance(85).strength(0.3))
+    .force("charge",    d3.forceManyBody().strength(-150))
+    .force("center",    d3.forceCenter(W / 2, H / 2))
+    .force("collision", d3.forceCollide().radius(d => rScale(d.refs) + 5))
+    .force("x",         d3.forceX(W / 2).strength(0.04))
+    .force("y",         d3.forceY(H / 2).strength(0.06));
+
+  /* Arrow marker */
+  svg.append("defs").append("marker")
+    .attr("id", "arr")
+    .attr("viewBox", "0 -4 8 8")
+    .attr("refX", 16).attr("refY", 0)
+    .attr("markerWidth", 5).attr("markerHeight", 5)
+    .attr("orient", "auto")
+    .append("path").attr("d", "M0,-4L8,0L0,4").attr("fill", "#cbd5e1");
+
+  const linkSel = svg.append("g")
+    .selectAll("line").data(links).join("line")
+    .attr("stroke", "#e2e8f0")
+    .attr("stroke-width", 1.2)
+    .attr("marker-end", "url(#arr)");
+
+  const nodeSel = svg.append("g")
+    .selectAll("circle").data(nodes).join("circle")
+    .attr("r", d => rScale(d.refs))
+    .attr("fill", d => CAT_COLOR[d.cat])
+    .attr("fill-opacity", 0.85)
+    .attr("stroke", "#fff")
+    .attr("stroke-width", 1.5)
+    .style("cursor", "pointer")
+    .call(d3.drag()
+      .on("start", (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag",  (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on("end",   (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  const tooltip = document.getElementById("kg-tooltip");
+  nodeSel
+    .on("mouseenter", (event, d) => {
+      tooltip.style.display = "block";
+      tooltip.innerHTML = `<strong>${d.id}</strong><br>${CAT_LABEL[d.cat] || d.cat} · ${d.refs}x referenced`;
+    })
+    .on("mousemove", event => {
+      tooltip.style.left = (event.clientX + 14) + "px";
+      tooltip.style.top  = (event.clientY - 10) + "px";
+    })
+    .on("mouseleave", () => { tooltip.style.display = "none"; });
+
+  /* Labels only for refs >= 3 */
+  const labelSel = svg.append("g")
+    .selectAll("text")
+    .data(nodes.filter(n => n.refs >= 3))
+    .join("text")
+    .attr("font-size", 9)
+    .attr("fill", "#475569")
+    .attr("text-anchor", "middle")
+    .attr("dy", d => rScale(d.refs) + 11)
+    .attr("pointer-events", "none")
+    .text(d => d.id.length > 26 ? d.id.slice(0, 24) + "…" : d.id);
+
+  sim.on("tick", () => {
+    const clamp = (v, r, max) => Math.max(r, Math.min(max - r, v));
+    linkSel
+      .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+    nodeSel
+      .attr("cx", d => clamp(d.x, rScale(d.refs), W))
+      .attr("cy", d => clamp(d.y, rScale(d.refs), H));
+    labelSel
+      .attr("x", d => clamp(d.x, rScale(d.refs), W))
+      .attr("y", d => clamp(d.y, rScale(d.refs), H));
+  });
+})();
 </script>
 </body>
 </html>
