@@ -167,62 +167,68 @@
     {
       "id": "ETF-C1",
       "name": "NSE India ETF Master + OHLCV Sync",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/etf-c1.md",
       "layer": 6,
       "dependencies": [],
       "complexity": "medium",
-      "build": "etf-universe-expansion"
+      "build": "etf-universe-expansion",
+      "completed_at": "2026-04-10"
     },
     {
       "id": "ETF-C2",
       "name": "Global ETF Expansion + Backfill",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/etf-c2.md",
       "layer": 6,
       "dependencies": [],
       "complexity": "medium",
-      "build": "etf-universe-expansion"
+      "build": "etf-universe-expansion",
+      "completed_at": "2026-04-10"
     },
     {
       "id": "ETF-C3",
       "name": "Enrichment Script",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/etf-c3.md",
       "layer": 7,
       "dependencies": ["ETF-C1", "ETF-C2"],
       "complexity": "low",
-      "build": "etf-universe-expansion"
+      "build": "etf-universe-expansion",
+      "completed_at": "2026-04-10"
     },
     {
       "id": "ETF-C4",
       "name": "Pipeline Wiring + Scheduler",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/etf-c4.md",
       "layer": 7,
       "dependencies": ["ETF-C1"],
       "complexity": "low",
-      "build": "etf-universe-expansion"
+      "build": "etf-universe-expansion",
+      "completed_at": "2026-04-10"
     },
     {
       "id": "ETF-C5",
       "name": "Deploy + End-to-End Verification",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/etf-c5.md",
       "layer": 8,
       "dependencies": ["ETF-C1", "ETF-C2", "ETF-C3", "ETF-C4"],
       "complexity": "medium",
-      "build": "etf-universe-expansion"
+      "build": "etf-universe-expansion",
+      "completed_at": "2026-04-10"
     },
     {
       "id": "ETF-C6",
       "name": "Observatory Metadata Fix",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/etf-c6.md",
       "layer": 6,
       "dependencies": [],
       "complexity": "low",
-      "build": "etf-universe-expansion"
+      "build": "etf-universe-expansion",
+      "completed_at": "2026-04-10"
     }
   ]
 }
