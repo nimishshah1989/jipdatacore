@@ -131,8 +131,8 @@ async def _run_single_pipeline(
     try:
         # Each pipeline gets its own session to isolate transaction failures
         async with async_session_factory() as isolated_session:
-            async with isolated_session.begin():
-                result: PipelineResult = await pipeline.run(business_date, isolated_session)
+            result: PipelineResult = await pipeline.run(business_date, isolated_session)
+            await isolated_session.commit()
         return PipelineResultResponse(
             pipeline_name=name,
             business_date=business_date.isoformat(),
