@@ -155,7 +155,7 @@ def filter_universe(rows: list[AmfiNavRow]) -> list[AmfiNavRow]:
 async def fetch_amfi_content(client: httpx.AsyncClient) -> bytes:
     """Download AMFI NAVAll.txt. Raises httpx.HTTPStatusError on non-2xx."""
     logger.info("amfi_fetch_start", url=AMFI_URL)
-    response = await client.get(AMFI_URL, timeout=60.0)
+    response = await client.get(AMFI_URL, timeout=60.0, follow_redirects=True)
     response.raise_for_status()
     logger.info("amfi_fetch_complete", bytes=len(response.content))
     return response.content

@@ -216,7 +216,6 @@ async def fetch_global_prices(
         group_by="ticker",
         auto_adjust=True,
         progress=False,
-        show_errors=False,
     )
 
     return parse_yfinance_download(df, business_date, tickers)

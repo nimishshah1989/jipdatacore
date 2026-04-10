@@ -92,6 +92,14 @@ async def upsert_index_prices(
     if not rows:
         return 0, 0
 
+    # Deduplicate by (date, index_code) — NSE API may return duplicates
+    seen_keys: dict[tuple, int] = {}
+    for idx, row_dict in enumerate(rows):
+        key = (row_dict["date"], row_dict["index_code"])
+        seen_keys[key] = idx
+    if len(seen_keys) < len(rows):
+        rows = [rows[i] for i in sorted(seen_keys.values())]
+
     stmt = pg_insert(DeIndexPrices).values(rows)
     stmt = stmt.on_conflict_do_update(
         index_elements=["date", "index_code"],
