@@ -157,17 +157,31 @@ def parse_yfinance_download(
     if day_df is None or day_df.empty:
         return rows
 
-    # yfinance multi-ticker: columns are MultiIndex (field, ticker)
-    # Single ticker: flat columns
+    # yfinance multi-ticker: columns are MultiIndex
+    # With group_by="ticker": (ticker, field) — e.g. ("^GSPC", "Open")
+    # Without group_by:       (field, ticker) — e.g. ("Open", "^GSPC")
     if hasattr(df.columns, "levels") and len(df.columns.levels) > 1:
+        # Detect column order: check if first level contains ticker names
+        first_level = set(df.columns.get_level_values(0))
+        ticker_first = bool(first_level & set(tickers))
+
         # MultiIndex columns
         for ticker in tickers:
             try:
-                open_val = _safe_decimal(day_df[("Open", ticker)].iloc[0])
-                high_val = _safe_decimal(day_df[("High", ticker)].iloc[0])
-                low_val = _safe_decimal(day_df[("Low", ticker)].iloc[0])
-                close_val = _safe_decimal(day_df[("Close", ticker)].iloc[0])
-                volume_raw = day_df[("Volume", ticker)].iloc[0]
+                if ticker_first:
+                    # group_by="ticker" → (ticker, field)
+                    open_val = _safe_decimal(day_df[(ticker, "Open")].iloc[0])
+                    high_val = _safe_decimal(day_df[(ticker, "High")].iloc[0])
+                    low_val = _safe_decimal(day_df[(ticker, "Low")].iloc[0])
+                    close_val = _safe_decimal(day_df[(ticker, "Close")].iloc[0])
+                    volume_raw = day_df[(ticker, "Volume")].iloc[0]
+                else:
+                    # no group_by → (field, ticker)
+                    open_val = _safe_decimal(day_df[("Open", ticker)].iloc[0])
+                    high_val = _safe_decimal(day_df[("High", ticker)].iloc[0])
+                    low_val = _safe_decimal(day_df[("Low", ticker)].iloc[0])
+                    close_val = _safe_decimal(day_df[("Close", ticker)].iloc[0])
+                    volume_raw = day_df[("Volume", ticker)].iloc[0]
                 try:
                     volume_val = int(volume_raw) if volume_raw is not None else None
                 except (TypeError, ValueError):
