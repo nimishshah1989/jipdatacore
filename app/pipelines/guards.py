@@ -28,7 +28,7 @@ async def acquire_pipeline_lock(
     """
     lock_key = f"{pipeline_name}:{business_date.isoformat()}"
     result = await session.execute(
-        sa.text("SELECT pg_try_advisory_lock(hashtext(:key))"),
+        sa.text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"),
         {"key": lock_key},
     )
     acquired: bool = result.scalar()
@@ -47,19 +47,15 @@ async def release_pipeline_lock(
     pipeline_name: str,
     business_date: date,
 ) -> None:
-    """Release the advisory lock. Should be called in a finally block.
+    """Release the advisory lock. No-op for transaction-level locks.
 
-    Note: session-level advisory locks are also released automatically when
-    the session/connection is closed.
+    Transaction-level advisory locks (pg_try_advisory_xact_lock) are
+    automatically released when the transaction ends (commit or rollback).
+    This function is kept for API compatibility with BasePipeline.run().
     """
-    lock_key = f"{pipeline_name}:{business_date.isoformat()}"
-    await session.execute(
-        sa.text("SELECT pg_advisory_unlock(hashtext(:key))"),
-        {"key": lock_key},
-    )
     logger.info(
         "pipeline_lock_released",
         pipeline_name=pipeline_name,
         business_date=business_date.isoformat(),
-        lock_key=lock_key,
+        lock_key=f"{pipeline_name}:{business_date.isoformat()}",
     )
