@@ -854,7 +854,7 @@ STREAM_PIPELINE_MAP: dict[str, str] = {
     "mf_derived": "mf_derived",
     "mf_holdings": "morningstar_portfolio",
     "mf_flows": "mf_category_flows",
-    "etf_ohlcv": "etf_technicals",
+    "etf_ohlcv": "etf_prices",
     "global_prices": "yfinance_global",
     "global_technicals": "global_technicals",
     "macro_values": "fred_macro",

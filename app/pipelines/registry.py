@@ -50,6 +50,8 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     "morningstar_fund_master": ("app.pipelines.morningstar.fund_master", "FundMasterPipeline"),
     "morningstar_holdings": ("app.pipelines.morningstar.holdings", "HoldingsPipeline"),
     "morningstar_risk": ("app.pipelines.morningstar.risk", "RiskPipeline"),
+    # ETF
+    "etf_prices": ("app.pipelines.etf.etf_prices", "EtfPricePipeline"),
     # Qualitative
     "qualitative_rss": ("app.pipelines.qualitative.rss", "RssPipeline"),
     "qualitative_goldilocks": ("app.pipelines.qualitative.playwright_goldilocks", "GoldilocksScraperPipeline"),
@@ -88,7 +90,7 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "eod": [
         "nse_bhav", "nse_corporate_actions", "nse_indices",
         "fii_dii_flows", "amfi_nav", "yfinance_global", "fred_macro",
-        "india_vix",
+        "india_vix", "etf_prices",
     ],
     # Weekend: no Indian equity, but global markets still trade
     "eod_weekend": [
