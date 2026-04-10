@@ -104,9 +104,14 @@ class PipelineResultResponse(BaseModel):
 async def _run_single_pipeline(
     name: str,
     business_date: date,
-    session: AsyncSession,
+    session: AsyncSession | None = None,
 ) -> PipelineResultResponse:
-    """Run a single pipeline or computation script and return result."""
+    """Run a single pipeline or computation script and return result.
+
+    Each pipeline gets its own isolated DB session to prevent transaction
+    poisoning when one pipeline fails mid-transaction.
+    """
+    from app.db.session import async_session_factory
 
     if is_computation_script(name):
         return await _run_computation_script(name, business_date)
@@ -124,7 +129,10 @@ async def _run_single_pipeline(
         )
 
     try:
-        result: PipelineResult = await pipeline.run(business_date, session)
+        # Each pipeline gets its own session to isolate transaction failures
+        async with async_session_factory() as isolated_session:
+            async with isolated_session.begin():
+                result: PipelineResult = await pipeline.run(business_date, isolated_session)
         return PipelineResultResponse(
             pipeline_name=name,
             business_date=business_date.isoformat(),
