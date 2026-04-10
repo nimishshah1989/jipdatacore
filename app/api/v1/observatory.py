@@ -261,12 +261,18 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
 
 
 def _freshness_status(hours_old: Optional[float]) -> str:
-    """Classify freshness based on hours since last update."""
+    """Classify freshness based on hours since last update.
+
+    Thresholds tuned for market data: yesterday's EOD close is "fresh"
+    until today's EOD runs (~19:00 IST, i.e. ~36h window).
+    """
     if hours_old is None:
         return "unknown"
-    if hours_old < 24:
+    if hours_old < 0:
+        return "fresh"  # future-dated data (e.g. macro forecasts)
+    if hours_old < 36:
         return "fresh"
-    if hours_old <= 72:
+    if hours_old <= 96:
         return "stale"
     return "critical"
 

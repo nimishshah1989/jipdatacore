@@ -431,8 +431,12 @@ function ageClass(lastDate) {
   const d = new Date(lastDate);
   const now = new Date();
   const diffH = (now - d) / 36e5;
-  if (diffH < 24) return 'fresh';
-  if (diffH < 72) return 'stale';
+  // Market data: yesterday's close is "fresh" until today's EOD runs (~19:00 IST)
+  // Fresh = within 36h (covers weekday mornings before EOD)
+  // Stale = 36-96h (missed 1-3 days)
+  // Critical = >96h (missed 4+ days)
+  if (diffH < 36) return 'fresh';
+  if (diffH < 96) return 'stale';
   return 'critical';
 }
 
