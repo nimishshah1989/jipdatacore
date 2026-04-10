@@ -4,1024 +4,1152 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JIP Data Observatory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <style>
-/* ─── Reset & base ─── */
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-:root {
-  --teal:     #1D9E75;
-  --teal-lt:  #e6f7f1;
-  --teal-md:  #a7f3d0;
-  --navy:     #0f172a;
-  --navy-2:   #1e293b;
-  --slate:    #475569;
-  --slate-lt: #94a3b8;
-  --border:   #e2e8f0;
-  --bg:       #f8fafc;
-  --white:    #ffffff;
-  --red:      #ef4444;
-  --red-lt:   #fee2e2;
-  --amber:    #f59e0b;
-  --amber-lt: #fef3c7;
-  --green:    #22c55e;
-  --green-lt: #dcfce7;
-  --radius:   12px;
-  --shadow:   0 2px 8px rgba(15,23,42,.07), 0 4px 16px rgba(15,23,42,.04);
-  --shadow-lg: 0 8px 32px rgba(15,23,42,.12);
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --teal:#1D9E75;--teal-dim:rgba(29,158,117,.15);--teal-glow:rgba(29,158,117,.35);
+  --navy:#0f172a;--navy-2:#1e293b;--navy-3:#293548;
+  --slate:#475569;--slate-lt:#94a3b8;--slate-dim:#334155;
+  --white:#ffffff;
+  --green:#22c55e;--green-glow:rgba(34,197,94,.3);
+  --amber:#f59e0b;--amber-glow:rgba(245,158,11,.3);
+  --red:#ef4444;--red-glow:rgba(239,68,68,.3);
+  --glass:rgba(30,41,59,0.85);
+  --glass-border:rgba(29,158,117,0.15);
+  --card-shadow:0 4px 24px rgba(0,0,0,.4),0 1px 4px rgba(0,0,0,.3);
+  --card-shadow-hover:0 8px 40px rgba(0,0,0,.5),0 0 0 1px rgba(29,158,117,.25);
+  --radius:12px;
 }
-
-html { scroll-behavior: smooth; }
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg);
-  color: var(--navy);
-  line-height: 1.5;
-  font-size: 14px;
+html{scroll-behavior:smooth;}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--navy);color:var(--white);line-height:1.5;font-size:14px;
+  min-height:100vh;
+  background-image:
+    radial-gradient(ellipse 80% 40% at 50% -10%,rgba(29,158,117,.12) 0%,transparent 70%),
+    radial-gradient(ellipse 60% 30% at 90% 80%,rgba(29,158,117,.06) 0%,transparent 60%);
 }
 
 /* ─── Topbar ─── */
-#topbar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  background: rgba(15,23,42,.97);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(29,158,117,.25);
-  height: 52px;
-  display: flex; align-items: center; gap: 0; padding: 0 24px;
+#topbar{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  background:rgba(15,23,42,.96);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--glass-border);
+  height:56px;display:flex;align-items:center;padding:0 24px;gap:0;
 }
-.tb-brand {
-  font-weight: 800; font-size: 14px; color: var(--white);
-  margin-right: 32px; letter-spacing: -.3px; white-space: nowrap;
+.tb-brand{
+  font-weight:900;font-size:15px;color:var(--white);
+  margin-right:28px;letter-spacing:-.4px;white-space:nowrap;
+  display:flex;align-items:center;gap:8px;
 }
-.tb-brand span { color: var(--teal); }
-.tb-nav { display: flex; gap: 2px; overflow-x: auto; }
-.tb-nav a {
-  color: var(--slate-lt); text-decoration: none;
-  font-size: 12px; font-weight: 600;
-  padding: 5px 12px; border-radius: 6px;
-  white-space: nowrap; transition: all .15s;
+.tb-brand .dot{
+  width:8px;height:8px;border-radius:50%;background:var(--teal);
+  box-shadow:0 0 8px var(--teal-glow);
+  animation:pulse-dot 2s ease-in-out infinite;
 }
-.tb-nav a:hover { color: var(--white); background: rgba(255,255,255,.08); }
-.tb-right {
-  margin-left: auto; display: flex; align-items: center; gap: 16px;
+@keyframes pulse-dot{0%,100%{box-shadow:0 0 6px var(--teal-glow);}50%{box-shadow:0 0 14px var(--teal-glow),0 0 24px rgba(29,158,117,.15);}}
+.tb-brand span{color:var(--teal);}
+.tb-stats{display:flex;align-items:center;gap:0;overflow-x:auto;}
+.tb-stat{
+  padding:0 18px;border-right:1px solid rgba(255,255,255,.06);
+  display:flex;flex-direction:column;justify-content:center;
 }
-.refresh-btn {
-  background: rgba(29,158,117,.15);
-  border: 1px solid rgba(29,158,117,.4);
-  color: var(--teal-md);
-  font-size: 11px; font-weight: 700;
-  padding: 5px 14px; border-radius: 6px; cursor: pointer;
-  transition: all .15s;
+.tb-stat:first-child{padding-left:0;}
+.tb-stat-num{font-size:17px;font-weight:800;color:var(--white);letter-spacing:-.4px;line-height:1;}
+.tb-stat-lbl{font-size:10px;color:var(--slate-lt);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:1px;}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+#overall-status{
+  display:flex;align-items:center;gap:7px;
+  padding:5px 12px;border-radius:20px;
+  font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;
+  background:var(--teal-dim);border:1px solid var(--glass-border);
+  color:var(--teal);
 }
-.refresh-btn:hover { background: rgba(29,158,117,.25); }
-#last-refreshed { color: var(--slate-lt); font-size: 11px; white-space: nowrap; }
-#overall-badge {
-  font-size: 10px; font-weight: 800; padding: 4px 10px;
-  border-radius: 100px; text-transform: uppercase; letter-spacing: .5px;
+#status-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);}
+#status-dot.green{background:var(--green);box-shadow:0 0 6px var(--green-glow);}
+#status-dot.amber{background:var(--amber);box-shadow:0 0 6px var(--amber-glow);}
+#status-dot.red{background:var(--red);box-shadow:0 0 6px var(--red-glow);}
+#refresh-countdown{
+  font-size:11px;color:var(--slate-lt);
+  background:rgba(255,255,255,.05);
+  padding:5px 10px;border-radius:6px;
+  border:1px solid rgba(255,255,255,.06);
+  white-space:nowrap;
 }
-.badge-healthy  { background: var(--green-lt); color: #15803d; }
-.badge-degraded { background: var(--amber-lt); color: #92400e; }
-.badge-critical { background: var(--red-lt);   color: #b91c1c; }
-.badge-unknown  { background: #f1f5f9;          color: var(--slate); }
+.refresh-btn{
+  background:rgba(29,158,117,.15);border:1px solid rgba(29,158,117,.3);
+  color:rgba(29,158,117,.9);font-size:11px;font-weight:700;
+  padding:5px 12px;border-radius:6px;cursor:pointer;transition:all .15s;
+}
+.refresh-btn:hover{background:rgba(29,158,117,.25);color:var(--teal);}
 
-/* ─── Layout ─── */
-main { padding-top: 52px; }
-.section {
-  padding: 32px 24px;
-  max-width: 1320px;
-  margin: 0 auto;
+/* ─── Main layout ─── */
+main{padding-top:56px;}
+.section{padding:32px 24px;max-width:1400px;margin:0 auto;}
+.section-hdr{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  margin-bottom:20px;flex-wrap:wrap;gap:8px;
 }
-.section-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+.section-tag{
+  font-size:9px;font-weight:800;letter-spacing:2.5px;
+  text-transform:uppercase;color:var(--teal);margin-bottom:4px;
+  display:flex;align-items:center;gap:6px;
 }
-.section-label {
-  font-size: 10px; font-weight: 800; letter-spacing: 2px;
-  text-transform: uppercase; color: var(--teal); margin-bottom: 4px;
-}
-.section-title {
-  font-size: 20px; font-weight: 800; color: var(--navy); letter-spacing: -.4px;
-}
-.section-sub { font-size: 12px; color: var(--slate-lt); }
-.divider { border: none; border-top: 1px solid var(--border); margin: 0 24px; }
+.section-tag::before{content:'';display:block;width:16px;height:2px;background:var(--teal);border-radius:2px;}
+.section-title{font-size:22px;font-weight:800;color:var(--white);letter-spacing:-.5px;}
+.section-sub{font-size:12px;color:var(--slate-lt);margin-top:2px;}
+.divider{border:none;border-top:1px solid rgba(255,255,255,.06);margin:0 24px;}
 
-/* ─── Loading skeleton ─── */
-.skeleton {
-  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 6px;
+/* ─── Glass card ─── */
+.glass-card{
+  background:var(--glass);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+  box-shadow:var(--card-shadow);
+  perspective:1000px;
+  transition:box-shadow .2s,transform .2s;
 }
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-/* ─── Pulse Grid ─── */
-.pulse-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-.pulse-card {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow);
-  transition: transform .15s, box-shadow .15s;
-  position: relative;
-  overflow: hidden;
-}
-.pulse-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
-.pulse-card::before {
-  content: '';
-  position: absolute; top: 0; left: 0; right: 0; height: 3px;
-}
-.pulse-card.fresh::before   { background: var(--green); }
-.pulse-card.stale::before   { background: var(--amber); }
-.pulse-card.critical::before { background: var(--red); }
-.pulse-card.unknown::before { background: var(--slate-lt); }
-.pulse-top {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 10px;
-}
-.pulse-category {
-  font-size: 9px; font-weight: 800; letter-spacing: 1.5px;
-  text-transform: uppercase; color: var(--slate-lt);
-}
-.status-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  flex-shrink: 0;
-}
-.dot-fresh   { background: var(--green); box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
-.dot-stale   { background: var(--amber); box-shadow: 0 0 0 3px rgba(245,158,11,.2); }
-.dot-critical { background: var(--red); box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
-.dot-unknown { background: var(--slate-lt); }
-.pulse-name {
-  font-size: 13px; font-weight: 700; color: var(--navy);
-  margin-bottom: 8px; line-height: 1.3;
-}
-.pulse-count {
-  font-size: 22px; font-weight: 900; color: var(--teal);
-  letter-spacing: -.5px; line-height: 1;
-}
-.pulse-count-label { font-size: 10px; color: var(--slate-lt); margin-bottom: 4px; }
-.pulse-footer {
-  margin-top: 10px; padding-top: 10px;
-  border-top: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between;
-}
-.pulse-date { font-size: 11px; color: var(--slate); font-weight: 600; }
-.pulse-age  { font-size: 11px; color: var(--slate-lt); }
-
-/* ─── Summary bar ─── */
-.summary-bar {
-  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
-  border-radius: var(--radius);
-  padding: 16px 24px;
-  display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-.sum-item { display: flex; align-items: center; gap: 10px; }
-.sum-num { font-size: 28px; font-weight: 900; letter-spacing: -.5px; line-height: 1; }
-.sum-fresh   { color: var(--green); }
-.sum-stale   { color: var(--amber); }
-.sum-critical { color: var(--red); }
-.sum-label { font-size: 11px; color: var(--slate-lt); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
-.sum-divider { width: 1px; height: 32px; background: rgba(255,255,255,.1); }
-
-/* ─── Quality Scorecard ─── */
-.quality-table-wrap {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.quality-table {
-  width: 100%; border-collapse: collapse;
-}
-.quality-table th {
-  background: var(--bg);
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .8px; color: var(--slate);
-  padding: 10px 14px; text-align: left;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-.quality-table td {
-  padding: 10px 14px; border-bottom: 1px solid var(--border);
-  font-size: 12px; vertical-align: middle;
-}
-.quality-table tr:last-child td { border-bottom: none; }
-.quality-table tr.row-pass { background: rgba(34,197,94,.03); }
-.quality-table tr.row-warn { background: rgba(245,158,11,.05); }
-.quality-table tr.row-fail { background: rgba(239,68,68,.05); }
-.quality-table tr:hover { background: var(--bg); }
-.status-badge {
-  display: inline-block; padding: 2px 8px; border-radius: 4px;
-  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
-}
-.badge-pass { background: var(--green-lt); color: #15803d; }
-.badge-warn { background: var(--amber-lt); color: #92400e; }
-.badge-fail { background: var(--red-lt); color: #b91c1c; }
-.badge-unknown { background: #f1f5f9; color: var(--slate); }
-.quality-summary {
-  display: flex; gap: 16px; flex-wrap: wrap;
-}
-.q-sum-card {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 20px;
-  display: flex; align-items: center; gap: 12px;
-  box-shadow: var(--shadow);
-}
-.q-sum-num { font-size: 28px; font-weight: 900; letter-spacing: -.5px; }
-.q-sum-pass { color: var(--green); }
-.q-sum-warn { color: var(--amber); }
-.q-sum-fail { color: var(--red); }
-.q-sum-label { font-size: 11px; color: var(--slate-lt); font-weight: 700;
-  text-transform: uppercase; letter-spacing: .5px; }
-.quality-no-table {
-  padding: 32px; text-align: center; color: var(--slate-lt);
-  font-size: 13px;
+.glass-card:hover{
+  box-shadow:var(--card-shadow-hover);
+  transform:translateY(-1px) translateZ(4px);
 }
 
-/* ─── Coverage chart ─── */
-.coverage-chart-wrap {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 24px;
-  box-shadow: var(--shadow);
-  overflow-x: auto;
+/* ─── D3 Tree ─── */
+#tree-wrap{
+  background:rgba(15,23,42,.6);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+  box-shadow:var(--card-shadow);
+  overflow-x:auto;overflow-y:hidden;
+  position:relative;
+  min-height:500px;
 }
-#coverage-svg { width: 100%; display: block; }
+#tree-svg{display:block;}
+.tree-controls{
+  position:absolute;top:12px;right:12px;
+  display:flex;gap:6px;
+}
+.tree-btn{
+  background:rgba(30,41,59,.9);border:1px solid var(--glass-border);
+  color:var(--slate-lt);font-size:11px;font-weight:600;
+  padding:5px 10px;border-radius:6px;cursor:pointer;transition:all .15s;
+}
+.tree-btn:hover{background:rgba(29,158,117,.15);color:var(--teal);}
+.node circle{
+  stroke-width:1.5;cursor:pointer;
+  filter:drop-shadow(0 0 4px rgba(29,158,117,.3));
+  transition:r .2s,stroke .2s;
+}
+.node text{
+  font-family:'Inter',sans-serif;font-size:12px;font-weight:600;
+  fill:var(--white);cursor:pointer;
+  text-shadow:0 1px 4px rgba(0,0,0,.8);
+}
+.node text.meta{
+  font-size:10px;font-weight:500;fill:var(--slate-lt);
+}
+.link{fill:none;stroke:rgba(29,158,117,.25);stroke-width:1.5;}
+.node:hover circle{filter:drop-shadow(0 0 8px var(--teal-glow));}
 
-/* ─── Pipeline heatmap ─── */
-.pipeline-wrap {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 24px;
-  box-shadow: var(--shadow);
-  overflow-x: auto;
+/* ─── Tooltip ─── */
+#tooltip{
+  position:fixed;z-index:9999;pointer-events:none;
+  background:rgba(15,23,42,.97);
+  border:1px solid rgba(29,158,117,.3);
+  border-radius:8px;
+  padding:10px 14px;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+  max-width:280px;
+  font-size:11px;line-height:1.6;
+  display:none;
 }
-#pipeline-svg { width: 100%; display: block; }
-.pipeline-legend {
-  display: flex; gap: 16px; flex-wrap: wrap;
-  margin-top: 12px;
-}
-.pl-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--slate); }
-.pl-dot { width: 10px; height: 10px; border-radius: 2px; }
-
-/* ─── Dictionary ─── */
-.dict-search-wrap {
-  margin-bottom: 16px;
-}
-.dict-search {
-  width: 100%; max-width: 400px;
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 13px; color: var(--navy);
-  outline: none;
-  box-shadow: var(--shadow);
-  transition: border-color .15s;
-}
-.dict-search:focus { border-color: var(--teal); }
-.dict-table-container {
-  display: flex; flex-direction: column; gap: 12px;
-}
-.dict-table-group {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.dict-table-header {
-  background: var(--navy);
-  color: var(--white);
-  padding: 10px 16px;
-  display: flex; align-items: center; justify-content: space-between;
-  cursor: pointer;
-  user-select: none;
-}
-.dict-table-name { font-size: 13px; font-weight: 700; font-family: monospace; }
-.dict-col-count { font-size: 11px; color: var(--slate-lt); }
-.dict-chevron { transition: transform .2s; font-size: 12px; color: var(--slate-lt); }
-.dict-chevron.open { transform: rotate(180deg); }
-.dict-table-body { display: none; }
-.dict-table-body.open { display: block; }
-.dict-inner {
-  width: 100%; border-collapse: collapse;
-}
-.dict-inner th {
-  background: var(--bg);
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .8px; color: var(--slate);
-  padding: 8px 14px; text-align: left;
-  border-bottom: 1px solid var(--border);
-}
-.dict-inner td {
-  padding: 8px 14px; border-bottom: 1px solid #f1f5f9;
-  font-size: 12px; vertical-align: middle;
-}
-.dict-inner tr:last-child td { border-bottom: none; }
-.dict-inner tr:hover { background: var(--bg); }
-.dict-col-name { font-family: monospace; font-size: 12px; color: var(--teal); font-weight: 600; }
-.dict-type { font-family: monospace; font-size: 11px; color: var(--slate-lt); }
-.dict-nullable { font-size: 10px; color: var(--slate-lt); }
-.dict-desc { font-size: 12px; color: var(--slate); font-style: italic; }
-.hidden { display: none !important; }
-
-/* ─── Error state ─── */
-.error-card {
-  background: var(--red-lt);
-  border: 1px solid #fecaca;
-  border-radius: var(--radius);
-  padding: 16px 20px;
-  color: #b91c1c;
-  font-size: 13px;
+#tooltip .tt-title{font-weight:700;color:var(--white);margin-bottom:6px;font-size:12px;}
+#tooltip .tt-cols{color:var(--slate-lt);}
+#tooltip .tt-col{
+  display:inline-block;
+  background:rgba(29,158,117,.12);
+  border:1px solid rgba(29,158,117,.2);
+  color:rgba(29,158,117,.9);
+  padding:1px 6px;border-radius:3px;
+  margin:2px 2px 0 0;font-size:10px;
 }
 
-/* ─── Responsive ─── */
-@media (max-width: 768px) {
-  .section { padding: 24px 16px; }
-  .tb-nav { display: none; }
-  .pulse-grid { grid-template-columns: 1fr 1fr; }
-  .summary-bar { gap: 20px; }
+/* ─── Freshness Heatmap ─── */
+.heatmap-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  gap:10px;
 }
-@media (max-width: 480px) {
-  .pulse-grid { grid-template-columns: 1fr; }
+.hm-cell{
+  background:var(--glass);
+  border:1px solid var(--glass-border);
+  border-radius:8px;
+  padding:12px 14px;
+  cursor:pointer;
+  transition:all .2s;
+  position:relative;overflow:hidden;
 }
+.hm-cell::after{
+  content:'';position:absolute;inset:0;border-radius:8px;
+  opacity:0;transition:opacity .2s;
+}
+.hm-cell:hover::after{opacity:1;}
+.hm-cell.fresh{border-color:rgba(34,197,94,.3);}
+.hm-cell.fresh::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--green);border-radius:2px 2px 0 0;}
+.hm-cell.fresh:hover::after{background:rgba(34,197,94,.05);}
+.hm-cell.stale{border-color:rgba(245,158,11,.3);}
+.hm-cell.stale::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--amber);border-radius:2px 2px 0 0;}
+.hm-cell.stale:hover::after{background:rgba(245,158,11,.05);}
+.hm-cell.critical{border-color:rgba(239,68,68,.3);}
+.hm-cell.critical::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--red);border-radius:2px 2px 0 0;}
+.hm-cell.critical:hover::after{background:rgba(239,68,68,.05);}
+.hm-cell.unknown{border-color:rgba(148,163,184,.15);}
+.hm-cell.unknown::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--slate-lt);border-radius:2px 2px 0 0;}
+.hm-name{font-size:11px;font-weight:700;color:var(--white);margin-bottom:4px;line-height:1.3;}
+.hm-date{font-size:10px;color:var(--slate-lt);}
+.hm-age{font-size:9px;font-weight:700;margin-top:4px;text-transform:uppercase;letter-spacing:.5px;}
+.hm-age.fresh{color:var(--green);}
+.hm-age.stale{color:var(--amber);}
+.hm-age.critical{color:var(--red);}
+.hm-age.unknown{color:var(--slate-lt);}
+.heatmap-legend{
+  display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;
+}
+.hl-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--slate-lt);}
+.hl-dot{width:10px;height:10px;border-radius:3px;}
+
+/* ─── Pipeline Section ─── */
+.agent-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:24px;}
+.agent-card{
+  background:var(--glass);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+  padding:16px;
+  box-shadow:var(--card-shadow);
+  display:flex;flex-direction:column;gap:8px;
+  transition:all .2s;
+}
+.agent-card:hover{box-shadow:var(--card-shadow-hover);transform:translateY(-1px);}
+.agent-name{font-size:12px;font-weight:800;color:var(--white);font-family:monospace;letter-spacing:-.2px;}
+.agent-schedule{
+  font-size:11px;color:var(--slate-lt);
+  display:flex;align-items:center;gap:6px;
+}
+.agent-schedule .time{color:var(--teal);font-weight:700;}
+.agent-status-row{display:flex;align-items:center;justify-content:space-between;margin-top:4px;}
+.pipeline-heatmap-wrap{
+  background:rgba(15,23,42,.5);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+  padding:20px 24px;
+  overflow-x:auto;
+}
+#pipeline-svg{display:block;}
+.pl-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;}
+.pl-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--slate-lt);}
+.pl-sq{width:12px;height:12px;border-radius:2px;}
+
+/* ─── Status badges ─── */
+.badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:20px;
+  font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+}
+.badge.green{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.25);}
+.badge.amber{background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.25);}
+.badge.red{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.25);}
+.badge.grey{background:rgba(148,163,184,.1);color:var(--slate-lt);border:1px solid rgba(148,163,184,.15);}
+
+/* ─── Loading state ─── */
+.loading-bar{
+  height:3px;background:linear-gradient(90deg,transparent,var(--teal),transparent);
+  background-size:200% 100%;animation:loading-sweep 1.5s linear infinite;
+  border-radius:2px;margin-bottom:16px;opacity:0;transition:opacity .3s;
+}
+.loading-bar.active{opacity:1;}
+@keyframes loading-sweep{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:rgba(15,23,42,.5);}
+::-webkit-scrollbar-thumb{background:rgba(29,158,117,.3);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:rgba(29,158,117,.5);}
 </style>
 </head>
 <body>
 
-<!-- ─── Top navigation bar ─── -->
-<nav id="topbar">
-  <div class="tb-brand">JIP <span>Observatory</span></div>
-  <nav class="tb-nav">
-    <a href="#pulse">Pulse</a>
-    <a href="#quality">Quality</a>
-    <a href="#coverage">Coverage</a>
-    <a href="#pipelines">Pipelines</a>
-    <a href="#dictionary">Dictionary</a>
-  </nav>
-  <div class="tb-right">
-    <span id="last-refreshed">Loading...</span>
-    <span id="overall-badge" class="badge-unknown">—</span>
-    <button class="refresh-btn" onclick="fetchAll()">Refresh</button>
+<!-- ─── Topbar ─── -->
+<div id="topbar">
+  <div class="tb-brand">
+    <div class="dot"></div>
+    JIP <span>Data Engine</span>
   </div>
-</nav>
+  <div class="tb-stats">
+    <div class="tb-stat">
+      <div class="tb-stat-num" id="stat-tables">—</div>
+      <div class="tb-stat-lbl">Tables</div>
+    </div>
+    <div class="tb-stat">
+      <div class="tb-stat-num" id="stat-rows">—</div>
+      <div class="tb-stat-lbl">Total Rows</div>
+    </div>
+    <div class="tb-stat">
+      <div class="tb-stat-num" id="stat-streams">—</div>
+      <div class="tb-stat-lbl">Streams</div>
+    </div>
+    <div class="tb-stat">
+      <div class="tb-stat-num" id="stat-fresh">—</div>
+      <div class="tb-stat-lbl">Fresh Today</div>
+    </div>
+  </div>
+  <div class="tb-right">
+    <div id="overall-status">
+      <div id="status-dot"></div>
+      <span id="status-text">Loading</span>
+    </div>
+    <div id="refresh-countdown">Refresh in 60s</div>
+    <button class="refresh-btn" onclick="loadAll()">Refresh</button>
+  </div>
+</div>
+
+<div id="tooltip"><div class="tt-title" id="tt-title"></div><div class="tt-cols" id="tt-cols"></div></div>
 
 <main>
 
-  <!-- ─── PULSE ─── -->
-  <section class="section" id="pulse">
-    <div class="section-header">
-      <div>
-        <div class="section-label">Data Freshness</div>
-        <div class="section-title">Stream Pulse</div>
-      </div>
-      <div class="section-sub" id="pulse-as-of"></div>
+<!-- ─── Section 1: Data Tree ─── -->
+<div class="section" id="sec-tree">
+  <div class="section-hdr">
+    <div>
+      <div class="section-tag">Interactive Explorer</div>
+      <div class="section-title">Data Catalog</div>
+      <div class="section-sub">Click nodes to expand/collapse. Hover leaf nodes for column details.</div>
     </div>
-    <div id="pulse-summary" class="summary-bar">
-      <div class="skeleton" style="width:300px;height:40px;"></div>
+  </div>
+  <div class="loading-bar" id="tree-loading"></div>
+  <div id="tree-wrap">
+    <div class="tree-controls">
+      <button class="tree-btn" onclick="treeExpandAll()">Expand All</button>
+      <button class="tree-btn" onclick="treeCollapseAll()">Collapse</button>
+      <button class="tree-btn" onclick="treeReset()">Reset View</button>
     </div>
-    <div id="pulse-grid" class="pulse-grid">
-      <!-- skeleton cards -->
-      <div class="skeleton" style="height:140px;"></div>
-      <div class="skeleton" style="height:140px;"></div>
-      <div class="skeleton" style="height:140px;"></div>
-      <div class="skeleton" style="height:140px;"></div>
-      <div class="skeleton" style="height:140px;"></div>
-      <div class="skeleton" style="height:140px;"></div>
-    </div>
-  </section>
+    <svg id="tree-svg"></svg>
+  </div>
+</div>
 
-  <hr class="divider">
+<hr class="divider">
 
-  <!-- ─── QUALITY ─── -->
-  <section class="section" id="quality">
-    <div class="section-header">
-      <div>
-        <div class="section-label">Data Integrity</div>
-        <div class="section-title">Quality Scorecard</div>
-      </div>
-      <div id="quality-summary" class="quality-summary">
-        <div class="skeleton" style="width:200px;height:60px;border-radius:8px;"></div>
-      </div>
+<!-- ─── Section 2: Freshness Heatmap ─── -->
+<div class="section" id="sec-heatmap">
+  <div class="section-hdr">
+    <div>
+      <div class="section-tag">Data Freshness</div>
+      <div class="section-title">Stream Status</div>
+      <div class="section-sub" id="heatmap-subtitle">Freshness of all data streams. Click a tile to highlight in the tree.</div>
     </div>
-    <div id="quality-body">
-      <div class="skeleton" style="height:200px;"></div>
+  </div>
+  <div class="heatmap-legend">
+    <div class="hl-item"><div class="hl-dot" style="background:var(--green)"></div>Fresh (&lt;24h)</div>
+    <div class="hl-item"><div class="hl-dot" style="background:var(--amber)"></div>Stale (24–72h)</div>
+    <div class="hl-item"><div class="hl-dot" style="background:var(--red)"></div>Critical (&gt;72h)</div>
+    <div class="hl-item"><div class="hl-dot" style="background:var(--slate-lt)"></div>No data</div>
+  </div>
+  <div class="loading-bar" id="heatmap-loading"></div>
+  <div class="heatmap-grid" id="heatmap-grid"></div>
+</div>
+
+<hr class="divider">
+
+<!-- ─── Section 3: Pipeline Status ─── -->
+<div class="section" id="sec-pipeline">
+  <div class="section-hdr">
+    <div>
+      <div class="section-tag">Automation</div>
+      <div class="section-title">Pipeline Run Status</div>
+      <div class="section-sub">Claude-managed ingestion agents. Weekday schedule (IST).</div>
     </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- ─── COVERAGE ─── -->
-  <section class="section" id="coverage">
-    <div class="section-header">
-      <div>
-        <div class="section-label">Table Inventory</div>
-        <div class="section-title">Coverage Matrix</div>
-      </div>
-      <div class="section-sub" id="coverage-sub"></div>
-    </div>
-    <div class="coverage-chart-wrap">
-      <svg id="coverage-svg" height="500">
-        <rect x="0" y="0" width="100%" height="100%" fill="#f1f5f9" rx="6"/>
-        <text x="50%" y="50%" text-anchor="middle" fill="#94a3b8" font-size="13">Loading coverage data…</text>
-      </svg>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- ─── PIPELINES ─── -->
-  <section class="section" id="pipelines">
-    <div class="section-header">
-      <div>
-        <div class="section-label">7-Day Health</div>
-        <div class="section-title">Pipeline Heatmap</div>
-      </div>
-      <div class="pipeline-legend">
-        <div class="pl-item"><div class="pl-dot" style="background:#22c55e"></div>Success</div>
-        <div class="pl-item"><div class="pl-dot" style="background:#f59e0b"></div>Partial</div>
-        <div class="pl-item"><div class="pl-dot" style="background:#ef4444"></div>Failed</div>
-        <div class="pl-item"><div class="pl-dot" style="background:#3b82f6"></div>Running</div>
-        <div class="pl-item"><div class="pl-dot" style="background:#e2e8f0"></div>Not Run</div>
+  </div>
+  <div class="agent-cards">
+    <div class="agent-card">
+      <div class="agent-name">jip-eod-ingestion</div>
+      <div class="agent-schedule">Runs at <span class="time">18:33 IST</span> weekdays</div>
+      <div class="agent-status-row">
+        <span class="badge grey" id="agent-eod-badge">—</span>
+        <span style="font-size:10px;color:var(--slate-lt)" id="agent-eod-last"></span>
       </div>
     </div>
-    <div class="pipeline-wrap">
-      <svg id="pipeline-svg" height="300">
-        <rect x="0" y="0" width="100%" height="100%" fill="#f1f5f9" rx="6"/>
-        <text x="50%" y="50%" text-anchor="middle" fill="#94a3b8" font-size="13">Loading pipeline data…</text>
-      </svg>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- ─── DICTIONARY ─── -->
-  <section class="section" id="dictionary">
-    <div class="section-header">
-      <div>
-        <div class="section-label">Schema Reference</div>
-        <div class="section-title">Data Dictionary</div>
+    <div class="agent-card">
+      <div class="agent-name">jip-computations</div>
+      <div class="agent-schedule">Runs at <span class="time">19:03 IST</span> weekdays</div>
+      <div class="agent-status-row">
+        <span class="badge grey" id="agent-comp-badge">—</span>
+        <span style="font-size:10px;color:var(--slate-lt)" id="agent-comp-last"></span>
       </div>
-      <div class="section-sub" id="dict-sub"></div>
     </div>
-    <div class="dict-search-wrap">
-      <input type="text" class="dict-search" id="dict-search"
-             placeholder="Search tables, columns, or descriptions…"
-             oninput="filterDictionary(this.value)">
+    <div class="agent-card">
+      <div class="agent-name">jip-fund-metrics</div>
+      <div class="agent-schedule">Runs at <span class="time">21:03 IST</span> weekdays</div>
+      <div class="agent-status-row">
+        <span class="badge grey" id="agent-fund-badge">—</span>
+        <span style="font-size:10px;color:var(--slate-lt)" id="agent-fund-last"></span>
+      </div>
     </div>
-    <div id="dict-body" class="dict-table-container">
-      <div class="skeleton" style="height:200px;"></div>
+  </div>
+  <div class="loading-bar" id="pipeline-loading"></div>
+  <div class="pipeline-heatmap-wrap">
+    <svg id="pipeline-svg"></svg>
+    <div class="pl-legend">
+      <div class="pl-item"><div class="pl-sq" style="background:#22c55e"></div>Success</div>
+      <div class="pl-item"><div class="pl-sq" style="background:#ef4444"></div>Failed</div>
+      <div class="pl-item"><div class="pl-sq" style="background:#f59e0b"></div>Partial</div>
+      <div class="pl-item"><div class="pl-sq" style="background:#334155"></div>No run</div>
     </div>
-  </section>
+  </div>
+</div>
 
 </main>
 
 <script>
-// ─── State ────────────────────────────────────────────────────────────────
-let _pulseData     = null;
-let _qualityData   = null;
-let _coverageData  = null;
-let _pipelineData  = null;
-let _dictData      = null;
-
-// ─── Utilities ────────────────────────────────────────────────────────────
-function fmt_num(n) {
-  if (n == null) return '—';
-  if (n >= 1e7)  return (n/1e7).toFixed(1) + 'Cr rows';
-  if (n >= 1e5)  return (n/1e5).toFixed(1) + 'L rows';
-  if (n >= 1e3)  return (n/1e3).toFixed(1) + 'K rows';
-  return n.toLocaleString('en-IN') + ' rows';
-}
-
-function fmt_rows(n) {
-  if (n == null) return '—';
-  if (n >= 1e7)  return (n/1e7).toFixed(2) + ' Cr';
-  if (n >= 1e5)  return (n/1e5).toFixed(2) + ' L';
-  if (n >= 1e3)  return (n/1e3).toFixed(1) + 'K';
+// ─── Utilities ───────────────────────────────────────────────────────────────
+function fmtNum(n) {
+  if (n === null || n === undefined) return '—';
+  n = Number(n);
+  if (isNaN(n)) return '—';
+  if (n >= 1e7) return (n / 1e7).toFixed(2) + ' Cr';
+  if (n >= 1e5) return (n / 1e5).toFixed(2) + ' L';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
   return n.toLocaleString('en-IN');
 }
 
-function fmt_age(h) {
-  if (h == null) return '—';
-  if (h < 1)     return Math.round(h * 60) + 'm ago';
-  if (h < 24)    return Math.round(h) + 'h ago';
-  return Math.round(h / 24) + 'd ago';
+function ageClass(lastDate) {
+  if (!lastDate) return 'unknown';
+  const d = new Date(lastDate);
+  const now = new Date();
+  const diffH = (now - d) / 36e5;
+  if (diffH < 24) return 'fresh';
+  if (diffH < 72) return 'stale';
+  return 'critical';
 }
 
-function fmt_date(s) {
+function fmtDate(s) {
   if (!s) return '—';
   const d = new Date(s);
   if (isNaN(d)) return s;
-  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return d.getDate().toString().padStart(2,'0') + '-' + months[d.getMonth()] + '-' + d.getFullYear();
 }
 
-function status_dot_class(st) {
-  if (st === 'fresh')    return 'dot-fresh';
-  if (st === 'stale')    return 'dot-stale';
-  if (st === 'critical') return 'dot-critical';
-  return 'dot-unknown';
+function ageLabel(lastDate) {
+  if (!lastDate) return 'No data';
+  const d = new Date(lastDate);
+  const diffH = (new Date() - d) / 36e5;
+  if (diffH < 1) return 'Live';
+  if (diffH < 24) return Math.round(diffH) + 'h ago';
+  return Math.round(diffH / 24) + 'd ago';
 }
 
-function now_ist_str() {
-  return new Date().toLocaleTimeString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
-  }) + ' IST';
-}
+// ─── State ───────────────────────────────────────────────────────────────────
+let pulseData = [];
+let coverageData = {};
+let pipelineData = {};
+let countdownSec = 60;
+let countdownTimer;
 
-// ─── Fetch ────────────────────────────────────────────────────────────────
-async function safeFetch(url) {
+// ─── Hardcoded Tree Structure ─────────────────────────────────────────────────
+const TREE_DATA = {
+  name: "JIP Data Engine",
+  type: "root",
+  children: [
+    {
+      name: "Indian Equities",
+      type: "domain",
+      meta: "2,743 instruments",
+      children: [
+        {
+          name: "Price Data",
+          type: "group",
+          children: [
+            {
+              name: "OHLCV",
+              type: "table",
+              table: "de_equity_ohlcv",
+              meta: "21 cols",
+              columns: ["date","symbol","open","high","low","close","close_adj","volume","delivery_vol","delivery_pct","vwap","upper_circuit","lower_circuit","52w_high","52w_low","market_cap","series","isin","data_status","instrument_id","bhav_source"]
+            },
+            {
+              name: "Corporate Actions",
+              type: "table",
+              table: "de_corporate_action",
+              meta: "splits, bonuses, dividends",
+              columns: ["date","symbol","action_type","ratio","ex_date","record_date","adj_factor","dividend_amount","announcement_date","data_status"]
+            }
+          ]
+        },
+        {
+          name: "Technical Indicators",
+          type: "group",
+          meta: "46 cols",
+          children: [
+            {
+              name: "Moving Averages",
+              type: "leaf",
+              table: "de_equity_technical_daily",
+              meta: "SMA 50/200, EMA 10/20/21/50/200",
+              columns: ["sma_50","sma_200","ema_10","ema_20","ema_21","ema_50","ema_200","close_adj","above_50dma","above_200dma"]
+            },
+            {
+              name: "Momentum",
+              type: "leaf",
+              table: "de_equity_technical_daily",
+              meta: "RSI, MACD, ROC",
+              columns: ["rsi_7","rsi_9","rsi_14","rsi_21","macd","macd_signal","macd_hist","roc_5","roc_10","roc_21","roc_63"]
+            },
+            {
+              name: "Volatility",
+              type: "leaf",
+              table: "de_equity_technical_daily",
+              meta: "Bollinger, historical vol",
+              columns: ["bb_upper","bb_middle","bb_lower","bollinger_width","vol_20d","vol_60d","atr_14"]
+            },
+            {
+              name: "Volume",
+              type: "leaf",
+              table: "de_equity_technical_daily",
+              meta: "OBV, MFI, delivery ratio",
+              columns: ["obv","mfi_14","relative_volume","delivery_vs_avg","volume_ma_20"]
+            },
+            {
+              name: "Trend",
+              type: "leaf",
+              table: "de_equity_technical_daily",
+              meta: "ADX, Stochastic, Disparity",
+              columns: ["adx_14","plus_di","minus_di","stoch_k","stoch_d","disparity_50","disparity_200"]
+            },
+            {
+              name: "Risk",
+              type: "leaf",
+              table: "de_equity_technical_daily",
+              meta: "Sharpe, Sortino, Drawdown",
+              columns: ["sharpe_1y","sortino_1y","max_drawdown","calmar_ratio","beta"]
+            }
+          ]
+        },
+        {
+          name: "Relative Strength",
+          type: "table",
+          table: "de_rs_score_daily",
+          meta: "RS 1W/1M/3M/6M/12M",
+          columns: ["rs_1w","rs_1m","rs_3m","rs_6m","rs_12m","rs_composite","benchmark_nifty50","benchmark_nifty500","benchmark_midcap150","percentile_rank","date","instrument_id"]
+        },
+        {
+          name: "Market Breadth",
+          type: "table",
+          table: "de_market_breadth_daily",
+          meta: "advance/decline, McClellan",
+          columns: ["date","advances","declines","unchanged","ad_ratio","pct_above_50dma","pct_above_200dma","mcclellan_oscillator","mcclellan_summation","new_highs","new_lows","breadth_thrust"]
+        },
+        {
+          name: "Market Regime",
+          type: "table",
+          table: "de_market_regime_daily",
+          meta: "bull/bear/neutral + confidence",
+          columns: ["date","regime","confidence","trend_score","breadth_score","momentum_score","volatility_score","flow_score","notes"]
+        }
+      ]
+    },
+    {
+      name: "Mutual Funds",
+      type: "domain",
+      meta: "13,380 schemes",
+      children: [
+        {
+          name: "NAV Data",
+          type: "table",
+          table: "de_mf_nav",
+          meta: "nav + returns 1D–10Y",
+          columns: ["date","scheme_code","nav","return_1d","return_1w","return_1m","return_3m","return_6m","return_1y","return_3y","return_5y","return_10y","52w_high","52w_low","data_status"]
+        },
+        {
+          name: "Derived Metrics",
+          type: "group",
+          meta: "25 cols",
+          children: [
+            {
+              name: "Risk-Adjusted",
+              type: "leaf",
+              table: "de_mf_metrics",
+              meta: "Sharpe/Sortino 1/3/5Y, StdDev",
+              columns: ["sharpe_1y","sharpe_3y","sharpe_5y","sortino_1y","sortino_3y","sortino_5y","std_dev_1y","std_dev_3y","std_dev_5y"]
+            },
+            {
+              name: "Drawdown",
+              type: "leaf",
+              table: "de_mf_metrics",
+              meta: "MaxDD 1/3/5Y",
+              columns: ["max_drawdown_1y","max_drawdown_3y","max_drawdown_5y","recovery_days"]
+            },
+            {
+              name: "Alpha",
+              type: "leaf",
+              table: "de_mf_metrics",
+              meta: "alpha, beta, info_ratio, treynor",
+              columns: ["manager_alpha","beta","information_ratio","treynor_ratio","r_squared","tracking_error"]
+            }
+          ]
+        },
+        {
+          name: "Holdings",
+          type: "table",
+          table: "de_mf_holdings",
+          meta: "weight_pct, shares, market_value",
+          columns: ["scheme_code","isin","security_name","weight_pct","shares","market_value","sector","asset_type","holding_date"]
+        },
+        {
+          name: "Sector Exposure",
+          type: "table",
+          table: "de_mf_sector_exposure",
+          meta: "sector weights per fund",
+          columns: ["scheme_code","sector","weight_pct","as_of_date","num_holdings"]
+        },
+        {
+          name: "Category Flows",
+          type: "table",
+          table: "de_mf_flows",
+          meta: "net/gross flows, AUM, SIP",
+          columns: ["month","category","net_flow","gross_purchase","redemptions","aum","sip_inflow","num_folios","data_source"]
+        }
+      ]
+    },
+    {
+      name: "Indices",
+      type: "domain",
+      meta: "135 indices",
+      children: [
+        {
+          name: "Index Prices",
+          type: "table",
+          table: "de_index_ohlcv",
+          meta: "OHLCV + PE/PB/div_yield",
+          columns: ["date","index_symbol","open","high","low","close","volume","pe_ratio","pb_ratio","div_yield","index_id"]
+        },
+        {
+          name: "Constituents",
+          type: "table",
+          table: "de_index_constituent",
+          meta: "stock weights per index",
+          columns: ["index_id","instrument_id","symbol","weight_pct","as_of_date","shares_in_index","free_float_mcap"]
+        }
+      ]
+    },
+    {
+      name: "Global & Macro",
+      type: "domain",
+      children: [
+        {
+          name: "Global Prices",
+          type: "table",
+          table: "de_global_price",
+          meta: "91 instruments — equities, commodities, forex, crypto, bonds",
+          columns: ["date","ticker","name","asset_class","open","high","low","close","volume","currency","source"]
+        },
+        {
+          name: "Global Technicals",
+          type: "table",
+          table: "de_global_technical",
+          meta: "SMA/EMA/RSI/MACD/Bollinger/ADX",
+          columns: ["date","ticker","sma_50","sma_200","ema_20","rsi_14","macd","bb_upper","bb_lower","adx_14"]
+        },
+        {
+          name: "ETF Data",
+          type: "table",
+          table: "de_etf_ohlcv",
+          meta: "130 ETFs — OHLCV + technicals",
+          columns: ["date","ticker","open","high","low","close","volume","nav","premium_discount","aum","inception_date"]
+        },
+        {
+          name: "Macro",
+          type: "table",
+          table: "de_macro_series",
+          meta: "826 series — FRED yields, CPI, GDP",
+          columns: ["date","series_id","series_name","value","unit","frequency","source","country","category"]
+        }
+      ]
+    },
+    {
+      name: "Flows & Derivatives",
+      type: "domain",
+      children: [
+        {
+          name: "FII/DII Flows",
+          type: "table",
+          table: "de_fii_dii_flow",
+          meta: "gross buy/sell, net flow",
+          columns: ["date","category","gross_buy","gross_sell","net_flow","segment","exchange","data_source"]
+        },
+        {
+          name: "F&O Summary",
+          type: "leaf",
+          table: null,
+          meta: "PCR, OI, max pain — planned",
+          columns: []
+        }
+      ]
+    },
+    {
+      name: "Qualitative Intelligence",
+      type: "domain",
+      children: [
+        {
+          name: "Documents",
+          type: "table",
+          table: "de_qualitative_document",
+          meta: "RSS, scraped research",
+          columns: ["id","source","url","title","published_at","content","embedding","tags","category","data_status"]
+        },
+        {
+          name: "Goldilocks",
+          type: "leaf",
+          table: null,
+          meta: "Market views, stock ideas — planned",
+          columns: []
+        }
+      ]
+    }
+  ]
+};
+
+// ─── API Calls ────────────────────────────────────────────────────────────────
+async function fetchPulse() {
   try {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  } catch (e) {
-    console.error('Fetch failed:', url, e);
-    return null;
+    const r = await fetch('/api/v1/observatory/pulse');
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.data || null;
+  } catch { return null; }
+}
+
+async function fetchCoverage() {
+  try {
+    const r = await fetch('/api/v1/observatory/coverage');
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.data || null;
+  } catch { return null; }
+}
+
+async function fetchPipelines() {
+  try {
+    const r = await fetch('/api/v1/observatory/pipelines');
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.data || null;
+  } catch { return null; }
+}
+
+// ─── Topbar Stats ─────────────────────────────────────────────────────────────
+function updateTopbar(pulse, coverage) {
+  // Status
+  const status = pulse ? pulse.overall_status : null;
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  if (status === 'healthy') { dot.className = 'green'; txt.textContent = 'Healthy'; }
+  else if (status === 'degraded') { dot.className = 'amber'; txt.textContent = 'Degraded'; }
+  else if (status === 'critical') { dot.className = 'red'; txt.textContent = 'Critical'; }
+  else { dot.className = ''; txt.textContent = 'Loading'; }
+
+  // Streams
+  const streams = pulse ? (pulse.streams || []) : [];
+  document.getElementById('stat-streams').textContent = streams.length || '—';
+  const freshCount = streams.filter(s => ageClass(s.last_date || s.last_updated) === 'fresh').length;
+  document.getElementById('stat-fresh').textContent = freshCount || '—';
+
+  // Coverage
+  if (coverage && coverage.tables) {
+    const tables = coverage.tables;
+    document.getElementById('stat-tables').textContent = tables.length;
+    const totalRows = tables.reduce((a, t) => a + (Number(t.row_count) || 0), 0);
+    document.getElementById('stat-rows').textContent = fmtNum(totalRows);
+    // Build lookup
+    coverageData = {};
+    tables.forEach(t => { coverageData[t.table_name] = t; });
   }
 }
 
-async function fetchAll() {
-  document.getElementById('last-refreshed').textContent = 'Refreshing…';
-  const [pulse, quality, coverage, pipelines, dictionary] = await Promise.all([
-    safeFetch('/api/v1/observatory/pulse'),
-    safeFetch('/api/v1/observatory/quality'),
-    safeFetch('/api/v1/observatory/coverage'),
-    safeFetch('/api/v1/observatory/pipelines'),
-    safeFetch('/api/v1/observatory/dictionary'),
-  ]);
+// ─── D3 Tree ──────────────────────────────────────────────────────────────────
+let treeRoot, treeSvg, treeG, treeLayout, diagonal;
+const TREE_MARGIN = { top: 30, right: 220, bottom: 30, left: 40 };
+const NODE_H = 36;
 
-  _pulseData    = pulse;
-  _qualityData  = quality;
-  _coverageData = coverage;
-  _pipelineData = pipelines;
-  _dictData     = dictionary;
+function initTree() {
+  const wrap = document.getElementById('tree-wrap');
+  const W = wrap.clientWidth || 1200;
 
-  renderPulse(pulse);
-  renderQuality(quality);
-  renderCoverage(coverage);
-  renderPipelines(pipelines);
-  renderDictionary(dictionary);
+  treeSvg = d3.select('#tree-svg')
+    .attr('width', W)
+    .attr('height', 600);
 
-  document.getElementById('last-refreshed').textContent = 'Refreshed ' + now_ist_str();
+  treeG = treeSvg.append('g')
+    .attr('transform', `translate(${TREE_MARGIN.left},${TREE_MARGIN.top})`);
+
+  diagonal = d3.linkHorizontal()
+    .x(d => d.y)
+    .y(d => d.x);
+
+  treeRoot = d3.hierarchy(TREE_DATA);
+  treeRoot.x0 = 200;
+  treeRoot.y0 = 0;
+
+  // Collapse to level 2 by default
+  treeRoot.descendants().forEach(d => {
+    if (d.depth >= 2) {
+      d._children = d.children;
+      d.children = null;
+    }
+  });
+
+  updateTree(treeRoot);
 }
 
-// ─── Render Pulse ─────────────────────────────────────────────────────────
-function renderPulse(data) {
-  if (!data) {
-    document.getElementById('pulse-grid').innerHTML =
-      '<div class="error-card">Failed to load pulse data.</div>';
-    return;
+function nodeColor(d) {
+  const type = d.data.type;
+  if (type === 'root') return '#1D9E75';
+  if (type === 'domain') return '#0ea5e9';
+  if (type === 'group') return '#8b5cf6';
+  // leaf/table — use freshness status
+  const tableName = d.data.table;
+  if (tableName && pulseData) {
+    const stream = pulseData.find ? pulseData.find(s => s.table_name === tableName || (s.stream_name || '').toLowerCase().includes(tableName.split('_')[1] || '')) : null;
+    if (stream) {
+      const cls = ageClass(stream.last_date || stream.last_updated);
+      if (cls === 'fresh') return '#22c55e';
+      if (cls === 'stale') return '#f59e0b';
+      if (cls === 'critical') return '#ef4444';
+    }
   }
-
-  // Overall badge
-  const badge = document.getElementById('overall-badge');
-  badge.textContent = data.overall_status.toUpperCase();
-  badge.className = '';
-  if (data.overall_status === 'healthy')  badge.classList.add('badge-healthy');
-  else if (data.overall_status === 'degraded') badge.classList.add('badge-degraded');
-  else badge.classList.add('badge-critical');
-
-  // Summary bar
-  const s = data.summary;
-  document.getElementById('pulse-summary').innerHTML = `
-    <div class="sum-item">
-      <div>
-        <div class="sum-num sum-fresh">${s.fresh}</div>
-        <div class="sum-label">Fresh</div>
-      </div>
-    </div>
-    <div class="sum-divider"></div>
-    <div class="sum-item">
-      <div>
-        <div class="sum-num sum-stale">${s.stale}</div>
-        <div class="sum-label">Stale</div>
-      </div>
-    </div>
-    <div class="sum-divider"></div>
-    <div class="sum-item">
-      <div>
-        <div class="sum-num sum-critical">${s.critical}</div>
-        <div class="sum-label">Critical</div>
-      </div>
-    </div>
-    <div style="margin-left:auto;color:var(--slate-lt);font-size:11px;">
-      ${data.streams.length} streams monitored
-    </div>
-  `;
-
-  document.getElementById('pulse-as-of').textContent = 'as of ' + fmt_date(data.as_of);
-
-  // Cards
-  const grid = document.getElementById('pulse-grid');
-  grid.innerHTML = data.streams.map(st => `
-    <div class="pulse-card ${st.status}">
-      <div class="pulse-top">
-        <span class="pulse-category">${st.category}</span>
-        <span class="status-dot ${status_dot_class(st.status)}"></span>
-      </div>
-      <div class="pulse-name">${st.label}</div>
-      <div class="pulse-count-label">Row count</div>
-      <div class="pulse-count">${fmt_rows(st.row_count)}</div>
-      <div class="pulse-footer">
-        <span class="pulse-date">${fmt_date(st.last_date)}</span>
-        <span class="pulse-age">${fmt_age(st.hours_old)}</span>
-      </div>
-    </div>
-  `).join('');
+  return '#475569';
 }
 
-// ─── Render Quality ───────────────────────────────────────────────────────
-function renderQuality(data) {
-  const summaryEl = document.getElementById('quality-summary');
-  const bodyEl    = document.getElementById('quality-body');
-
-  if (!data) {
-    summaryEl.innerHTML = '';
-    bodyEl.innerHTML = '<div class="error-card">Failed to load quality data.</div>';
-    return;
-  }
-
-  // Summary cards
-  const s = data.summary;
-  summaryEl.innerHTML = `
-    <div class="q-sum-card">
-      <div class="q-sum-num q-sum-pass">${s.pass}</div>
-      <div class="q-sum-label">Pass</div>
-    </div>
-    <div class="q-sum-card">
-      <div class="q-sum-num q-sum-warn">${s.warn}</div>
-      <div class="q-sum-label">Warn</div>
-    </div>
-    <div class="q-sum-card">
-      <div class="q-sum-num q-sum-fail">${s.fail}</div>
-      <div class="q-sum-label">Fail</div>
-    </div>
-  `;
-
-  if (!data.table_present) {
-    bodyEl.innerHTML = `
-      <div class="quality-no-table">
-        <strong>de_data_quality_checks</strong> table not yet created.
-        Quality checks will appear here once the table is migrated and populated.
-      </div>
-    `;
-    return;
-  }
-
-  if (!data.checks || data.checks.length === 0) {
-    bodyEl.innerHTML = '<div class="quality-no-table">No quality checks recorded yet.</div>';
-    return;
-  }
-
-  bodyEl.innerHTML = `
-    <div class="quality-table-wrap">
-      <table class="quality-table">
-        <thead>
-          <tr>
-            <th>Check Name</th>
-            <th>Category</th>
-            <th>Status</th>
-            <th>Actual Value</th>
-            <th>Threshold</th>
-            <th>Detail</th>
-            <th>Checked At</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.checks.map(c => `
-            <tr class="row-${c.status}">
-              <td><strong>${escHtml(c.check_name)}</strong></td>
-              <td>${escHtml(c.category)}</td>
-              <td><span class="status-badge badge-${c.status}">${c.status}</span></td>
-              <td>${escHtml(c.actual_value || '—')}</td>
-              <td>${escHtml(c.threshold_value || '—')}</td>
-              <td>${escHtml(c.detail || '—')}</td>
-              <td style="white-space:nowrap;color:var(--slate-lt)">${fmt_date(c.checked_at)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
+function nodeRadius(d) {
+  if (d.data.type === 'root') return 10;
+  if (d.data.type === 'domain') return 8;
+  return 6;
 }
 
-// ─── Render Coverage ──────────────────────────────────────────────────────
-function renderCoverage(data) {
-  if (!data) {
-    document.getElementById('coverage-svg').innerHTML =
-      '<text x="50%" y="50%" text-anchor="middle" fill="#ef4444" font-size="13">Failed to load coverage data.</text>';
-    return;
-  }
+function updateTree(source) {
+  const innerW = (treeSvg.attr('width') || 1200) - TREE_MARGIN.left - TREE_MARGIN.right;
 
-  document.getElementById('coverage-sub').textContent =
-    `${data.table_count} tables · as of ${fmt_date(data.as_of)}`;
+  treeLayout = d3.tree().nodeSize([NODE_H, 200]);
+  treeLayout(treeRoot);
 
-  const tables = (data.tables || []).slice(0, 30); // Show top 30
-  if (tables.length === 0) {
-    document.getElementById('coverage-svg').innerHTML =
-      '<text x="50%" y="50%" text-anchor="middle" fill="#94a3b8" font-size="13">No tables found.</text>';
-    return;
-  }
+  // Calculate bounds
+  let minX = Infinity, maxX = -Infinity;
+  treeRoot.descendants().forEach(d => {
+    minX = Math.min(minX, d.x);
+    maxX = Math.max(maxX, d.x);
+  });
+  const treeH = maxX - minX + NODE_H * 2 + TREE_MARGIN.top + TREE_MARGIN.bottom;
+  treeSvg.attr('height', Math.max(500, treeH));
+  treeG.attr('transform', `translate(${TREE_MARGIN.left},${-minX + NODE_H + TREE_MARGIN.top})`);
 
-  const svg = d3.select('#coverage-svg');
-  svg.selectAll('*').remove();
+  const duration = 300;
+  const nodes = treeRoot.descendants();
+  const links = treeRoot.links();
 
-  const marginL = 220;
-  const marginR = 120;
-  const marginT = 20;
-  const marginB = 20;
-  const rowH = 28;
-  const chartH = tables.length * rowH + marginT + marginB;
-
-  svg.attr('height', chartH);
-  const svgNode = document.getElementById('coverage-svg');
-  const totalW = svgNode.clientWidth || 900;
-  const chartW = totalW - marginL - marginR;
-
-  const maxVal = d3.max(tables, d => d.row_count_approx || 0);
-  const xScale = d3.scaleLinear().domain([0, maxVal]).range([0, chartW]);
-
-  const g = svg.append('g').attr('transform', `translate(${marginL},${marginT})`);
-
-  // Bars
-  g.selectAll('.bar')
-    .data(tables)
-    .enter()
-    .append('rect')
-    .attr('class', 'bar')
-    .attr('x', 0)
-    .attr('y', (_, i) => i * rowH + 4)
-    .attr('height', rowH - 6)
-    .attr('width', d => Math.max(2, xScale(d.row_count_approx || 0)))
-    .attr('fill', (_, i) => i % 2 === 0 ? '#1D9E75' : '#2dd4bf')
-    .attr('rx', 3)
-    .attr('opacity', 0.85);
-
-  // Table name labels
-  g.selectAll('.name-label')
-    .data(tables)
-    .enter()
-    .append('text')
-    .attr('x', -8)
-    .attr('y', (_, i) => i * rowH + rowH / 2 + 4)
-    .attr('text-anchor', 'end')
-    .attr('fill', '#0f172a')
-    .attr('font-size', '11px')
-    .attr('font-family', 'monospace')
-    .text(d => d.table.replace('de_', ''));
-
-  // Value labels
-  g.selectAll('.val-label')
-    .data(tables)
-    .enter()
-    .append('text')
-    .attr('x', d => Math.max(2, xScale(d.row_count_approx || 0)) + 6)
-    .attr('y', (_, i) => i * rowH + rowH / 2 + 4)
-    .attr('fill', '#475569')
-    .attr('font-size', '11px')
-    .text(d => fmt_rows(d.row_count_approx || 0));
-}
-
-// ─── Render Pipelines ─────────────────────────────────────────────────────
-function renderPipelines(data) {
-  if (!data) {
-    document.getElementById('pipeline-svg').innerHTML =
-      '<text x="50%" y="50%" text-anchor="middle" fill="#ef4444" font-size="13">Failed to load pipeline data.</text>';
-    return;
-  }
-
-  const pipelines = data.pipelines || [];
-  if (pipelines.length === 0) {
-    document.getElementById('pipeline-svg').innerHTML =
-      '<text x="50%" y="50%" text-anchor="middle" fill="#94a3b8" font-size="13">No pipeline runs in the last 7 days.</text>';
-    return;
-  }
-
-  const svg = d3.select('#pipeline-svg');
-  svg.selectAll('*').remove();
-
-  const marginL = 200;
-  const marginT = 40;
-  const marginB = 10;
-  const cellSize = 36;
-  const cellPad = 4;
-
-  // Collect all unique dates (last 7 days)
-  const today = new Date();
-  const dates = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    dates.push(d.toISOString().slice(0, 10));
-  }
-
-  const totalH = pipelines.length * (cellSize + cellPad) + marginT + marginB;
-  const totalW = marginL + dates.length * (cellSize + cellPad) + 20;
-
-  svg.attr('height', totalH).attr('viewBox', `0 0 ${totalW} ${totalH}`);
-
-  const g = svg.append('g').attr('transform', `translate(${marginL},${marginT})`);
-
-  // Date headers
-  g.selectAll('.date-label')
-    .data(dates)
-    .enter()
-    .append('text')
-    .attr('x', (_, i) => i * (cellSize + cellPad) + cellSize / 2)
-    .attr('y', -10)
-    .attr('text-anchor', 'middle')
-    .attr('fill', '#94a3b8')
-    .attr('font-size', '10px')
-    .text(d => {
-      const dt = new Date(d + 'T00:00:00');
-      return dt.toLocaleDateString('en-IN', { day:'2-digit', month:'short' });
+  // Links
+  const link = treeG.selectAll('.link').data(links, d => d.target.id || (d.target.id = Math.random()));
+  const linkEnter = link.enter().append('path').attr('class','link')
+    .attr('d', d => {
+      const o = {x: source.x0 || source.x, y: source.y0 || source.y};
+      return diagonal({source:o, target:o});
     });
+  linkEnter.merge(link).transition().duration(duration)
+    .attr('d', diagonal);
+  link.exit().transition().duration(duration)
+    .attr('d', d => {
+      const o = {x: source.x, y: source.y};
+      return diagonal({source:o, target:o});
+    }).remove();
 
-  const STATUS_COLORS = {
-    success: '#22c55e',
-    partial: '#f59e0b',
-    failed:  '#ef4444',
-    running: '#3b82f6',
-    not_run: '#e2e8f0',
-    unknown: '#e2e8f0',
-  };
+  // Nodes
+  const node = treeG.selectAll('.node').data(nodes, d => d.id || (d.id = ++nodeId));
+  const nodeEnter = node.enter().append('g').attr('class','node')
+    .attr('transform', `translate(${source.y0||source.y},${source.x0||source.x})`)
+    .on('click', (event, d) => { toggleNode(d); updateTree(d); })
+    .on('mouseover', (event, d) => showTooltip(event, d))
+    .on('mouseout', () => hideTooltip());
 
-  pipelines.forEach((pipe, pi) => {
-    const y = pi * (cellSize + cellPad);
+  nodeEnter.append('circle')
+    .attr('r', 0)
+    .attr('fill', d => nodeColor(d))
+    .attr('stroke', d => d3.color(nodeColor(d)).brighter(0.5).formatHex())
+    .attr('stroke-width', 1.5);
 
-    // Pipeline name
-    svg.append('text')
-      .attr('x', marginL - 10)
-      .attr('y', marginT + y + cellSize / 2 + 4)
-      .attr('text-anchor', 'end')
-      .attr('fill', '#0f172a')
-      .attr('font-size', '11px')
-      .text(pipe.pipeline_name.replace('pipeline_', '').replace(/_/g, ' '));
+  nodeEnter.append('text')
+    .attr('dy', '0.31em')
+    .attr('x', d => (d.children || d._children) ? -14 : 14)
+    .attr('text-anchor', d => (d.children || d._children) ? 'end' : 'start')
+    .text(d => d.data.name)
+    .attr('fill-opacity', 0);
 
-    // Build a map of date -> cell
-    const cellMap = {};
-    (pipe.days || []).forEach(day => { cellMap[day.date] = day; });
+  nodeEnter.append('text').attr('class','meta')
+    .attr('dy', '1.5em')
+    .attr('x', d => (d.children || d._children) ? -14 : 14)
+    .attr('text-anchor', d => (d.children || d._children) ? 'end' : 'start')
+    .text(d => {
+      const parts = [];
+      if (d.data.meta) parts.push(d.data.meta);
+      if (d.data.table && coverageData[d.data.table]) {
+        parts.push(fmtNum(coverageData[d.data.table].row_count) + ' rows');
+      }
+      return parts.join(' · ');
+    })
+    .attr('fill-opacity', 0);
 
-    dates.forEach((date, di) => {
-      const cell = cellMap[date];
-      const st   = cell ? cell.status : 'not_run';
-      const col  = STATUS_COLORS[st] || STATUS_COLORS.unknown;
-      const cx   = di * (cellSize + cellPad);
+  const nodeUpdate = nodeEnter.merge(node);
+  nodeUpdate.transition().duration(duration)
+    .attr('transform', d => `translate(${d.y},${d.x})`);
+  nodeUpdate.select('circle').transition().duration(duration)
+    .attr('r', d => nodeRadius(d))
+    .attr('fill', d => nodeColor(d));
+  nodeUpdate.select('text:not(.meta)').transition().duration(duration).attr('fill-opacity', 1);
+  nodeUpdate.select('text.meta').transition().duration(duration).attr('fill-opacity', 0.7);
 
-      const cellG = g.append('g')
-        .attr('transform', `translate(${cx},${y})`)
-        .style('cursor', cell ? 'pointer' : 'default');
+  node.exit().transition().duration(duration)
+    .attr('transform', `translate(${source.y},${source.x})`).remove();
+  node.exit().select('circle').attr('r', 0);
 
-      cellG.append('rect')
+  treeRoot.descendants().forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+}
+
+let nodeId = 0;
+
+function toggleNode(d) {
+  if (d.children) { d._children = d.children; d.children = null; }
+  else { d.children = d._children; d._children = null; }
+}
+
+function treeExpandAll() {
+  treeRoot.descendants().forEach(d => {
+    if (d._children) { d.children = d._children; d._children = null; }
+  });
+  updateTree(treeRoot);
+}
+
+function treeCollapseAll() {
+  treeRoot.descendants().forEach(d => {
+    if (d.depth > 0 && d.children) { d._children = d.children; d.children = null; }
+  });
+  updateTree(treeRoot);
+}
+
+function treeReset() {
+  treeRoot.descendants().forEach(d => {
+    if (d.depth >= 2) {
+      if (d.children) { d._children = d.children; d.children = null; }
+    } else {
+      if (d._children) { d.children = d._children; d._children = null; }
+    }
+  });
+  updateTree(treeRoot);
+}
+
+// ─── Tooltip ──────────────────────────────────────────────────────────────────
+function showTooltip(event, d) {
+  const tt = document.getElementById('tooltip');
+  const cols = d.data.columns || [];
+  if (!cols.length && !d.data.meta) return;
+  document.getElementById('tt-title').textContent = d.data.name;
+  let html = '';
+  if (d.data.meta) html += `<div style="color:var(--slate-lt);margin-bottom:6px;font-size:10px">${d.data.meta}</div>`;
+  if (cols.length) {
+    html += '<div style="font-size:10px;color:var(--slate-lt);margin-bottom:4px">Columns:</div>';
+    html += cols.map(c => `<span class="tt-col">${c}</span>`).join('');
+  }
+  if (d.data.table && coverageData[d.data.table]) {
+    const cov = coverageData[d.data.table];
+    html += `<div style="margin-top:8px;font-size:10px;color:var(--slate-lt)">${fmtNum(cov.row_count)} rows · last ${fmtDate(cov.last_date)}</div>`;
+  }
+  document.getElementById('tt-cols').innerHTML = html;
+  tt.style.display = 'block';
+  tt.style.left = (event.clientX + 14) + 'px';
+  tt.style.top = (event.clientY - 10) + 'px';
+}
+
+function hideTooltip() {
+  document.getElementById('tooltip').style.display = 'none';
+}
+
+// ─── Freshness Heatmap ────────────────────────────────────────────────────────
+function renderHeatmap(streams) {
+  const grid = document.getElementById('heatmap-grid');
+  if (!streams || !streams.length) {
+    grid.innerHTML = '<div style="color:var(--slate-lt);padding:20px">No stream data available.</div>';
+    return;
+  }
+  grid.innerHTML = streams.map(s => {
+    const dateKey = s.last_date || s.last_updated || null;
+    const cls = ageClass(dateKey);
+    const age = ageLabel(dateKey);
+    return `<div class="hm-cell ${cls}" title="${s.stream_name || s.name}">
+      <div class="hm-name">${s.stream_name || s.name || '—'}</div>
+      <div class="hm-date">${fmtDate(dateKey)}</div>
+      <div class="hm-age ${cls}">${age}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('heatmap-subtitle').textContent =
+    `${streams.length} data streams · Updated ${new Date().toLocaleTimeString('en-IN', {timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit'})} IST`;
+}
+
+// ─── Pipeline Heatmap ─────────────────────────────────────────────────────────
+function renderPipelineHeatmap(pipelines) {
+  const svg = document.getElementById('pipeline-svg');
+  if (!pipelines || !pipelines.length) {
+    svg.parentElement.innerHTML = '<div style="color:var(--slate-lt);padding:20px;text-align:center">Pipeline run history unavailable.</div>';
+    return;
+  }
+
+  const cellSize = 18, cellPad = 3;
+  const labelW = 200, days = 7;
+  const W = labelW + days * (cellSize + cellPad) + 40;
+  const H = pipelines.length * (cellSize + cellPad) + 40;
+
+  const svgEl = d3.select('#pipeline-svg').attr('width', W).attr('height', H);
+  svgEl.selectAll('*').remove();
+  const g = svgEl.append('g').attr('transform', 'translate(0,30)');
+
+  // Day headers
+  const today = new Date();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (days - 1 - i));
+    const lbl = d.toLocaleDateString('en-IN', {weekday:'short',day:'numeric'});
+    g.append('text')
+      .attr('x', labelW + i * (cellSize + cellPad) + cellSize / 2)
+      .attr('y', -8)
+      .attr('text-anchor','middle')
+      .attr('fill','#64748b')
+      .attr('font-size','9px')
+      .text(lbl.substring(0,5));
+  }
+
+  const colorMap = {success:'#22c55e', failed:'#ef4444', partial:'#f59e0b', none:'#334155'};
+
+  pipelines.forEach((p, ri) => {
+    const y = ri * (cellSize + cellPad);
+    g.append('text')
+      .attr('x', labelW - 8)
+      .attr('y', y + cellSize / 2 + 4)
+      .attr('text-anchor','end')
+      .attr('fill','#94a3b8')
+      .attr('font-size','10px')
+      .text((p.name || p.pipeline_name || '').replace('de_','').substring(0,24));
+
+    const runs = p.runs || [];
+    for (let i = 0; i < days; i++) {
+      const runDate = new Date(today);
+      runDate.setDate(today.getDate() - (days - 1 - i));
+      const dateStr = runDate.toISOString().slice(0,10);
+      const run = runs.find ? runs.find(r => (r.date || r.run_date || '').startsWith(dateStr)) : null;
+      const status = run ? (run.status || 'none') : 'none';
+      const fill = colorMap[status] || colorMap.none;
+      g.append('rect')
+        .attr('x', labelW + i * (cellSize + cellPad))
+        .attr('y', y)
         .attr('width', cellSize)
         .attr('height', cellSize)
-        .attr('rx', 4)
-        .attr('fill', col)
-        .attr('opacity', 0.9);
-
-      if (cell && cell.total_rows > 0) {
-        cellG.append('text')
-          .attr('x', cellSize / 2)
-          .attr('y', cellSize / 2 + 4)
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .attr('font-size', '9px')
-          .text(fmt_rows_tiny(cell.total_rows));
-      }
-
-      // Tooltip via title
-      if (cell) {
-        cellG.append('title')
-          .text(
-            `${pipe.pipeline_name}\n` +
-            `Date: ${date}\n` +
-            `Status: ${st}\n` +
-            `Rows: ${cell.total_rows?.toLocaleString('en-IN') || 0}\n` +
-            `Duration: ${cell.duration_secs != null ? cell.duration_secs + 's' : '—'}`
-          );
-      }
-    });
+        .attr('rx', 3)
+        .attr('fill', fill)
+        .append('title').text(`${p.name || ''} · ${dateStr} · ${status}`);
+    }
   });
 }
 
-function fmt_rows_tiny(n) {
-  if (!n) return '';
-  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
-  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
-  return n;
+// ─── Agent Status ─────────────────────────────────────────────────────────────
+function updateAgentStatus(pipelines) {
+  if (!pipelines || !pipelines.length) return;
+  const agents = [
+    { key: 'eod', match: 'eod', badgeId: 'agent-eod-badge', lastId: 'agent-eod-last' },
+    { key: 'comp', match: 'computation', badgeId: 'agent-comp-badge', lastId: 'agent-comp-last' },
+    { key: 'fund', match: 'fund', badgeId: 'agent-fund-badge', lastId: 'agent-fund-last' }
+  ];
+  agents.forEach(a => {
+    const p = pipelines.find ? pipelines.find(p => (p.name || p.pipeline_name || '').toLowerCase().includes(a.match)) : null;
+    const badge = document.getElementById(a.badgeId);
+    const last = document.getElementById(a.lastId);
+    if (p) {
+      const lastRun = (p.runs || [])[0];
+      const status = lastRun ? (lastRun.status || 'unknown') : 'unknown';
+      badge.textContent = status;
+      badge.className = 'badge ' + (status === 'success' ? 'green' : status === 'failed' ? 'red' : status === 'partial' ? 'amber' : 'grey');
+      if (last) last.textContent = lastRun ? fmtDate(lastRun.date || lastRun.run_date) : '—';
+    }
+  });
 }
 
-// ─── Render Dictionary ────────────────────────────────────────────────────
-function renderDictionary(data) {
-  if (!data) {
-    document.getElementById('dict-body').innerHTML =
-      '<div class="error-card">Failed to load dictionary data.</div>';
-    return;
-  }
-
-  document.getElementById('dict-sub').textContent =
-    `${data.table_count} tables · ${data.column_count} columns`;
-
-  _dictData = data;
-  filterDictionary('');
-}
-
-function filterDictionary(query) {
-  if (!_dictData) return;
-  const q = query.toLowerCase().trim();
-  const container = document.getElementById('dict-body');
-  container.innerHTML = '';
-
-  (_dictData.tables || []).forEach(tbl => {
-    const matchTable = !q || tbl.table.toLowerCase().includes(q);
-    const matchCols  = tbl.columns.filter(c =>
-      !q ||
-      c.column.toLowerCase().includes(q) ||
-      (c.description || '').toLowerCase().includes(q) ||
-      c.data_type.toLowerCase().includes(q)
-    );
-
-    if (!matchTable && matchCols.length === 0) return;
-    const cols = matchTable ? tbl.columns : matchCols;
-
-    const div = document.createElement('div');
-    div.className = 'dict-table-group';
-    div.innerHTML = `
-      <div class="dict-table-header" onclick="toggleDict(this)">
-        <span class="dict-table-name">${escHtml(tbl.table)}</span>
-        <span style="display:flex;align-items:center;gap:12px">
-          <span class="dict-col-count">${cols.length} columns</span>
-          <span class="dict-chevron open">▼</span>
-        </span>
-      </div>
-      <div class="dict-table-body open">
-        <table class="dict-inner">
-          <thead>
-            <tr>
-              <th>Column</th>
-              <th>Type</th>
-              <th>Nullable</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${cols.map(c => `
-              <tr>
-                <td class="dict-col-name">${escHtml(c.column)}</td>
-                <td class="dict-type">${escHtml(c.data_type)}</td>
-                <td class="dict-nullable">${c.is_nullable ? 'yes' : 'no'}</td>
-                <td class="dict-desc">${escHtml(c.description || '')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-    container.appendChild(div);
+// ─── Main Load ────────────────────────────────────────────────────────────────
+async function loadAll() {
+  // Show loading bars
+  ['tree-loading','heatmap-loading','pipeline-loading'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
   });
 
-  if (container.children.length === 0) {
-    container.innerHTML = `<div style="color:var(--slate-lt);font-size:13px;padding:24px;">No results for "${escHtml(q)}".</div>`;
+  const [pulse, coverage, pipelines] = await Promise.all([
+    fetchPulse(), fetchCoverage(), fetchPipelines()
+  ]);
+
+  pulseData = pulse ? (pulse.streams || []) : [];
+  updateTopbar(pulse, coverage);
+  renderHeatmap(pulseData);
+
+  if (pipelines) {
+    renderPipelineHeatmap(pipelines.pipelines || []);
+    updateAgentStatus(pipelines.pipelines || []);
   }
+
+  // Re-render tree to pick up fresh coverage/pulse data
+  if (treeRoot) updateTree(treeRoot);
+
+  // Hide loading bars
+  ['tree-loading','heatmap-loading','pipeline-loading'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
 }
 
-function toggleDict(headerEl) {
-  const chevron = headerEl.querySelector('.dict-chevron');
-  const body    = headerEl.nextElementSibling;
-  const isOpen  = body.classList.contains('open');
-  body.classList.toggle('open', !isOpen);
-  chevron.classList.toggle('open', !isOpen);
+// ─── Countdown ────────────────────────────────────────────────────────────────
+function startCountdown() {
+  clearInterval(countdownTimer);
+  countdownSec = 60;
+  const el = document.getElementById('refresh-countdown');
+  countdownTimer = setInterval(() => {
+    countdownSec--;
+    if (el) el.textContent = `Refresh in ${countdownSec}s`;
+    if (countdownSec <= 0) {
+      loadAll();
+      countdownSec = 60;
+    }
+  }, 1000);
 }
 
-function escHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+// ─── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  initTree();
+  loadAll();
+  startCountdown();
+});
 
-// ─── Bootstrap ────────────────────────────────────────────────────────────
-fetchAll();
-// Auto-refresh every 60 seconds
-setInterval(fetchAll, 60000);
+window.addEventListener('resize', () => {
+  const wrap = document.getElementById('tree-wrap');
+  const W = wrap.clientWidth || 1200;
+  d3.select('#tree-svg').attr('width', W);
+  if (treeRoot) updateTree(treeRoot);
+});
 </script>
-
 </body>
 </html>
