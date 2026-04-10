@@ -18,6 +18,26 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("data_engine_starting", version="2.0.0", env=settings.app_env)
+
+    # Initialize pipeline orchestration layer
+    from app.orchestrator.alerts import AlertManager
+    from app.orchestrator.executor import PipelineExecutor
+    from app.orchestrator.sla import SLAChecker
+
+    alert_manager = AlertManager(
+        slack_webhook_url=settings.slack_webhook_url,
+    )
+    sla_checker = SLAChecker()
+    executor = PipelineExecutor(
+        alert_manager=alert_manager,
+        sla_checker=sla_checker,
+    )
+    app.state.executor = executor
+    app.state.alert_manager = alert_manager
+    app.state.sla_checker = sla_checker
+
+    logger.info("orchestration_layer_initialized")
+
     yield
     await async_engine.dispose()
     logger.info("data_engine_shutdown")

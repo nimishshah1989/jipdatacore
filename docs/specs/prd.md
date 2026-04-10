@@ -1,203 +1,145 @@
-# JIP Data Engine v2.0 — Product Requirements Document
+# JIP Pipeline Orchestration — PRD
 
-**Status:** Approved for Build
-**Date:** 2026-04-05
-**Sprint Duration:** Full build (chunked for incremental delivery)
-**Git:** github.com/nimishshah1989/jipdatacore.git
-**Deploy Target:** EC2 (13.206.34.214) + RDS (existing)
-**Source Spec:** JIP_Data_Engine_v2.0.md
+**Status:** Pending Approval
+**Date:** 2026-04-10
+**Sprint:** Pipeline rescue + Claude agent infrastructure
+**Deploy Target:** EC2 (13.206.34.214) + Anthropic Cloud (scheduled agents)
 
 ---
 
-## 1. Product Vision
+## 1. Goal
 
-Single backend data engine that replaces all per-product databases. Every JIP product reads from one API (core.jslwealth.in:8010). No product has its own database. All computation happens in the Data Engine.
+Get the JIP database fully current (all 12 streams updated to today) and replace
+the broken cron-based scheduling with Claude scheduled agents that are self-healing,
+observable, and require zero SSH maintenance.
 
 ## 2. Success Criteria
 
-1. Market Pulse can switch from its current backend to Data Engine API with zero data loss
-2. MF Pulse can be rebuilt entirely against Data Engine API
-3. All 6 pipeline tracks run daily without manual intervention
-4. Data freshness: equity OHLCV available by 19:30 IST, MF NAV by 22:30 IST
-5. 30+ API endpoints respond <200ms p95 with Redis cache
-6. Zero plaintext PII in any table
-7. Full audit trail: every row traceable to source file + pipeline run
+- [ ] All 12 data streams updated to 2026-04-10
+- [ ] Pipeline trigger API operational at data.jslwealth.in
+- [ ] 7 Claude scheduled agents running on correct schedules
+- [ ] Health check agent detecting staleness and alerting within 1 hour
+- [ ] Zero manual intervention required for daily data updates going forward
+- [ ] DAG executor, SLA monitor, retry, and alerts all wired up and operational
 
-## 3. User Personas
+## 3. Non-Goals
 
-| Persona | Product | Needs from Data Engine |
-|---------|---------|----------------------|
-| Equity Analyst | Market Pulse | OHLCV, RS scores, breadth, regime, sectors, technicals |
-| MF Analyst | MF Pulse | NAV, returns, risk metrics, holdings, fund-vs-stock derived metrics |
-| Trader | Champion Trader | Stage analysis, SMA/EMA, weekly/monthly indicators |
-| CIO/Principal | All dashboards | Regime, breadth sentiment, FII/DII flows, global macro |
-| Admin | Orchestrator | Pipeline status, anomalies, replay, system flags |
+- Rewriting pipeline logic (ingestion code works fine)
+- Changing data sources
+- New data streams
+- Frontend redesign
 
-## 4. Scope — What We Build
+## 4. Chunks
 
-### 4.1 Database Schema (40+ tables)
-- Instrument masters (equity, MF, index, global, macro, contributors)
-- Price data (OHLCV partitioned, MF NAV partitioned, index, global, macro)
-- Flow data (institutional, MF category)
-- Computed tables (technical daily, RS scores, RS summary, breadth, regime)
-- F&O summary
-- Qualitative layer (sources, documents, extracts, outcomes)
-- Client portfolios (encrypted PII)
-- Champion trades
-- Pipeline state (source files, pipeline log, system flags, migration log, request log)
-- Operational (trading calendar, recompute queue, data anomalies)
+### Chunk 1: Pipeline Trigger API
+**Files:** `app/api/v1/pipeline_trigger.py`, `app/api/deps.py`
+**Complexity:** Medium
+**Dependencies:** None
+**Acceptance Criteria:**
+- POST /api/v1/pipeline/trigger/{schedule_name} executes pipeline group
+- POST /api/v1/pipeline/trigger/backfill accepts date range
+- POST /api/v1/pipeline/trigger/single/{pipeline_name} runs one pipeline
+- API key auth via X-Pipeline-Key header
+- Returns execution status, rows processed, duration
+- Long-running pipelines execute as background tasks with status polling
+- Proper error responses for invalid schedule names, locked pipelines
 
-### 4.2 Ingestion Pipelines
-- Daily EOD: 5 parallel tracks (equity, MF, indices, flows, F&O)
-- Pre-market: global indices + macro
-- T+1: delivery data
-- Weekly: Morningstar fund master refresh
-- Monthly: Morningstar holdings refresh
-- Qualitative: RSS + manual upload + Playwright automation
-- Reconciliation: cross-source validation
+### Chunk 2: Wire Orchestration Layer
+**Files:** `app/orchestrator/executor.py` (new), `app/orchestrator/dag.py`, `app/orchestrator/sla.py`, `app/orchestrator/alerts.py`, `app/orchestrator/retry.py`
+**Complexity:** Medium
+**Dependencies:** Chunk 1
+**Acceptance Criteria:**
+- DAG executor resolves dependencies before running pipelines
+- Track A failure (equity) skips RS/regime but not MF/global
+- SLA monitor checks deadlines and posts to Slack on breach
+- Retry policy applies (3 attempts for transient, fail-fast for persistent)
+- Reconciliation runs after EOD completion
+- All execution goes through BasePipeline.run() (locking, logging, validation)
 
-### 4.3 Computation Engine
-- ~80 technical indicators per stock per day
-- RS computation (5 timeframes + composite + percentile)
-- 25 breadth indicators + sentiment score
-- Market regime classification (BULL/BEAR/SIDEWAYS/RECOVERY)
-- Sector aggregation (market-cap weighted)
-- MF derived metrics (holdings × stock metrics)
-- MF NAV-based risk metrics (sharpe, sortino, drawdown, etc.)
+### Chunk 3: Backfill Stale Data
+**Files:** No new files — uses trigger API
+**Complexity:** Low (execution), High (verification)
+**Dependencies:** Chunks 1 + 2
+**Acceptance Criteria:**
+- Equity OHLCV: Apr 7-10 ingested and verified (row counts match expected)
+- MF NAV: Apr 3-10 ingested
+- RS Scores: full recompute from current OHLCV
+- Technicals: recompute Apr 7-10
+- Breadth/Regime: recompute Apr 7-10
+- Global Prices: Mar 31 - Apr 10
+- ETF OHLCV: Apr 3-10
+- MF Category Flows: investigate source, backfill Feb-Apr
+- MF Derived: recompute after NAV backfill
+- All row counts logged before and after
 
-### 4.4 API Layer (30+ endpoints)
-- Auth: JWT issue + refresh
-- Equity: OHLCV, universe, RS (stocks, sectors, single stock)
-- MF: NAV, universe, category flows
-- Market: regime, breadth, indices, global, macro, flows, F&O
-- Qualitative: upload, search, recent
-- Admin: pipeline status, anomalies, replay, system flags, data override
+### Chunk 4: Claude Scheduled Agents
+**Files:** None (configured via /schedule CLI)
+**Complexity:** Low
+**Dependencies:** Chunks 1 + 2 + 3 (data must be current first)
+**Acceptance Criteria:**
+- 7 recurring agents created with correct cron schedules
+- 1 health check agent created
+- Each agent's prompt includes: API endpoint, expected response, error handling
+- Agents verified: trigger manually, confirm pipeline executes
+- API key stored securely in agent environment variables
 
-### 4.5 Infrastructure
-- Docker deployment on EC2
-- Redis caching with circuit breaker + stampede protection
-- PgBouncer connection pooling
-- Prometheus + Grafana monitoring
-- Slack alerting (#jip-alerts)
-- Operational runbooks
+### Chunk 5: Dashboard Enhancement
+**Files:** `dashboard/`, `app/api/v1/observatory.py`
+**Complexity:** Low
+**Dependencies:** Chunks 1-4
+**Acceptance Criteria:**
+- Observatory shows agent last-run time and next scheduled run
+- Freshness heatmap: green (<6hr), yellow (6-24hr), red (>24hr)
+- Manual trigger buttons for each schedule group
+- Agent execution history (last 7 days)
 
-### 4.6 Data Migrations
-- Equity OHLCV from fie_v3 (1.4M rows, type corrections)
-- MF NAV from fie2-db-1 Docker (25.8M → ~5M filtered)
-- MF master from fie2-db-1 (13,380 funds)
-- MF holdings from fie2-db-1 (2M+ rows)
-- Index constituents from fie_v3 (4,638 rows)
-- Client data from client_portal (366K rows, encrypt on migration)
+## 5. Pipeline Schedule Reference
 
-## 5. Out of Scope (Phase 2)
+### Weekday (Mon-Fri)
+| Time (IST) | Schedule | Pipelines |
+|------------|----------|-----------|
+| 07:30 | pre_market | BHAV, corporate actions, indices |
+| 09:00 | t1_delivery | FII/DII flows |
+| 18:30 | eod | BHAV, indices, AMFI NAV, yfinance, FRED |
+| 19:00 | rs_computation | Relative strength (after EOD) |
+| 19:30 | technicals | SQL technicals + pandas technicals |
+| 20:30 | regime | Breadth + regime detection (after RS) |
+| 21:00 | fund_metrics | MF derived metrics |
+| 22:00 | global | yfinance global + ETF technicals |
+| 23:00 | reconciliation | Cross-source validation |
 
-- Real-time / intraday data
-- RA license compliance layer
-- Simulation and Optimization Laboratory
-- IDCW/dividend MF plans (filter expansion)
-- Synthetic continuous NAV for merged MF schemes
+### Weekly
+| Day | Time (IST) | Pipelines |
+|-----|------------|-----------|
+| Sunday 02:00 | full_rs_rebuild | Full RS historical rebuild |
+| Sunday 04:00 | morningstar_weekly | Morningstar fund master |
 
-## 6. Non-Negotiable Rules
+### Monthly
+| Day | Time (IST) | Pipelines |
+|-----|------------|-----------|
+| 1st 03:00 | holdings_monthly | Morningstar portfolio |
 
-1. DATE columns store DATE type — never VARCHAR
-2. Financial values: NUMERIC(18,4). Never FLOAT
-3. Every table has created_at TIMESTAMPTZ DEFAULT NOW()
-4. No triggers, no stored procedures
-5. Every INSERT uses ON CONFLICT — full idempotency
-6. No plaintext PII — all encrypted before insert
+## 6. API Key Security
 
-## 7. Build Order (Dependency-Driven)
+- Generate 256-bit random key for pipeline triggers
+- Store in .env on EC2 (never in code)
+- Store in Claude agent environment variables
+- Rotate monthly via /schedule update
+- Log all trigger attempts (with/without valid key)
 
-```
-LAYER 0: Foundation (scaffold, schema, pipeline framework)
-    ↓
-LAYER 1: Data Pipelines (equity + MF + indices + flows — parallel)
-    ↓
-LAYER 2: Computation Engine (technicals, RS, breadth, regime, sector, fund derived)
-    ↓
-LAYER 3: API Layer (auth, endpoints, caching, response envelope)
-    ↓
-LAYER 4: Advanced (qualitative, PII encryption, monitoring, orchestrator, runbooks)
-    ↓
-LAYER 5: Migrations (existing data → new schema)
-    ↓
-LAYER 6: QA + Operational Readiness (chaos testing, SLA verification, deploy)
-```
+## 7. Rollback Plan
 
-Note: Layers 1-3 have internal parallelism. Layer 5 (migrations) can start as soon as schema exists.
+If Claude agents prove unreliable:
+- The trigger API works with any HTTP client
+- Fall back to cron calling `curl -X POST` with API key
+- Or use GitHub Actions scheduled workflows as a middle ground
 
-## 8. Acceptance Criteria per Layer
+## 8. Timeline
 
-### Layer 0: Foundation
-- [ ] Project structure: FastAPI app, SQLAlchemy 2.0, Alembic, Docker, pytest
-- [ ] All 40+ tables created via Alembic migration
-- [ ] Pipeline guard (advisory locks) working
-- [ ] Trading calendar seeded
-- [ ] System flags seeded
-
-### Layer 1: Data Pipelines
-- [ ] BHAV copy ingestion (3 format parsers) runs end-to-end
-- [ ] AMFI NAV ingestion runs end-to-end
-- [ ] Post-ingestion validation detects anomalies
-- [ ] Data status gating (raw → validated → quarantined) working
-- [ ] Source file lineage tracked for every ingested file
-
-### Layer 2: Computation
-- [ ] 80 technical indicators computed for all active stocks
-- [ ] RS scores match formula: rs_Nt = (entity_cumreturn_N - benchmark_cumreturn_N) / benchmark_rolling_std_N
-- [ ] Breadth metrics produce 25 indicators
-- [ ] Market regime classification runs daily
-
-### Layer 3: API
-- [ ] JWT auth with refresh token rotation
-- [ ] All 30+ endpoints return correct data
-- [ ] Redis caching with circuit breaker
-- [ ] X-Data-Freshness / X-Computation-Version / X-System-Status headers
-- [ ] Response envelope with pagination
-
-### Layer 4: Advanced
-- [ ] Qualitative pipeline processes PDFs and text
-- [ ] PII encryption + blind index search working
-- [ ] Prometheus metrics exposed
-- [ ] Slack alerts firing on pipeline failures
-
-### Layer 5: Migrations
-- [ ] 1.4M equity rows migrated with type corrections
-- [ ] ~5M MF NAV rows migrated (filtered from 25.8M)
-- [ ] 13,380 fund master records migrated
-- [ ] Validation gates pass (row count, date range, spot check)
-
-### Layer 6: QA
-- [ ] All chaos tests pass (Section 12.6 of spec)
-- [ ] SLA enforcement verified
-- [ ] API p95 < 200ms on cached endpoints
-
-## 9. Risk Register
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Morningstar API details missing | Holdings refresh blocked | Stub endpoint, wire when URL provided |
-| RDS PostgreSQL < 12 | GENERATED ALWAYS fails | Check version first; upgrade if needed |
-| EC2 disk space | Build stalls | docker system prune before start |
-| NSE BHAV format changes | Parser breaks | Auto-detect by header, 3 parsers ready |
-| Migration data quality | Bad data in prod | Validation gates + anomaly detection |
-
-## 10. Technology Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Language | Python 3.11+ |
-| Framework | FastAPI + Uvicorn |
-| ORM | SQLAlchemy 2.0 async (mapped_column) |
-| Migrations | Alembic |
-| Database | PostgreSQL 12+ on RDS |
-| Cache | Redis 7+ |
-| Pooling | PgBouncer |
-| Auth | PyJWT + bcrypt |
-| HTTP Client | httpx (async) |
-| Data | pandas, numpy |
-| Monitoring | prometheus-fastapi-instrumentator |
-| Testing | pytest + pytest-asyncio + httpx |
-| Logging | structlog |
-| Deploy | Docker + docker-compose |
-| CI/CD | GitHub Actions |
+| Chunk | Estimate | Priority |
+|-------|----------|----------|
+| 1: Trigger API | Build now | P0 |
+| 2: Wire orchestration | Build now | P0 |
+| 3: Backfill data | Run immediately after 1+2 | P0 |
+| 4: Claude agents | Set up after backfill | P1 |
+| 5: Dashboard | After agents are running | P2 |

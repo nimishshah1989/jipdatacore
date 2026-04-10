@@ -8,12 +8,14 @@ FastAPI dependency injection helpers.
 - PaginationParams  — reusable pagination query params
 """
 
+import hmac
 from typing import Annotated, Optional
 
 import jwt
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Depends, Header, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.config import get_settings
 from app.db.session import get_db  # noqa: F401  (re-export)
 from app.logging import get_logger
 from app.middleware.auth import decode_access_token
@@ -99,3 +101,28 @@ class PaginationParams:
     @property
     def offset(self) -> int:
         return (self.page - 1) * self.page_size
+
+
+async def verify_pipeline_key(
+    x_pipeline_key: Annotated[str, Header(description="Pipeline API key")],
+) -> bool:
+    """Validate the X-Pipeline-Key header for pipeline trigger endpoints.
+
+    Uses constant-time comparison to prevent timing attacks.
+    """
+    settings = get_settings()
+    if not settings.pipeline_api_key:
+        logger.error("pipeline_api_key_not_configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Pipeline API key not configured on server",
+        )
+
+    if not hmac.compare_digest(x_pipeline_key, settings.pipeline_api_key):
+        logger.warning("pipeline_key_invalid")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid pipeline API key",
+        )
+
+    return True

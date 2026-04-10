@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Slack
     slack_webhook_url: str = ""
 
+    # Pipeline trigger API key (for Claude scheduled agents)
+    pipeline_api_key: str = ""
+
     # S3
     s3_archive_bucket: str = "jsl-data-engine-archive"
 
