@@ -1,6 +1,9 @@
 # Forge OS — Ralph Configuration
 # Placed at .ralphrc in your project root by setup or /forge-build
 
+# Claude CLI — full path so gtimeout can find it in non-login shells
+CLAUDE_CODE_CMD="/Users/nimishshah/.npm-global/bin/claude"
+
 # Timeout per iteration (minutes) — prevents runaway sessions
 CLAUDE_TIMEOUT_MINUTES=60
 
