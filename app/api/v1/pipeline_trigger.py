@@ -150,21 +150,41 @@ async def _run_special_handler(
             )
 
     elif name == "__goldilocks_compute__":
-        # Run goldilocks scraper + PDF extraction + LLM extraction as subprocesses
+        # Full goldilocks ingestion + extraction chain:
+        #   1. Scrape: fetch new PDFs/audio/video from goldilocksresearch.com
+        #   2. PDF extract: PyMuPDF → raw_text + classify report_type
+        #   3. Media transcribe: Groq Whisper for audio/video → raw_text
+        #   4. LLM extract: Groq gpt-oss-120b → structured rows + embeddings
+        #   5. Embed backfill: any rows still missing embeddings
+        # Each step is a subprocess; failures in one don't block the others
+        # (the whole chain is idempotent and each step only touches pending
+        # state).
         steps = [
-            ("goldilocks_scraper", [sys.executable, "-m", "scripts.ingest.goldilocks_scraper", "--mode", "daily"]),
-            ("pdf_extraction", [sys.executable, "-m", "scripts.ingest.extract_goldilocks_pdfs"]),
-            ("llm_extraction", [sys.executable, "-m", "scripts.ingest.run_goldilocks_extraction", "--max-docs", "10"]),
+            ("goldilocks_scraper",
+             [sys.executable, "-m", "scripts.ingest.goldilocks_scraper", "--mode", "daily"],
+             600),
+            ("pdf_extraction",
+             [sys.executable, "-m", "scripts.ingest.extract_goldilocks_pdfs"],
+             600),
+            ("media_transcribe",
+             [sys.executable, "-m", "scripts.ingest.transcribe_goldilocks_media", "--max-files", "10"],
+             1800),  # transcription of a 1-hour con-call takes ~1-2 min on Groq
+            ("llm_extraction",
+             [sys.executable, "-m", "scripts.ingest.run_goldilocks_extraction", "--max-docs", "100"],
+             1800),  # Groq is fast but we allow headroom
+            ("embed_backfill",
+             [sys.executable, "-m", "scripts.ingest.embed_qual_content"],
+             900),
         ]
         errors: list[str] = []
-        for step_name, cmd in steps:
+        for step_name, cmd, timeout_s in steps:
             try:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
                 if proc.returncode != 0:
                     err = stderr.decode()[-500:] if stderr else f"Exit code {proc.returncode}"
                     errors.append(f"{step_name}: {err}")
@@ -174,8 +194,8 @@ async def _run_special_handler(
             except asyncio.TimeoutError:
                 proc.kill()
                 await proc.wait()
-                errors.append(f"{step_name}: timed out after 600s")
-                logger.error("goldilocks_step_timeout", step=step_name)
+                errors.append(f"{step_name}: timed out after {timeout_s}s")
+                logger.error("goldilocks_step_timeout", step=step_name, timeout_s=timeout_s)
             except Exception as exc:
                 errors.append(f"{step_name}: {exc}")
                 logger.error("goldilocks_step_error", step=step_name, error=str(exc))

@@ -491,17 +491,30 @@ def download_file(sess: Session, url: str, dest_path: Path, dry_run: bool) -> bo
 # Audio transcription hook (placeholder)
 # ---------------------------------------------------------------------------
 def transcribe_audio(path: Path) -> str:
-    """
-    Transcribe an audio file and return text.
+    """Transcribe an audio file via Groq Whisper.
 
-    TODO: Implement with OpenAI Whisper API or local whisper model:
-        import openai
-        client = openai.OpenAI()
-        with open(path, "rb") as f:
-            result = client.audio.transcriptions.create(model="whisper-1", file=f)
-        return result.text
+    Implemented inline by delegating to transcribe_goldilocks_media — that
+    module handles ffmpeg audio extraction (needed for video inputs),
+    25MB chunking, and the actual Groq call. Returns the concatenated
+    transcript, or "" if transcription fails or GROQ_API_KEY is not set.
+
+    Returning "" on failure preserves the scraper's prior behaviour: the
+    file gets ingested with an empty raw_text and the standalone
+    transcribe_goldilocks_media script can pick it up on a later run.
     """
-    return ""
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        return ""
+    try:
+        from scripts.ingest.transcribe_goldilocks_media import transcribe_media_file
+        return transcribe_media_file(path, api_key)
+    except Exception as exc:
+        # Best-effort: don't block the scraper on Whisper failures. The
+        # standalone transcriber (run from nightly_compute) will retry.
+        import traceback
+        print(f"  transcribe_audio failed: {exc}", flush=True)
+        traceback.print_exc()
+        return ""
 
 
 # ---------------------------------------------------------------------------
