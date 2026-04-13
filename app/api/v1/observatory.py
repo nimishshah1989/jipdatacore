@@ -1036,6 +1036,115 @@ async def record_healing_result(
 
 
 # ---------------------------------------------------------------------------
+# Semantic search over qualitative content (RAG retrieval)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/search", status_code=status.HTTP_200_OK)
+async def semantic_search(
+    db: AsyncSession = Depends(get_observatory_db),
+    q: str = "",
+    k: int = 10,
+    table: str = "extracts",  # "extracts" | "documents" | "both"
+):
+    """Semantic search over goldilocks + other qualitative content.
+
+    Uses the local bge-small-en-v1.5 embedder (384 dim) and pgvector HNSW
+    indexes for sub-100ms retrieval. Returns top-k most similar rows by
+    cosine distance.
+
+    Query params:
+      q       — the search query text (required, non-empty)
+      k       — number of results to return (default 10, max 50)
+      table   — which table to search: 'extracts' (de_qual_extracts,
+                default), 'documents' (de_qual_documents), or 'both'.
+    """
+    if not q or not q.strip():
+        return {"error": "query 'q' is required", "results": []}
+    k = max(1, min(50, int(k)))
+
+    try:
+        from app.pipelines.qualitative.local_embedder import (
+            embed_texts,
+            to_pgvector_literal,
+        )
+        qvec = embed_texts([q])[0]
+        qlit = to_pgvector_literal(qvec)
+    except Exception as exc:
+        logger.error("search_embedder_unavailable", error=str(exc))
+        return {"error": f"embedder unavailable: {exc}", "results": []}
+
+    results: dict[str, Any] = {"query": q, "k": k}
+
+    if table in ("extracts", "both"):
+        try:
+            rows = await db.execute(
+                sa.text(
+                    """
+                    SELECT id::text, document_id::text, entity_ref, direction,
+                           conviction, view_text, source_quote, quality_score,
+                           1 - (embedding <=> (:qv)::vector) AS similarity
+                    FROM de_qual_extracts
+                    WHERE embedding IS NOT NULL
+                    ORDER BY embedding <=> (:qv)::vector
+                    LIMIT :k
+                    """
+                ),
+                {"qv": qlit, "k": k},
+            )
+            results["extracts"] = [
+                {
+                    "id": r.id,
+                    "document_id": r.document_id,
+                    "entity_ref": r.entity_ref,
+                    "direction": r.direction,
+                    "conviction": r.conviction,
+                    "view_text": r.view_text,
+                    "source_quote": r.source_quote,
+                    "quality_score": float(r.quality_score) if r.quality_score is not None else None,
+                    "similarity": round(float(r.similarity), 4),
+                }
+                for r in rows.fetchall()
+            ]
+        except Exception as exc:
+            logger.warning("search_extracts_failed", error=str(exc))
+            results["extracts"] = []
+
+    if table in ("documents", "both"):
+        try:
+            rows = await db.execute(
+                sa.text(
+                    """
+                    SELECT id::text, title, report_type, published_at,
+                           LEFT(raw_text, 400) AS snippet,
+                           1 - (embedding <=> (:qv)::vector) AS similarity
+                    FROM de_qual_documents
+                    WHERE embedding IS NOT NULL
+                    ORDER BY embedding <=> (:qv)::vector
+                    LIMIT :k
+                    """
+                ),
+                {"qv": qlit, "k": k},
+            )
+            results["documents"] = [
+                {
+                    "id": r.id,
+                    "title": r.title,
+                    "report_type": r.report_type,
+                    "published_at": r.published_at.isoformat() if r.published_at else None,
+                    "snippet": r.snippet,
+                    "similarity": round(float(r.similarity), 4),
+                }
+                for r in rows.fetchall()
+            ]
+        except Exception as exc:
+            logger.warning("search_documents_failed", error=str(exc))
+            results["documents"] = []
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Cron runs endpoint — visibility into scheduled-job success/failure
 # ---------------------------------------------------------------------------
 

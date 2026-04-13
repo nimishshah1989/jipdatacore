@@ -437,6 +437,55 @@ def _dec(v: Any) -> Optional[str]:
     return str(Decimal(str(v)))
 
 
+# Lazy import — only load fastembed when we actually embed, so the LLM-only
+# path (or a run with no embedder installed) isn't blocked by the 130MB
+# ONNX weight download.
+def _embed_doc_and_extracts(cur, doc_id: str, title: str, raw_text: str) -> None:
+    """Embed the doc itself and any qual_extracts that were just created
+    for it. Runs inside the caller's transaction — caller commits."""
+    try:
+        from app.pipelines.qualitative.local_embedder import (
+            embed_texts, to_pgvector_literal,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"local embedder unavailable: {exc}")
+
+    # 1. Embed the document itself (title + first 3000 chars of body).
+    doc_text = f"{title or ''}\n\n{(raw_text or '')[:3000]}"
+    doc_vec = embed_texts([doc_text])[0]
+    cur.execute(
+        "UPDATE de_qual_documents SET embedding = %s::vector WHERE id = %s::uuid",
+        (to_pgvector_literal(doc_vec), doc_id),
+    )
+
+    # 2. Embed newly-inserted extracts for this document.
+    cur.execute(
+        "SELECT id::text, entity_ref, direction, conviction, view_text, source_quote "
+        "FROM de_qual_extracts WHERE document_id = %s::uuid AND embedding IS NULL",
+        (doc_id,),
+    )
+    extracts = cur.fetchall()
+    if not extracts:
+        return
+
+    texts = [
+        " | ".join(filter(None, [
+            r.get("entity_ref") or "",
+            r.get("direction") or "",
+            r.get("conviction") or "",
+            r.get("view_text") or "",
+            (r.get("source_quote") or "")[:500],
+        ]))
+        for r in extracts
+    ]
+    vectors = embed_texts(texts)
+    for r, vec in zip(extracts, vectors):
+        cur.execute(
+            "UPDATE de_qual_extracts SET embedding = %s::vector WHERE id = %s::uuid",
+            (to_pgvector_literal(vec), r["id"]),
+        )
+
+
 def _trunc(v: Any, n: int) -> Optional[str]:
     """Defensive: clip string values to fit narrow VARCHAR columns. LLMs
     occasionally output longer phrases ('moderately positive') even when
@@ -733,6 +782,18 @@ def main():
             # or at least one general view — otherwise leave pending so the
             # next run can retry.
             if structured_ok or n_general > 0:
+                # Step 3: embed the doc + any newly-inserted extracts in the
+                # same transaction so we never have a 'done' doc without
+                # its vector representation for RAG.
+                try:
+                    _embed_doc_and_extracts(cur, doc_id, title, raw)
+                except Exception as exc:
+                    # Embedding is best-effort — if the model isn't available
+                    # or a batch fails, we still mark the doc done. The
+                    # standalone backfill script (embed_qual_content.py) will
+                    # pick up anything with embedding=NULL on a later run.
+                    _log(f"  EMBED WARN: {exc}")
+
                 cur.execute(
                     "UPDATE de_qual_documents SET processing_status='done', updated_at=NOW() WHERE id=%s::uuid",
                     (doc_id,),
