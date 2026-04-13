@@ -54,7 +54,11 @@ import psycopg2.extras
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 OLLAMA_MODEL = "qwen2.5:3b"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-MAX_TEXT = 80_000
+# Cap per-call text size to stay under provider payload limits:
+# - Groq returns HTTP 413 on some models above ~60KB request body
+# - Each char is ~0.25 tokens; 25000 chars ≈ 6000 tokens, fits 131K ctx
+#   comfortably and leaves room for the prompt + JSON response
+MAX_TEXT = 25_000
 USE_OLLAMA = os.environ.get("GOLDILOCKS_USE_OLLAMA", "0") == "1"
 
 # Groq — primary LLM provider. Generous free tier (1000-14400 req/day depending
