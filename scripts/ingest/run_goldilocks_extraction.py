@@ -49,7 +49,7 @@ import psycopg2
 import psycopg2.extras
 
 # ---------------------------------------------------------------------------
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 OLLAMA_MODEL = "qwen2.5:3b"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 MAX_TEXT = 80_000
@@ -115,8 +115,19 @@ def call_llm(prompt: str, api_key: str = "") -> Optional[dict]:
     return call_gemini(prompt, api_key)
 
 
-def call_gemini(prompt: str, api_key: str, retries: int = 3) -> Optional[dict]:
-    """Call Gemini and return parsed JSON dict. Retries on 429."""
+class GeminiTransientError(Exception):
+    """Raised when Gemini returns a transient error (5xx / 429) and all retries
+    have been exhausted. Caller should leave the doc as 'pending' so a future
+    run can retry, rather than marking it 'failed' permanently."""
+
+
+def call_gemini(prompt: str, api_key: str, retries: int = 5) -> Optional[dict]:
+    """Call Gemini and return parsed JSON dict.
+
+    Retries on 429 (rate limit) and 5xx (Google-side transient). After all
+    retries fail, raises GeminiTransientError so the caller can leave the
+    document in 'pending' state for the next run.
+    """
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -126,18 +137,35 @@ def call_gemini(prompt: str, api_key: str, retries: int = 3) -> Optional[dict]:
         },
     }
     resp = None
+    last_status = None
     for attempt in range(retries):
-        resp = httpx.post(url, params={"key": api_key}, json=payload, timeout=90.0)
+        try:
+            resp = httpx.post(url, params={"key": api_key}, json=payload, timeout=90.0)
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            last_status = "network"
+            wait = min(120, (attempt + 1) * 15)
+            _log(f"  Network error ({exc.__class__.__name__}), waiting {wait}s...")
+            time.sleep(wait)
+            continue
+
+        last_status = resp.status_code
         if resp.status_code == 429:
-            wait = (attempt + 1) * 30  # 30s, 60s, 90s
+            wait = min(120, (attempt + 1) * 30)  # 30s, 60s, 90s, 120s, 120s
             _log(f"  Rate limited, waiting {wait}s...")
             time.sleep(wait)
             continue
+        if 500 <= resp.status_code < 600:
+            wait = min(120, (attempt + 1) * 20)  # 20s, 40s, 60s, 80s, 100s
+            _log(f"  Gemini {resp.status_code}, waiting {wait}s...")
+            time.sleep(wait)
+            continue
+        # Any other non-2xx is a permanent client error — let it raise.
         resp.raise_for_status()
         break
-    if resp is None or resp.status_code == 429:
-        _log("  All retries exhausted (rate limit)")
-        return None
+
+    if resp is None or resp.status_code != 200:
+        _log(f"  All {retries} retries exhausted (last={last_status})")
+        raise GeminiTransientError(f"transient Gemini failure after {retries} retries (last={last_status})")
     result = resp.json()
 
     candidates = result.get("candidates", [])
@@ -438,9 +466,14 @@ def main():
                 by_type[rtype] = by_type.get(rtype, 0) + 1
                 _log(f"  OK: {rtype}")
             else:
-                _log("  SKIP: Gemini returned no data (rate limited?)")
+                _log("  SKIP: no extraction handler for report_type or empty response")
                 # Don't mark as failed — retry next run
 
+        except GeminiTransientError as exc:
+            # Transient Google-side problem — keep doc pending so the next
+            # cron run picks it up. Don't increment `failed`.
+            conn.rollback()
+            _log(f"  TRANSIENT: {exc} — leaving doc pending")
         except Exception as exc:
             conn.rollback()
             failed += 1
