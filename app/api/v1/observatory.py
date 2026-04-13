@@ -228,6 +228,9 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "table": "de_mf_holdings",
         "date_col": "as_of_date",
         "category": "mf",
+        # Morningstar publishes holdings monthly (~45 days lag from quarter end).
+        "fresh_hours": 45 * 24,
+        "stale_hours": 90 * 24,
     },
     {
         "stream_id": "mf_flows",
@@ -235,6 +238,9 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "table": "de_mf_category_flows",
         "date_col": "month_date",
         "category": "mf",
+        # AMFI publishes monthly category flows ~10–15 days after month-end.
+        "fresh_hours": 45 * 24,
+        "stale_hours": 75 * 24,
     },
     {
         "stream_id": "etf_ohlcv",
@@ -367,19 +373,31 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
-def _freshness_status(hours_old: Optional[float]) -> str:
+def _freshness_status(
+    hours_old: Optional[float],
+    stream_def: Optional[dict[str, Any]] = None,
+) -> str:
     """Classify freshness based on hours since last update.
 
-    Thresholds tuned for market data: yesterday's EOD close is "fresh"
-    until today's EOD runs (~19:00 IST, i.e. ~36h window).
+    Default (daily streams): fresh <36h, stale 36–96h, critical >96h.
+    A stream definition may override via `fresh_hours` / `stale_hours`,
+    which is how monthly (AMFI category flows) and weekly (Morningstar)
+    streams avoid perpetually showing as critical.
     """
     if hours_old is None:
         return "unknown"
     if hours_old < 0:
         return "fresh"  # future-dated data (e.g. macro forecasts)
-    if hours_old < 36:
+
+    fresh_h = 36.0
+    stale_h = 96.0
+    if stream_def:
+        fresh_h = float(stream_def.get("fresh_hours", fresh_h))
+        stale_h = float(stream_def.get("stale_hours", stale_h))
+
+    if hours_old < fresh_h:
         return "fresh"
-    if hours_old <= 96:
+    if hours_old <= stale_h:
         return "stale"
     return "critical"
 
@@ -481,7 +499,7 @@ async def get_pulse(
                 "row_count": row_counts.get(table, 0),
                 "last_date": str(max_date) if max_date is not None else None,
                 "hours_old": round(hours_old, 1) if hours_old is not None else None,
-                "status": _freshness_status(hours_old),
+                "status": _freshness_status(hours_old, stream),
                 "exists": True,
             }
         )
@@ -933,7 +951,7 @@ async def health_action(
                 from datetime import datetime as dt
                 max_dt = dt.combine(max_date, dt.min.time()).replace(tzinfo=timezone.utc)
                 hours_old = (now_utc - max_dt).total_seconds() / 3600
-            stream_status = _freshness_status(hours_old)
+            stream_status = _freshness_status(hours_old, stream_def)
 
         if stream_status in ("stale", "critical", "unknown"):
             pipeline = STREAM_PIPELINE_MAP.get(sid)
@@ -1007,6 +1025,61 @@ async def record_healing_result(
     await db.commit()
 
     return {"status": "recorded"}
+
+
+# ---------------------------------------------------------------------------
+# Cron runs endpoint — visibility into scheduled-job success/failure
+# ---------------------------------------------------------------------------
+
+
+@router.get("/cron-runs", status_code=status.HTTP_200_OK)
+async def cron_runs(
+    db: AsyncSession = Depends(get_observatory_db),
+    hours: int = 48,
+):
+    """Return recent cron-job runs from de_cron_run.
+
+    Backs the dashboard's Jobs panel: one row per scheduled run with
+    started/finished timestamps, HTTP code, duration, and status. If the
+    de_cron_run table does not yet exist (pre-005 migration), returns an
+    empty list with a hint so the dashboard can render gracefully.
+    """
+    try:
+        rows = await db.execute(
+            sa.text(
+                """
+                SELECT id, schedule_name, business_date, started_at, finished_at,
+                       duration_seconds, http_code, curl_exit_code, status,
+                       error_body, host
+                FROM de_cron_run
+                WHERE started_at > now() - make_interval(hours => :hours)
+                ORDER BY started_at DESC
+                LIMIT 200
+                """
+            ),
+            {"hours": hours},
+        )
+        runs = [
+            {
+                "id": r.id,
+                "schedule_name": r.schedule_name,
+                "business_date": r.business_date.isoformat() if r.business_date else None,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                "duration_seconds": float(r.duration_seconds) if r.duration_seconds is not None else None,
+                "http_code": r.http_code,
+                "curl_exit_code": r.curl_exit_code,
+                "status": r.status,
+                "error_body": (r.error_body[:500] if r.error_body else None),
+                "host": r.host,
+            }
+            for r in rows.fetchall()
+        ]
+        return {"hours": hours, "count": len(runs), "runs": runs, "table_exists": True}
+    except Exception as exc:
+        logger.warning("cron_runs_unavailable", error=str(exc))
+        return {"hours": hours, "count": 0, "runs": [], "table_exists": False,
+                "hint": "run alembic migration 005_cron_run"}
 
 
 # ---------------------------------------------------------------------------

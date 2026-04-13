@@ -217,6 +217,7 @@ class MfEodPipeline(BasePipeline):
                 business_date=business_date,
                 pipeline_run_id=run_log.id,
                 anomaly_mstar_ids=anomaly_mstar_ids,
+                date_column="nav_date",
             )
 
         logger.info(

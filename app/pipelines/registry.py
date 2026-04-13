@@ -103,6 +103,10 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "eod_weekend": [
         "yfinance_global", "fred_macro",
     ],
+    # Late-evening AMFI catch-up — runs at 23:00 IST after AMFI publishes.
+    # Same amfi_nav pipeline, just a later schedule slot so mf_nav lands
+    # on the correct business_date instead of lagging by one day.
+    "amfi_late": ["amfi_nav"],
     "rs_computation": ["relative_strength"],
     "technicals": ["equity_technicals_sql", "equity_technicals_pandas"],
     "regime": ["market_breadth", "regime_detection"],
@@ -110,7 +114,7 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "global_data": ["yfinance_global"],
     "etf_global": ["etf_technicals", "etf_rs", "global_technicals", "global_rs"],
     "morningstar_weekly": ["morningstar_nav"],
-    "holdings_monthly": ["morningstar_portfolio"],
+    "holdings_monthly": ["morningstar_portfolio", "mf_category_flows"],
     "reconciliation": ["__reconciliation__"],
     "full_rs_rebuild": ["relative_strength"],
     # Nightly: validate → compute everything → goldilocks scrape

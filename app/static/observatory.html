@@ -365,6 +365,37 @@ main{padding-top:56px;}
 
 <hr class="divider">
 
+<!-- ─── Section 2b: Cron Runs (loud-fail ledger) ─── -->
+<div class="section" id="sec-cron">
+  <div class="section-hdr">
+    <div>
+      <div class="section-tag">Scheduler</div>
+      <div class="section-title">Cron Runs (last 48h)</div>
+      <div class="section-sub">One row per scheduled trigger. Shows whether the cron line actually fired and what the API returned. Failures highlighted in red.</div>
+    </div>
+  </div>
+  <div class="loading-bar" id="cron-loading"></div>
+  <div id="cron-runs-wrap" style="overflow-x:auto;margin-top:12px">
+    <table id="cron-runs-tbl" style="width:100%;font-size:12px;border-collapse:collapse">
+      <thead>
+        <tr style="text-align:left;color:#9ca3af;border-bottom:1px solid rgba(255,255,255,0.1)">
+          <th style="padding:6px 8px">Schedule</th>
+          <th style="padding:6px 8px">Business date</th>
+          <th style="padding:6px 8px">Started (UTC)</th>
+          <th style="padding:6px 8px">Duration</th>
+          <th style="padding:6px 8px">HTTP</th>
+          <th style="padding:6px 8px">Status</th>
+          <th style="padding:6px 8px">Error</th>
+        </tr>
+      </thead>
+      <tbody id="cron-runs-body"></tbody>
+    </table>
+    <div id="cron-runs-empty" style="padding:12px;color:#9ca3af;display:none">No cron runs recorded yet.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
 <!-- ─── Section 3: Pipeline Status ─── -->
 <div class="section" id="sec-pipeline">
   <div class="section-hdr">
@@ -1218,12 +1249,56 @@ async function fetchDailyReport() {
   } catch {}
 }
 
+// ─── Cron Runs (loud-fail ledger) ─────────────────────────────────────────────
+async function fetchCronRuns() {
+  try {
+    const r = await fetch('/api/v1/observatory/cron-runs?hours=48');
+    if (!r.ok) return;
+    const j = await r.json();
+    renderCronRuns(j.runs || []);
+  } catch (e) { /* ignore */ }
+}
+
+function renderCronRuns(runs) {
+  const body = document.getElementById('cron-runs-body');
+  const empty = document.getElementById('cron-runs-empty');
+  if (!body) return;
+  if (!runs.length) {
+    body.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  body.innerHTML = runs.map(r => {
+    const good = r.status === 'success';
+    const color = good ? 'var(--green)' : (r.status === 'started' ? 'var(--amber)' : 'var(--red)');
+    const bg = good ? 'transparent' : 'rgba(239,68,68,0.08)';
+    const started = r.started_at ? r.started_at.replace('T',' ').replace(/\.\d+.*$/,'') : '—';
+    const dur = r.duration_seconds != null ? `${Math.round(r.duration_seconds)}s` : '—';
+    const http = r.http_code != null ? r.http_code : '—';
+    const err = r.error_body ? `<span title="${(r.error_body||'').replace(/"/g,'&quot;')}">${(r.error_body||'').slice(0,80)}…</span>` : '';
+    return `<tr style="background:${bg};border-bottom:1px solid rgba(255,255,255,0.05)">
+      <td style="padding:6px 8px;font-weight:600">${r.schedule_name}</td>
+      <td style="padding:6px 8px;color:#9ca3af">${r.business_date || ''}</td>
+      <td style="padding:6px 8px;color:#9ca3af">${started}</td>
+      <td style="padding:6px 8px">${dur}</td>
+      <td style="padding:6px 8px">${http}</td>
+      <td style="padding:6px 8px;color:${color};font-weight:600;text-transform:uppercase">${r.status}</td>
+      <td style="padding:6px 8px;color:#fca5a5;font-size:11px;max-width:380px">${err}</td>
+    </tr>`;
+  }).join('');
+}
+
 // ─── Main Load ────────────────────────────────────────────────────────────────
 async function loadAll() {
   // Show loading bars
-  ['tree-loading','heatmap-loading','pipeline-loading'].forEach(id => {
+  ['tree-loading','heatmap-loading','pipeline-loading','cron-loading'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('active');
+  });
+  fetchCronRuns().finally(() => {
+    const el = document.getElementById('cron-loading');
+    if (el) el.classList.remove('active');
   });
 
   // Load progressively — render each section as its data arrives (don't wait for all)

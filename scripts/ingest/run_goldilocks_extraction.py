@@ -53,7 +53,7 @@ GEMINI_MODEL = "gemini-2.0-flash"
 OLLAMA_MODEL = "qwen2.5:3b"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 MAX_TEXT = 80_000
-USE_OLLAMA = True  # set False to use Gemini instead
+USE_OLLAMA = os.environ.get("GOLDILOCKS_USE_OLLAMA", "0") == "1"
 
 
 def ts() -> str:

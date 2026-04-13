@@ -57,12 +57,33 @@ async def _fetch_vix_value(client: httpx.AsyncClient) -> Decimal | None:
     return None
 
 
+async def _ensure_vix_master(session: AsyncSession) -> None:
+    """Ensure the INDIAVIX row exists in de_macro_master.
+
+    de_macro_values has a FK on de_macro_master.ticker, so inserting a VIX
+    observation before the master row exists fails with a ForeignKeyViolation.
+    This helper is idempotent.
+    """
+    import sqlalchemy as sa
+
+    await session.execute(
+        sa.text(
+            """
+            INSERT INTO de_macro_master (ticker, name, source, unit, frequency)
+            VALUES ('INDIAVIX', 'India VIX', 'NSE', 'index', 'daily')
+            ON CONFLICT (ticker) DO NOTHING
+            """
+        )
+    )
+
+
 async def upsert_vix_value(
     session: AsyncSession,
     business_date: date,
     vix_value: Decimal,
 ) -> None:
     """Upsert India VIX into de_macro_values for ticker=INDIAVIX."""
+    await _ensure_vix_master(session)
     stmt = pg_insert(DeMacroValues).values(
         [{"date": business_date, "ticker": INDIAVIX_TICKER, "value": vix_value}]
     )

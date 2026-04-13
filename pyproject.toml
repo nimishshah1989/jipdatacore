@@ -23,6 +23,8 @@ dependencies = [
     # Data processing
     "pandas>=2.2.0",
     "numpy>=1.26.0",
+    "xlrd>=2.0.1",       # AMFI publishes monthly category flows as .xls
+    "openpyxl>=3.1.0",   # Fallback for .xlsx variants
     # HTTP clients
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",

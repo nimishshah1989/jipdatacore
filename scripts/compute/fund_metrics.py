@@ -45,6 +45,22 @@ def main():
         params = (start_date,)
         print(f"Incremental from {start_date}", flush=True)
 
+    # 0. Seed missing rows from validated NAVs. fund_metrics.py is UPDATE-only,
+    # so without this step the table never advances past whatever was last
+    # bulk-inserted. ON CONFLICT keeps it idempotent.
+    print("\n=== SEED derived rows ===", flush=True)
+    seed_clause = " AND n.nav_date >= %s" if start_date else ""
+    seed_params = (start_date,) if start_date else None
+    run_sync(cur, "Seed from de_mf_nav_daily", """
+        INSERT INTO de_mf_derived_daily (nav_date, mstar_id)
+        SELECT DISTINCT n.nav_date, n.mstar_id
+        FROM de_mf_nav_daily n
+        JOIN de_mf_master m ON m.mstar_id = n.mstar_id
+        WHERE n.data_status = 'validated'
+    """ + seed_clause + """
+        ON CONFLICT (nav_date, mstar_id) DO NOTHING
+    """, seed_params)
+
     # 1. Sharpe 1Y/3Y/5Y
     print("\n=== SHARPE ===", flush=True)
     run_sync(cur, "Sharpe 1Y/3Y/5Y", """

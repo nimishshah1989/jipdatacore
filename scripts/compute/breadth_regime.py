@@ -31,7 +31,7 @@ WITH pc AS (
 dc AS (
     SELECT date, COUNT(*) AS total,
         SUM(CASE WHEN c>pc THEN 1 ELSE 0 END) AS adv,
-        SUM(CASE WHEN c<pc THEN 1 ELSE 0 END) AS dec,
+        SUM(CASE WHEN c<pc THEN 1 ELSE 0 END) AS decl,
         SUM(CASE WHEN c=pc THEN 1 ELSE 0 END) AS unch
     FROM pc WHERE pc IS NOT NULL GROUP BY date
 ),
@@ -41,8 +41,8 @@ dma AS (
         ROUND(SUM(CASE WHEN above_50dma THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)*100,2) AS p50
     FROM de_equity_technical_daily WHERE close_adj IS NOT NULL GROUP BY date
 )
-SELECT d.date, d.adv, d.dec, d.unch, d.total,
-    ROUND(d.adv::numeric/NULLIF(d.dec,0),4), dm.p200, dm.p50, 0, 0
+SELECT d.date, d.adv, d.decl, d.unch, d.total,
+    ROUND(d.adv::numeric/NULLIF(d.decl,0),4), dm.p200, dm.p50, 0, 0
 FROM dc d LEFT JOIN dma dm ON dm.date=d.date
 ON CONFLICT (date) DO UPDATE SET
     advance=EXCLUDED.advance, decline=EXCLUDED.decline, unchanged=EXCLUDED.unchanged,
@@ -138,13 +138,15 @@ ON CONFLICT (computed_at) DO UPDATE SET
 
 
 async def run(start_date: str | None = None):
+    from datetime import date as _date
     t0 = time.time()
     engine = create_async_engine(get_async_url(), pool_size=1)
 
     # Build optional date filter for incremental runs
     params: dict = {}
     if start_date:
-        params["start_date"] = start_date
+        # asyncpg rejects strings bound to DATE columns, so coerce here.
+        params["start_date"] = _date.fromisoformat(start_date)
         print(f"Incremental from {start_date}", flush=True)
 
     print("Breadth...", flush=True)
@@ -166,11 +168,12 @@ async def run(start_date: str | None = None):
     # Use ON CONFLICT upsert — NO TRUNCATE (safe incremental)
     regime_sql = REGIME_SQL
     if start_date:
-        # Filter combined CTE to only compute regime from start_date onwards
+        # Filter the outer SELECT (not the join inside the CTE — placing WHERE
+        # between `FROM breadth b` and its LEFT JOIN is a syntax error).
         regime_sql = regime_sql.replace(
-            "FROM breadth b",
-            "FROM breadth b\n    WHERE b.date >= :start_date",
-            1,  # Only replace in the combined CTE, not subqueries
+            "FROM combined\nON CONFLICT",
+            "FROM combined\nWHERE date >= :start_date\nON CONFLICT",
+            1,
         )
     async with engine.begin() as conn:
         await conn.execute(sa.text("SET LOCAL statement_timeout = '600s'"))

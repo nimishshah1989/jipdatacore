@@ -1,65 +1,68 @@
-# JIP Data Engine — Unified Trigger API Crontab
+# JIP Data Engine — Unified cron (v2, loud-fail edition)
 # Install: crontab /home/ubuntu/jip-data-engine/scripts/cron/jip_scheduler.cron
-# All times in IST (UTC+5:30) — EC2 runs UTC, so subtract 5:30
+# All times in IST (UTC+5:30) — EC2 runs UTC, so subtract 5:30.
 #
-# SINGLE EXECUTION PATH: everything goes through the trigger API.
-# No docker exec. No direct script calls. API handles logging, SLA, errors.
+# Every line calls jip_trigger.sh, which:
+#   - records the run in de_cron_run (started + finished rows)
+#   - writes per-schedule *_run.log with HTTP code, duration, curl exit
+#   - posts a Telegram alert on failure
+#   - exits non-zero on failure (no more silent no-ops)
 
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
-API_BASE=http://localhost:8010/api/v1/pipeline
+WRAPPER=/home/ubuntu/jip-data-engine/scripts/cron/jip_trigger.sh
+AGENT3=/home/ubuntu/jip-data-engine/scripts/cron/jip_agent3.sh
 LOG_DIR=/home/ubuntu/jip-data-engine/logs
-
-# API key loaded from env file (not hardcoded in crontab)
-# curl uses --config to hide key from ps output
-
-# Helper: trigger a schedule or single pipeline via API
-# Usage: jip_trigger <schedule|single/name> [business_date]
-# Reads JIP_PIPELINE_KEY from .env file
 
 # ============================================================
 # WEEKDAY INGESTION (Mon-Fri)
 # ============================================================
 
-# EOD: Full ingestion after market close (IST 18:33 = UTC 13:03)
-# Covers: BHAV, indices, corporate actions, FII/DII, AMFI NAV, yfinance, FRED, VIX
-3 13 * * 1-5 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/eod" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 3600 >> $LOG_DIR/eod.log 2>&1
+# EOD: full ingestion after market close (IST 18:33 = UTC 13:03)
+3 13 * * 1-5  $WRAPPER eod >> $LOG_DIR/eod_cron.log 2>&1
 
-# ============================================================
-# WEEKDAY COMPUTATION (Mon-Fri)
-# ============================================================
+# Late AMFI catch-up (IST 23:00 = UTC 17:30) — AMFI publishes NAVs around 22:00 IST,
+# AFTER the 18:33 EOD cron, so same-day NAVs are never in the EOD run. This separate
+# job picks them up before nightly compute runs.
+0 17 * * 1-5  $WRAPPER amfi_late >> $LOG_DIR/amfi_late_cron.log 2>&1
 
-# Nightly compute: validate → technicals → RS → breadth → fund metrics → ETF → global → goldilocks
-# IST 19:33 = UTC 14:03 (1 hour after EOD to ensure ingestion completes)
-3 14 * * 1-5 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/nightly_compute?business_date=$(TZ=Asia/Kolkata date +\%Y-\%m-\%d)" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 7200 >> $LOG_DIR/nightly_compute.log 2>&1
+# Nightly compute (IST 00:30 NEXT DAY = UTC 19:00, after AMFI late catch-up)
+0 19 * * 1-5  $WRAPPER nightly_compute >> $LOG_DIR/nightly_compute_cron.log 2>&1
 
 # ============================================================
 # WEEKEND (Sat-Sun) — global markets still trade
 # ============================================================
 
-# Weekend EOD: yfinance + FRED only (IST 18:33 = UTC 13:03)
-3 13 * * 0,6 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/eod_weekend?business_date=$(TZ=Asia/Kolkata date +\%Y-\%m-\%d)" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 1800 >> $LOG_DIR/eod_weekend.log 2>&1
+# Weekend EOD: yfinance + FRED (IST 18:33 = UTC 13:03)
+3 13 * * 0,6  $WRAPPER eod_weekend >> $LOG_DIR/eod_weekend_cron.log 2>&1
 
-# Weekend compute: global technicals + RS only (IST 19:33 = UTC 14:03)
-3 14 * * 0,6 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/etf_global?business_date=$(TZ=Asia/Kolkata date +\%Y-\%m-\%d)" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 1800 >> $LOG_DIR/etf_global_weekend.log 2>&1
+# Weekend compute: etf + global (IST 19:33 = UTC 14:03)
+3 14 * * 0,6  $WRAPPER etf_global >> $LOG_DIR/etf_global_cron.log 2>&1
 
 # ============================================================
-# DAILY HEALTH CHECK (every day including weekends)
+# DAILY SELF-HEALING — Agent 3 (every day)
 # ============================================================
 
-# Self-healing agent check (IST 23:33 = UTC 18:03)
-3 18 * * * . /home/ubuntu/jip-data-engine/.env && curl -sf "http://localhost:8010/api/v1/observatory/pulse" >> $LOG_DIR/health_check.log 2>&1
+# First pass at 23:33 IST = 18:03 UTC — after EOD + AMFI late catch-up,
+# before nightly_compute fires at 00:30 IST. Picks up any single-pipeline
+# failures so nightly has clean upstream data.
+3 18 * * *    $AGENT3 >> $LOG_DIR/agent3_cron.log 2>&1
+
+# Second retry pass at 02:33 IST = 21:03 UTC — AFTER nightly_compute has
+# finished, so this pass catches anything that nightly_compute produced
+# (regime, oscillators, etc.) that still looks stale.
+3 21 * * *    $AGENT3 >> $LOG_DIR/agent3_cron.log 2>&1
 
 # ============================================================
 # WEEKLY (Sunday)
 # ============================================================
 
 # Morningstar fund master refresh (IST 04:00 Sunday = UTC 22:30 Saturday)
-30 22 * * 6 . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/morningstar_weekly" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 3600 >> $LOG_DIR/morningstar.log 2>&1
+30 22 * * 6   $WRAPPER morningstar_weekly >> $LOG_DIR/morningstar_cron.log 2>&1
 
 # ============================================================
 # MONTHLY (1st of month)
 # ============================================================
 
 # MF holdings (IST 03:00 on 1st = UTC 21:30 on last day of prev month)
-30 21 1 * * . /home/ubuntu/jip-data-engine/.env && curl -sf -X POST "$API_BASE/trigger/holdings_monthly" --config <(printf 'header = "X-Pipeline-Key: %s"\n' "$PIPELINE_API_KEY") --max-time 3600 >> $LOG_DIR/holdings.log 2>&1
+30 21 1 * *   $WRAPPER holdings_monthly >> $LOG_DIR/holdings_cron.log 2>&1

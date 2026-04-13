@@ -237,6 +237,7 @@ class EodOrchestrator(BasePipeline):
             business_date=business_date,
             pipeline_run_id=run_log.id,
             anomaly_instrument_ids=critical_instrument_ids if critical_instrument_ids else None,
+            date_column="date",
         )
 
         logger.info(

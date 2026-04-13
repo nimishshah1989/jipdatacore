@@ -349,10 +349,14 @@ class MfCategoryFlowsPipeline(BasePipeline):
             anomalies.append(
                 AnomalyRecord(
                     entity_type="flow",
-                    anomaly_type="category_count_out_of_range",
+                    # de_data_anomalies CHECK restricts anomaly_type to a
+                    # controlled set; missing_data is the closest match.
+                    anomaly_type="missing_data",
                     severity=severity,
                     expected_range=f"{MIN_CATEGORY_COUNT}-{MAX_CATEGORY_COUNT}",
                     actual_value=str(category_count),
+                    # entity_type='flow' requires ticker per CHECK constraint.
+                    ticker="__aggregate__",
                 )
             )
             logger.warning(
@@ -372,7 +376,7 @@ class MfCategoryFlowsPipeline(BasePipeline):
             anomalies.append(
                 AnomalyRecord(
                     entity_type="flow",
-                    anomaly_type="negative_aum",
+                    anomaly_type="negative_value",
                     severity="high",
                     expected_range=">=0",
                     actual_value=str(aum_cr),
@@ -419,7 +423,7 @@ class MfCategoryFlowsPipeline(BasePipeline):
                     anomalies.append(
                         AnomalyRecord(
                             entity_type="flow",
-                            anomaly_type="aum_drop_exceeded_threshold",
+                            anomaly_type="invalid_ratio",
                             severity="medium",
                             expected_range=f"drop<{AUM_DROP_THRESHOLD_PCT}%",
                             actual_value=f"drop={drop_pct:.2f}%",

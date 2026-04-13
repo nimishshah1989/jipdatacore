@@ -131,6 +131,7 @@ async def apply_data_status(
     pipeline_run_id: int,
     anomaly_instrument_ids: set[uuid.UUID] | None = None,
     anomaly_mstar_ids: set[str] | None = None,
+    date_column: str = "business_date",
 ) -> tuple[int, int]:
     """Update data_status from 'raw' to 'validated' or 'quarantined'.
 
@@ -140,7 +141,8 @@ async def apply_data_status(
 
     The target table MUST have columns:
       - data_status (VARCHAR)
-      - business_date (DATE)
+      - <date_column> (DATE) — defaults to 'business_date'; pass 'nav_date'
+        for de_mf_nav_daily, 'date' for de_equity_ohlcv_*, etc.
       - pipeline_run_id (INTEGER, optional — matched if provided)
 
     Returns (validated_count, quarantined_count).
@@ -155,7 +157,7 @@ async def apply_data_status(
                 f"""
                 UPDATE {table_name}
                 SET data_status = 'quarantined'
-                WHERE business_date = :business_date
+                WHERE {date_column} = :business_date
                   AND data_status = 'raw'
                   AND instrument_id = ANY(:instrument_ids)
                 """
@@ -175,7 +177,7 @@ async def apply_data_status(
             f"""
             UPDATE {table_name}
             SET data_status = 'quarantined'
-            WHERE business_date = :business_date
+            WHERE {date_column} = :business_date
               AND data_status = 'raw'
               AND mstar_id = ANY(:mstar_ids)
             """
@@ -194,7 +196,7 @@ async def apply_data_status(
         f"""
         UPDATE {table_name}
         SET data_status = 'validated'
-        WHERE business_date = :business_date
+        WHERE {date_column} = :business_date
           AND data_status = 'raw'
         """
     )
