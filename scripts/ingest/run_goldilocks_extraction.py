@@ -57,9 +57,24 @@ OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 MAX_TEXT = 80_000
 USE_OLLAMA = os.environ.get("GOLDILOCKS_USE_OLLAMA", "0") == "1"
 
-# OpenRouter — chain of free open-source models. The script tries each in order
-# and falls through on upstream rate limits / 5xx. Override via env if needed
-# (comma-separated): OPENROUTER_MODELS="model1,model2,model3"
+# Groq — primary LLM provider. Generous free tier (1000-14400 req/day depending
+# on model) and extremely fast inference (~500 tokens/sec). OpenAI-compatible API.
+# Override via env: GROQ_MODELS="model1,model2,model3"
+_DEFAULT_GROQ_MODELS = [
+    "openai/gpt-oss-120b",                     # 120B, 131k ctx — best JSON fidelity
+    "llama-3.3-70b-versatile",                 # 70B, 131k ctx — strong generalist
+    "qwen/qwen3-32b",                          # 32B, 131k ctx — excellent JSON
+    "moonshotai/kimi-k2-instruct-0905",        # Kimi K2, 262k ctx — newest
+    "llama-3.1-8b-instant",                    # fast fallback, 14400 req/day
+]
+GROQ_MODELS = [
+    m.strip() for m in os.environ.get(
+        "GROQ_MODELS", ",".join(_DEFAULT_GROQ_MODELS)
+    ).split(",") if m.strip()
+]
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# OpenRouter — secondary fallback if Groq is unavailable.
 _DEFAULT_OPENROUTER_MODELS = [
     "openai/gpt-oss-120b:free",                # 120B GPT OSS, 131k ctx
     "nvidia/nemotron-3-nano-30b-a3b:free",     # 30B Nemotron MoE, 256k ctx
@@ -128,18 +143,107 @@ def call_ollama(prompt: str, retries: int = 2) -> Optional[dict]:
 
 
 def call_llm(prompt: str, api_key: str = "") -> Optional[dict]:
-    """Pick a provider in priority order:
-       1) Ollama (only if explicitly enabled via env)
-       2) OpenRouter (free open-source models, primary)
-       3) Gemini (legacy fallback if OpenRouter key absent)
-    Raises GeminiTransientError on exhausted retries so the doc stays pending.
+    """Pick a provider in priority order and cascade on transient failures:
+       1) Ollama    (only if GOLDILOCKS_USE_OLLAMA=1)
+       2) Groq      (primary — best free tier, fastest inference)
+       3) OpenRouter (secondary — if Groq chain exhausts)
+       4) Gemini    (tertiary — only if nothing else configured)
+    Raises GeminiTransientError if every configured provider exhausts its
+    retries, so the caller leaves the doc pending for the next run.
     """
     if USE_OLLAMA:
         return call_ollama(prompt)
+
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     or_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+    # Chain: if Groq is configured, try it first. On transient exhaustion,
+    # fall through to OpenRouter if configured. Then Gemini as last resort.
+    if groq_key:
+        try:
+            return call_groq(prompt, groq_key)
+        except GeminiTransientError:
+            if or_key:
+                _log("  Groq exhausted — falling through to OpenRouter")
+                try:
+                    return call_openrouter(prompt, or_key)
+                except GeminiTransientError:
+                    pass
+            # Re-raise so the caller keeps the doc pending
+            raise
+
     if or_key:
         return call_openrouter(prompt, or_key)
     return call_gemini(prompt, api_key)
+
+
+def call_groq(prompt: str, api_key: str) -> Optional[dict]:
+    """Call Groq with a fallback chain of fast free-tier models.
+
+    Groq runs open-source models on custom silicon — inference is ~10x faster
+    than most providers and the free tier is 1000-14400 req/day per model.
+    """
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    failures: list[str] = []
+    for model in GROQ_MODELS:
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a financial data extractor. Reply with ONLY a "
+                        "single valid JSON object, no prose, no markdown fences."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            resp = httpx.post(GROQ_URL, headers=headers, json=payload, timeout=120.0)
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            failures.append(f"{model}: network ({exc.__class__.__name__})")
+            continue
+
+        if resp.status_code == 200:
+            try:
+                body = resp.json()
+                content = body["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, ValueError) as exc:
+                failures.append(f"{model}: malformed response ({exc})")
+                continue
+
+            cleaned = _strip_json_fences(content)
+            if not cleaned:
+                failures.append(f"{model}: empty content")
+                continue
+            try:
+                parsed = json.loads(cleaned)
+                _log(f"  Groq OK via {model}")
+                return parsed
+            except json.JSONDecodeError as exc:
+                _log(f"  {model} JSON parse error: {str(exc)[:60]} | preview: {cleaned[:120]}")
+                failures.append(f"{model}: parse error")
+                continue
+
+        if resp.status_code == 429 or 500 <= resp.status_code < 600:
+            try:
+                err_msg = resp.json().get("error", {}).get("message", "?")[:80]
+            except Exception:
+                err_msg = "?"
+            failures.append(f"{model}: {resp.status_code} {err_msg}")
+            continue
+
+        failures.append(f"{model}: HTTP {resp.status_code}")
+        continue
+
+    _log(f"  Groq chain exhausted: {' | '.join(failures[:3])}")
+    raise GeminiTransientError(f"groq chain exhausted ({len(failures)} models tried)")
 
 
 class GeminiTransientError(Exception):
@@ -540,10 +644,16 @@ def main():
     args = parser.parse_args()
 
     # api_key is only used by the legacy Gemini fallback. Primary path is
-    # OpenRouter, which reads OPENROUTER_API_KEY directly inside call_openrouter.
+    # Groq, with OpenRouter as secondary and Gemini as tertiary.
     api_key = os.environ.get("GOOGLE_API_KEY", "")
-    if not api_key and not os.environ.get("OPENROUTER_API_KEY") and not USE_OLLAMA:
-        _log("[ERROR] No LLM provider configured: set OPENROUTER_API_KEY or GOOGLE_API_KEY")
+    has_any_llm = bool(
+        os.environ.get("GROQ_API_KEY")
+        or os.environ.get("OPENROUTER_API_KEY")
+        or api_key
+        or USE_OLLAMA
+    )
+    if not has_any_llm:
+        _log("[ERROR] No LLM provider configured: set GROQ_API_KEY, OPENROUTER_API_KEY, or GOOGLE_API_KEY")
         sys.exit(1)
 
     conn = get_db_conn()
@@ -589,40 +699,51 @@ def main():
             continue
 
         try:
-            # Choose extraction based on report_type
+            # Step 1: structured extraction per report_type (best-effort).
+            # Unknown types skip structured extraction but still get general
+            # views below — that way every doc lands in de_qual_extracts and
+            # is available to RAG/search, even without a custom handler.
+            structured_ok = False
             if rtype == "trend_friend":
                 data = call_llm(TREND_FRIEND_PROMPT + raw, api_key)
                 if data:
                     upsert_market_view(cur, data)
+                    structured_ok = True
             elif rtype in ("stock_bullet", "big_catch"):
                 data = call_llm(STOCK_IDEA_PROMPT + raw, api_key)
                 if data:
                     insert_stock_idea(cur, data, doc_id)
+                    structured_ok = True
             elif rtype in ("sector_trends", "fortnightly"):
                 data = call_llm(SECTOR_VIEWS_PROMPT + raw, api_key)
                 if data:
                     upsert_sector_views(cur, data)
-            else:
-                data = None
+                    structured_ok = True
 
-            # Only extract general views if specific extraction succeeded
-            if data:
-                gen_data = call_llm(GENERAL_VIEWS_PROMPT + raw, api_key)
-                if gen_data:
-                    n = insert_general_views(cur, gen_data, doc_id)
-                    _log(f"  General views: {n} extracted")
+            # Step 2: general-view extraction — ALWAYS runs, regardless of
+            # report_type. This is the catch-all path that populates
+            # de_qual_extracts, which is what feeds RAG / semantic search.
+            gen_data = call_llm(GENERAL_VIEWS_PROMPT + raw, api_key)
+            n_general = 0
+            if gen_data:
+                n_general = insert_general_views(cur, gen_data, doc_id)
+                _log(f"  General views: {n_general} extracted")
 
+            # Mark done if we got anything useful — either structured rows
+            # or at least one general view — otherwise leave pending so the
+            # next run can retry.
+            if structured_ok or n_general > 0:
                 cur.execute(
                     "UPDATE de_qual_documents SET processing_status='done', updated_at=NOW() WHERE id=%s::uuid",
                     (doc_id,),
                 )
                 conn.commit()
                 processed += 1
-                by_type[rtype] = by_type.get(rtype, 0) + 1
-                _log(f"  OK: {rtype}")
+                key = rtype if structured_ok else f"general_only:{rtype or 'untyped'}"
+                by_type[key] = by_type.get(key, 0) + 1
+                _log(f"  OK: {key}")
             else:
-                _log("  SKIP: no extraction handler for report_type or empty response")
-                # Don't mark as failed — retry next run
+                _log(f"  SKIP: no extractions produced for [{rtype}] — leaving pending")
 
         except GeminiTransientError as exc:
             # Transient Google-side problem — keep doc pending so the next
@@ -644,7 +765,14 @@ def main():
             )
             conn.commit()
 
-        time.sleep(1 if USE_OLLAMA else 10)  # Ollama is local, no rate limit
+        # Inter-doc pacing: Ollama is local (no limit), Groq is very fast
+        # (30 RPM free tier ~= 2s min), Gemini/OpenRouter need more headroom.
+        if USE_OLLAMA:
+            time.sleep(1)
+        elif os.environ.get("GROQ_API_KEY"):
+            time.sleep(2)
+        else:
+            time.sleep(10)
 
     _log(f"=== DONE: processed={processed} failed={failed} by_type={by_type} ===")
     cur.close()
