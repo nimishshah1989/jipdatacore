@@ -49,11 +49,30 @@ import psycopg2
 import psycopg2.extras
 
 # ---------------------------------------------------------------------------
+# LLM configuration. Default provider is OpenRouter (free open-source models),
+# falling back to Gemini if OPENROUTER_API_KEY is not set.
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 OLLAMA_MODEL = "qwen2.5:3b"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 MAX_TEXT = 80_000
 USE_OLLAMA = os.environ.get("GOLDILOCKS_USE_OLLAMA", "0") == "1"
+
+# OpenRouter — chain of free open-source models. The script tries each in order
+# and falls through on upstream rate limits / 5xx. Override via env if needed
+# (comma-separated): OPENROUTER_MODELS="model1,model2,model3"
+_DEFAULT_OPENROUTER_MODELS = [
+    "openai/gpt-oss-120b:free",                # 120B GPT OSS, 131k ctx
+    "nvidia/nemotron-3-nano-30b-a3b:free",     # 30B Nemotron MoE, 256k ctx
+    "google/gemma-3-12b-it:free",              # Gemma 3 12B, 131k ctx
+    "nvidia/nemotron-nano-9b-v2:free",         # Nemotron Nano 9B, 128k ctx
+    "google/gemma-3-4b-it:free",               # Gemma 3 4B fallback, 32k ctx
+]
+OPENROUTER_MODELS = [
+    m.strip() for m in os.environ.get(
+        "OPENROUTER_MODELS", ",".join(_DEFAULT_OPENROUTER_MODELS)
+    ).split(",") if m.strip()
+]
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def ts() -> str:
@@ -109,16 +128,136 @@ def call_ollama(prompt: str, retries: int = 2) -> Optional[dict]:
 
 
 def call_llm(prompt: str, api_key: str = "") -> Optional[dict]:
-    """Route to Ollama (local) or Gemini (cloud)."""
+    """Pick a provider in priority order:
+       1) Ollama (only if explicitly enabled via env)
+       2) OpenRouter (free open-source models, primary)
+       3) Gemini (legacy fallback if OpenRouter key absent)
+    Raises GeminiTransientError on exhausted retries so the doc stays pending.
+    """
     if USE_OLLAMA:
         return call_ollama(prompt)
+    or_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if or_key:
+        return call_openrouter(prompt, or_key)
     return call_gemini(prompt, api_key)
 
 
 class GeminiTransientError(Exception):
-    """Raised when Gemini returns a transient error (5xx / 429) and all retries
-    have been exhausted. Caller should leave the doc as 'pending' so a future
-    run can retry, rather than marking it 'failed' permanently."""
+    """Raised when *all* upstream LLM providers return transient errors (5xx,
+    429, network) after exhausting retries. Caller should leave the doc as
+    'pending' so a future run retries instead of marking it 'failed'.
+
+    Named GeminiTransientError for backwards compat with existing handlers,
+    but it covers OpenRouter / Ollama / Gemini equally now."""
+
+
+def _strip_json_fences(text: Optional[str]) -> str:
+    """Strip ```json fences and surrounding whitespace from an LLM JSON reply.
+
+    Returns an empty string if the input is None / empty — callers interpret
+    that as a transient parse miss and let the retry chain handle it.
+    """
+    if not text:
+        return ""
+    text = text.strip()
+    for prefix in ("```json", "```JSON", "```"):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip()
+
+
+def call_openrouter(prompt: str, api_key: str) -> Optional[dict]:
+    """Call OpenRouter with a fallback chain of free open-source models.
+
+    Tries each model in OPENROUTER_MODELS in order. On 429 / 5xx / network
+    error, immediately falls through to the next model (no per-model retry —
+    the next model in the chain is the retry). After exhausting the whole
+    chain without a success, raises GeminiTransientError.
+
+    Returns the parsed JSON dict on success, or None if the call succeeded
+    but the response wasn't valid JSON (treated as a permanent parse error
+    by the caller, doc gets marked 'failed').
+    """
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://data.jslwealth.in",
+        "X-Title": "JIP Data Engine",
+    }
+
+    failures: list[str] = []
+    for model in OPENROUTER_MODELS:
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a financial data extractor. Reply with ONLY a "
+                        "single valid JSON object, no prose, no markdown fences."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+            # Some providers honour json_object response format; others ignore
+            # it harmlessly. Worth requesting.
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            resp = httpx.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120.0)
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            failures.append(f"{model}: network ({exc.__class__.__name__})")
+            continue
+
+        if resp.status_code == 200:
+            try:
+                body = resp.json()
+                # OpenRouter sometimes returns {"error": ...} inside a 200 response
+                if "error" in body and "choices" not in body:
+                    failures.append(f"{model}: 200 with error: {body['error'].get('message','?')[:80]}")
+                    continue
+                content = body["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, ValueError) as exc:
+                failures.append(f"{model}: malformed response ({exc})")
+                continue
+
+            cleaned = _strip_json_fences(content)
+            if not cleaned:
+                # Model returned an empty / None content — treat as transient,
+                # try the next model in the chain.
+                failures.append(f"{model}: empty content")
+                continue
+            try:
+                parsed = json.loads(cleaned)
+                _log(f"  OpenRouter OK via {model}")
+                return parsed
+            except json.JSONDecodeError as exc:
+                _log(f"  {model} JSON parse error: {str(exc)[:60]} | preview: {cleaned[:120]}")
+                # Try next model — maybe it'll produce cleaner JSON
+                failures.append(f"{model}: parse error")
+                continue
+
+        if resp.status_code == 429 or 500 <= resp.status_code < 600:
+            # Transient — try next model immediately, no sleep (different upstream)
+            try:
+                err_msg = resp.json().get("error", {}).get("message", "?")[:80]
+            except Exception:
+                err_msg = "?"
+            failures.append(f"{model}: {resp.status_code} {err_msg}")
+            continue
+
+        # Other 4xx — usually a model-specific issue (model retired, bad params).
+        # Don't burn the whole chain; just skip this model.
+        failures.append(f"{model}: HTTP {resp.status_code}")
+        continue
+
+    # Whole chain exhausted
+    _log(f"  OpenRouter chain exhausted: {' | '.join(failures[:3])}")
+    raise GeminiTransientError(f"openrouter chain exhausted ({len(failures)} models tried)")
 
 
 def call_gemini(prompt: str, api_key: str, retries: int = 5) -> Optional[dict]:
@@ -192,6 +331,17 @@ def _dec(v: Any) -> Optional[str]:
     if v is None:
         return None
     return str(Decimal(str(v)))
+
+
+def _trunc(v: Any, n: int) -> Optional[str]:
+    """Defensive: clip string values to fit narrow VARCHAR columns. LLMs
+    occasionally output longer phrases ('moderately positive') even when
+    asked for short enums, and an INSERT failure here means the whole
+    document is marked failed."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s[:n] if s else None
 
 
 # ---------------------------------------------------------------------------
@@ -293,8 +443,8 @@ def upsert_market_view(cur, data: dict) -> bool:
         _dec(data.get("nifty_resistance_1")), _dec(data.get("nifty_resistance_2")),
         _dec(data.get("bank_nifty_close")), _dec(data.get("bank_nifty_support_1")), _dec(data.get("bank_nifty_support_2")),
         _dec(data.get("bank_nifty_resistance_1")), _dec(data.get("bank_nifty_resistance_2")),
-        data.get("trend_direction"), data.get("trend_strength"),
-        data.get("global_impact"), data.get("headline"), data.get("overall_view"),
+        _trunc(data.get("trend_direction"), 20), data.get("trend_strength"),
+        _trunc(data.get("global_impact"), 20), data.get("headline"), data.get("overall_view"),
     ))
     # Upsert sectors
     for s in data.get("sectors", []):
@@ -305,7 +455,7 @@ def upsert_market_view(cur, data: dict) -> bool:
             VALUES (%s,%s,%s,%s,%s)
             ON CONFLICT (report_date, sector) DO UPDATE SET
                 trend=EXCLUDED.trend, outlook=EXCLUDED.outlook, rank=EXCLUDED.rank, updated_at=NOW()
-        """, (rd, s["sector"], s.get("trend"), s.get("outlook"), s.get("rank")))
+        """, (rd, _trunc(s["sector"], 100), _trunc(s.get("trend"), 20), s.get("outlook"), s.get("rank")))
     return True
 
 
@@ -326,10 +476,11 @@ def insert_stock_idea(cur, data: dict, doc_id: str) -> bool:
         ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'active')
     """, (
         str(uuid.uuid4()), doc_id, data.get("published_date"),
-        data.get("symbol"), data.get("company_name"), data.get("idea_type"),
+        _trunc(data.get("symbol"), 20), _trunc(data.get("company_name"), 200),
+        _trunc(data.get("idea_type"), 20),
         _dec(data.get("entry_price")), _dec(data.get("entry_zone_low")), _dec(data.get("entry_zone_high")),
         _dec(data.get("target_1")), _dec(data.get("target_2")), _dec(data.get("lt_target")),
-        _dec(data.get("stop_loss")), data.get("timeframe"), data.get("rationale"),
+        _dec(data.get("stop_loss")), _trunc(data.get("timeframe"), 50), data.get("rationale"),
         json.dumps(tp) if tp else None,
     ))
     return True
@@ -349,7 +500,8 @@ def upsert_sector_views(cur, data: dict) -> bool:
             ON CONFLICT (report_date, sector) DO UPDATE SET
                 trend=EXCLUDED.trend, outlook=EXCLUDED.outlook, rank=EXCLUDED.rank,
                 top_picks=EXCLUDED.top_picks, updated_at=NOW()
-        """, (rd, s["sector"], s.get("trend"), s.get("outlook"), s.get("rank"),
+        """, (rd, _trunc(s["sector"], 100), _trunc(s.get("trend"), 20),
+              s.get("outlook"), s.get("rank"),
               json.dumps(tp) if tp else None))
     return True
 
@@ -368,8 +520,9 @@ def insert_general_views(cur, data: dict, doc_id: str) -> int:
             ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             str(uuid.uuid4()), doc_id,
-            v.get("asset_class"), v.get("entity_ref"), v.get("direction"),
-            v.get("timeframe"), v.get("conviction"), v.get("view_text"),
+            _trunc(v.get("asset_class"), 20), _trunc(v.get("entity_ref"), 100),
+            _trunc(v.get("direction"), 20), _trunc(v.get("timeframe"), 50),
+            _trunc(v.get("conviction"), 20), v.get("view_text"),
             v.get("source_quote"), _dec(v.get("quality_score")),
         ))
         inserted += 1
@@ -386,9 +539,11 @@ def main():
     parser.add_argument("--report-type", type=str, default=None)
     args = parser.parse_args()
 
+    # api_key is only used by the legacy Gemini fallback. Primary path is
+    # OpenRouter, which reads OPENROUTER_API_KEY directly inside call_openrouter.
     api_key = os.environ.get("GOOGLE_API_KEY", "")
-    if not api_key:
-        _log("[ERROR] GOOGLE_API_KEY not set")
+    if not api_key and not os.environ.get("OPENROUTER_API_KEY") and not USE_OLLAMA:
+        _log("[ERROR] No LLM provider configured: set OPENROUTER_API_KEY or GOOGLE_API_KEY")
         sys.exit(1)
 
     conn = get_db_conn()
@@ -474,6 +629,11 @@ def main():
             # cron run picks it up. Don't increment `failed`.
             conn.rollback()
             _log(f"  TRANSIENT: {exc} — leaving doc pending")
+        except (AttributeError, TypeError, KeyError) as exc:
+            # Likely a shape-of-response issue (None content, missing field)
+            # which tends to be transient across LLM runs. Don't mark failed.
+            conn.rollback()
+            _log(f"  SHAPE: {exc} — leaving doc pending")
         except Exception as exc:
             conn.rollback()
             failed += 1
