@@ -277,6 +277,10 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "table": "de_goldilocks_market_view",
         "date_col": "report_date",
         "category": "qualitative",
+        # Goldilocks publishes irregularly (daily-ish for trend friend,
+        # but gaps around weekends/holidays). Weekly SLA is appropriate.
+        "fresh_hours": 7 * 24,
+        "stale_hours": 14 * 24,
     },
     {
         "stream_id": "oscillator_weekly",
@@ -355,6 +359,8 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "table": "de_goldilocks_sector_view",
         "date_col": "report_date",
         "category": "qualitative",
+        "fresh_hours": 14 * 24,  # sector views come in fortnightly/monthly
+        "stale_hours": 30 * 24,
     },
     {
         "stream_id": "goldilocks_stock_ideas",
@@ -362,6 +368,8 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "table": "de_goldilocks_stock_ideas",
         "date_col": "published_date",
         "category": "qualitative",
+        "fresh_hours": 14 * 24,  # stock ideas are published ad-hoc
+        "stale_hours": 30 * 24,
     },
     {
         "stream_id": "oscillator_monthly",
