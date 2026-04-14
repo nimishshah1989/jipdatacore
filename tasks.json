@@ -276,13 +276,14 @@
     },
     {
       "id": "IND-C3c",
-      "name": "Risk metrics (empyrical wrapper)",
-      "status": "pending",
+      "name": "Risk metrics (empyrical wrapper) + annualized HV",
+      "status": "done",
       "spec": "docs/specs/chunks/indicators-chunk-3.md",
       "layer": 10,
       "dependencies": ["IND-C3a"],
       "complexity": "low",
-      "build": "indicators-overhaul"
+      "build": "indicators-overhaul",
+      "completed_at": "2026-04-14"
     },
     {
       "id": "IND-C4",

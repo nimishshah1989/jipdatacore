@@ -80,6 +80,32 @@ def get_rename_map(asset_class: str, has_volume: bool) -> dict[str, str]:
     return rename
 
 
+# Risk and HV columns produced by risk_metrics.py, NOT by strategy.yaml.
+# These are present in ALL five v2 tables — they are asset-class-independent.
+_RISK_COLUMNS: frozenset[str] = frozenset(
+    {
+        "risk_sharpe_1y",
+        "risk_sortino_1y",
+        "risk_calmar_1y",
+        "risk_max_drawdown_1y",
+        "risk_beta_nifty",
+        "risk_alpha_nifty",
+        "risk_omega",
+        "risk_information_ratio",
+        "hv_20",
+        "hv_60",
+        "hv_252",
+    }
+)
+
+
 def get_schema_columns(asset_class: str, has_volume: bool) -> set[str]:
-    """Return the set of schema column names this asset will produce."""
-    return set(get_rename_map(asset_class, has_volume).values())
+    """Return the set of schema column names this asset will produce.
+
+    Combines pandas-ta columns from strategy.yaml with risk/HV columns
+    from risk_metrics.py. ALL five asset classes' v2 tables include these
+    risk/HV columns (confirmed in 008_indicators_v2_tables.py), so the
+    addition is asset-class-independent.
+    """
+    yaml_cols = set(get_rename_map(asset_class, has_volume).values())
+    return yaml_cols | _RISK_COLUMNS

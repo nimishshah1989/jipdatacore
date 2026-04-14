@@ -213,6 +213,7 @@ async def compute_indicators(
     from_date: date | None = None,
     to_date: date | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    benchmark_close: "pd.Series | None" = None,
 ) -> CompResult:
     """Core engine entry point.
 
@@ -222,13 +223,26 @@ async def compute_indicators(
       3. Assert monotonic-increasing dates (Fix 6)
       4. Run pandas-ta-classic Strategy filtered for this asset
       5. Rename pandas-ta output columns to schema names (Fix 3)
-      6. Filter to [from_date, to_date] window
-      7. Convert to Decimal-quantized dicts (Fix 4, 5)
-      8. Upsert in batches of ``batch_size`` with retry (Fix 15)
+      6. Compute and merge risk + HV columns (IND-C3c)
+      7. Filter to [from_date, to_date] window
+      8. Convert to Decimal-quantized dicts (Fix 4, 5)
+      9. Upsert in batches of ``batch_size`` with retry (Fix 15)
+
+    Args:
+        benchmark_close: optional benchmark price series (same DatetimeIndex
+            as OHLCV) used for beta/alpha/information_ratio. If None, those
+            three columns are written as NULL. Caller responsibility: load
+            NIFTY 50 once before calling and pass it here. For equity/etf/
+            index/global/mf the benchmark is typically NIFTY 50.
 
     Returns:
         CompResult with counts for processed, skipped, errored instruments and rows written.
     """
+    from app.computation.indicators_v2.risk_metrics import (
+        compute_hv_series,
+        compute_risk_series,
+    )
+
     has_volume = spec.volume_col is not None
     strategy = load_strategy_for_asset(spec.asset_class_name, has_volume)
     rename_map = get_rename_map(spec.asset_class_name, has_volume)
@@ -254,6 +268,13 @@ async def compute_indicators(
 
             # Fix 3: rename pandas-ta output columns → schema names
             df = df.rename(columns=rename_map)
+
+            # IND-C3c: compute risk + HV metrics and merge into df.
+            # close column is still present after rename (pandas-ta appends,
+            # does not replace original OHLCV columns).
+            df_hv = compute_hv_series(df["close"])
+            df_risk = compute_risk_series(df["close"], benchmark_close)
+            df = pd.concat([df, df_hv, df_risk], axis=1)
 
             # Defensive: assert every schema column is present
             missing = schema_cols - set(df.columns)

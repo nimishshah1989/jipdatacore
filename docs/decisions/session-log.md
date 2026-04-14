@@ -125,6 +125,38 @@
 
 ---
 
+## 2026-04-14 — IND-C3c: Indicators overhaul — empyrical risk metrics + annualized HV
+
+**Build**: indicators-overhaul (sub-chunk 3c of 3 — engine core complete)
+**Files created**: `app/computation/indicators_v2/risk_metrics.py` (146 lines)
+**Files modified**: `engine.py` (added `benchmark_close` param + risk/HV merge step), `strategy_loader.py` (`_RISK_COLUMNS` frozenset union in `get_schema_columns`), `tests/computation/test_indicators_v2_engine.py` (16→21 tests)
+
+**What landed**:
+- `compute_hv_series(close)` — annualized historical volatility at 20/60/252-day windows: `stdev(log_returns) × √252 × 100` as percent
+- `compute_risk_series(close, benchmark_close)` — 1-year trailing-window risk metrics via empyrical-reloaded: Sharpe, Sortino, Calmar, max drawdown, beta, alpha, omega, information ratio
+- Engine integration: after `df.rename(columns=rename_map)`, computes HV + risk series from `df["close"]`, concatenates with the main DataFrame, then the usual Decimal quantization + upsert
+- `get_schema_columns` unions the 11 risk+HV column names with the pandas-ta yaml columns so the engine's "no missing columns" assertion catches any gaps
+
+**Performance**:
+- 5 of 8 risk metrics use empyrical's vectorized `roll_*` variants (sharpe, sortino, max_drawdown, beta, alpha)
+- 3 use a per-row loop (calmar, omega, information_ratio — no rolling variants in empyrical)
+- For backfill this is acceptable (runs once per instrument); for daily incremental it's negligible (1–5 rows per day)
+
+**Benchmark parameter**:
+- `compute_indicators(..., benchmark_close: pd.Series | None = None)` — caller passes a benchmark series (e.g., NIFTY 50 close) once per batch. Beta/alpha/info-ratio stay NaN if benchmark is None; other metrics still compute.
+- Per-asset wrappers in chunks 5–10 will load the benchmark once and pass it to the engine.
+
+**Verification**:
+- End-to-end synthetic run: 500-row OHLCV → full catalog + risk merge → 104 total columns, 91 expected schema columns, `missing after merge: NONE`; `risk_sharpe_1y=-1.8348`, `hv_20=47.42%`, `risk_omega=0.74` all populated for the last row
+- 21/21 new-engine tests pass (16→21 this chunk — added `test_hv_series_annualized_percent`, `test_hv_insufficient_history_is_nan`, `test_risk_sharpe_matches_direct_empyrical`, `test_risk_without_benchmark_fills_beta_nan`, `test_engine_full_pipeline_with_risk`, `test_get_schema_columns_includes_risk_and_hv`)
+- 395 regression tests pass (57 deselected = pre-existing stale tests)
+
+**Engine core complete** after 3a/3b/3c. Unblocks IND-C4 (golden tests), C5 (equity backfill), C7 (ETF/global), C8 (indices), C10 (MFs).
+
+**Next**: IND-C4 (TA-Lib oracle + golden fixtures for formula-parity testing)
+
+---
+
 ## 2026-04-05 — C1-C3: Foundation (scaffold + schema + auth)
 
 **Chunks:** C1 (Project Scaffold), C2 (Database Schema), C3 (API Auth + Middleware)

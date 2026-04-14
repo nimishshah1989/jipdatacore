@@ -425,8 +425,9 @@ def _build_synthetic_ohlcv(n: int = 400) -> pd.DataFrame:
 
 
 def test_full_catalog_emits_expected_columns() -> None:
-    """400-row equity run: every schema column must be present after rename (Fix 3)."""
+    """400-row equity run: every schema column must be present after rename + risk merge (IND-C3c)."""
     import pandas_ta_classic as ta  # noqa: F401 — side-effect import
+    from app.computation.indicators_v2.risk_metrics import compute_hv_series, compute_risk_series
 
     df = _build_synthetic_ohlcv(400)
     strategy = load_strategy_for_asset("equity", True)
@@ -440,10 +441,16 @@ def test_full_catalog_emits_expected_columns() -> None:
     )
 
     df = df.rename(columns=rename)
+
+    # IND-C3c: merge risk + HV columns (not in rename_map — computed separately)
+    df_hv = compute_hv_series(df["close"])
+    df_risk = compute_risk_series(df["close"], benchmark_close=None)
+    df = pd.concat([df, df_hv, df_risk], axis=1)
+
     schema_cols = get_schema_columns("equity", True)
     missing_schema = schema_cols - set(df.columns)
     assert not missing_schema, (
-        f"Schema columns missing after rename: {sorted(missing_schema)}"
+        f"Schema columns missing after rename+risk merge: {sorted(missing_schema)}"
     )
 
 
@@ -557,3 +564,183 @@ def test_rename_map_has_no_duplicate_targets() -> None:
             f"[{asset_class}] rename map has duplicate targets: "
             f"{[t for t in targets if targets.count(t) > 1]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# IND-C3c Tests — risk_metrics.py
+# ---------------------------------------------------------------------------
+
+
+def _build_close_series(n: int, seed: int = 42) -> pd.Series:
+    """Synthetic close price series with DatetimeIndex."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    prices = (100 + rng.normal(0, 1, n).cumsum()).clip(min=10)
+    return pd.Series(prices, index=pd.date_range("2020-01-01", periods=n, freq="B"), name="close")
+
+
+# ---------------------------------------------------------------------------
+# Test 16: HV annualization math
+# ---------------------------------------------------------------------------
+
+
+def test_hv_series_annualized_percent() -> None:
+    """hv_20 last row must equal daily_stdev * sqrt(252) * 100 within 1e-6."""
+    import numpy as np
+    from app.computation.indicators_v2.risk_metrics import compute_hv_series
+
+    close = _build_close_series(300)
+    hv_df = compute_hv_series(close)
+
+    # Recompute expected value manually
+    log_ret = np.log(close / close.shift(1))
+    expected_hv20 = log_ret.iloc[-20:].std() * np.sqrt(252) * 100
+
+    assert "hv_20" in hv_df.columns
+    assert "hv_60" in hv_df.columns
+    assert "hv_252" in hv_df.columns
+    actual = float(hv_df["hv_20"].iloc[-1])
+    assert abs(actual - float(expected_hv20)) < 1e-6, (
+        f"hv_20 mismatch: got {actual}, expected {float(expected_hv20)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 17: HV insufficient history returns all NaN
+# ---------------------------------------------------------------------------
+
+
+def test_hv_series_insufficient_history_is_nan() -> None:
+    """Close series with 10 rows must produce all-NaN hv_20."""
+    from app.computation.indicators_v2.risk_metrics import compute_hv_series
+
+    close = _build_close_series(10)
+    hv_df = compute_hv_series(close)
+    assert hv_df["hv_20"].isna().all(), "hv_20 must be all NaN when fewer than 20 rows"
+
+
+# ---------------------------------------------------------------------------
+# Test 18: risk_sharpe matches direct empyrical computation
+# ---------------------------------------------------------------------------
+
+
+def test_risk_series_sharpe_matches_direct_empyrical() -> None:
+    """risk_sharpe_1y last row must match empyrical.sharpe_ratio on the same window."""
+    import empyrical
+    from app.computation.indicators_v2.risk_metrics import compute_risk_series, TRADING_DAYS_PER_YEAR
+
+    close = _build_close_series(500)
+    risk_df = compute_risk_series(close)
+
+    returns = close.pct_change().astype(float)
+    last_window = returns.iloc[-TRADING_DAYS_PER_YEAR:].dropna()
+    expected = float(empyrical.sharpe_ratio(last_window, annualization=TRADING_DAYS_PER_YEAR))
+    actual = float(risk_df["risk_sharpe_1y"].iloc[-1])
+
+    assert abs(actual - expected) < 1e-6, (
+        f"risk_sharpe_1y mismatch: got {actual}, expected {expected}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 19: without benchmark, beta column is all NaN but sharpe is not
+# ---------------------------------------------------------------------------
+
+
+def test_risk_series_without_benchmark_fills_beta_nan() -> None:
+    """With benchmark_close=None, beta/alpha/info_ratio are NaN; sharpe is not."""
+    from app.computation.indicators_v2.risk_metrics import compute_risk_series
+
+    close = _build_close_series(500)
+    risk_df = compute_risk_series(close, benchmark_close=None)
+
+    assert risk_df["risk_beta_nifty"].isna().all(), "risk_beta_nifty must be all NaN without benchmark"
+    assert risk_df["risk_alpha_nifty"].isna().all(), "risk_alpha_nifty must be all NaN without benchmark"
+    assert risk_df["risk_information_ratio"].isna().all(), "info_ratio must be all NaN without benchmark"
+    # Sharpe should have non-NaN values for the last rows
+    assert risk_df["risk_sharpe_1y"].notna().any(), "risk_sharpe_1y should have values for 500-row series"
+
+
+# ---------------------------------------------------------------------------
+# Test 20: engine end-to-end with risk columns
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_engine_full_pipeline_with_risk() -> None:
+    """400-row instrument: upserted rows must contain sma_50, risk_sharpe_1y, hv_20."""
+    spec = _make_spec(min_history_days=50)
+    ohlcv_df = _build_synthetic_ohlcv(400)
+
+    session = AsyncMock()
+    session.flush = AsyncMock()
+
+    captured_batches: list[list[dict]] = []
+
+    async def capture_upsert(sess: Any, sp: Any, batch: list[dict]) -> None:
+        captured_batches.append(batch)
+
+    with (
+        patch(
+            "app.computation.indicators_v2.engine._load_ohlcv",
+            new=AsyncMock(return_value=ohlcv_df),
+        ),
+        patch(
+            "app.computation.indicators_v2.engine._upsert_batch",
+            side_effect=capture_upsert,
+        ),
+    ):
+        result = await compute_indicators(
+            spec,
+            session,
+            instrument_ids=[uuid.uuid4()],
+        )
+
+    assert result.instruments_processed == 1
+    all_rows = [r for batch in captured_batches for r in batch]
+    assert len(all_rows) == 400
+
+    # Every row must carry sma_50, risk_sharpe_1y, hv_20 keys
+    for row in all_rows:
+        assert "sma_50" in row, "sma_50 missing from upserted row"
+        assert "risk_sharpe_1y" in row, "risk_sharpe_1y missing from upserted row"
+        assert "hv_20" in row, "hv_20 missing from upserted row"
+
+    # risk_sharpe_1y must have non-None values for later rows (>252 warmup)
+    non_null_sharpe = [r for r in all_rows if r.get("risk_sharpe_1y") is not None]
+    assert len(non_null_sharpe) > 0, "Expected at least some non-NULL risk_sharpe_1y in 400-row run"
+
+    # No floats must leak (Fix 5)
+    allowed = (Decimal, type(None), int, bool, date, uuid.UUID)
+    for row in all_rows:
+        for k, v in row.items():
+            if k in ("date", "instrument_id"):
+                continue
+            assert not isinstance(v, float), f"Float leaked in column {k!r}: {v!r}"
+
+
+# ---------------------------------------------------------------------------
+# Test 21: get_schema_columns includes all risk + HV columns
+# ---------------------------------------------------------------------------
+
+
+def test_get_schema_columns_includes_risk_and_hv() -> None:
+    """All 11 risk+HV columns must be in get_schema_columns for equity and mf."""
+    from app.computation.indicators_v2.strategy_loader import _RISK_COLUMNS
+
+    expected = {
+        "risk_sharpe_1y", "risk_sortino_1y", "risk_calmar_1y",
+        "risk_max_drawdown_1y", "risk_beta_nifty", "risk_alpha_nifty",
+        "risk_omega", "risk_information_ratio",
+        "hv_20", "hv_60", "hv_252",
+    }
+    assert expected == set(_RISK_COLUMNS), f"_RISK_COLUMNS mismatch: {_RISK_COLUMNS}"
+
+    equity_cols = get_schema_columns("equity", True)
+    for col in expected:
+        assert col in equity_cols, f"{col!r} missing from equity schema cols"
+
+    mf_cols = get_schema_columns("mf", False)
+    for col in expected:
+        assert col in mf_cols, f"{col!r} missing from mf schema cols"
