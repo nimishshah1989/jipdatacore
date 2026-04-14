@@ -81,23 +81,31 @@ def get_rename_map(asset_class: str, has_volume: bool) -> dict[str, str]:
 
 
 # Non-yaml-sourced columns present in every v2 table. Sources:
-#   close_adj   — price snapshot column aliased from df["close"] by the engine
-#                 (input column, not a pandas-ta emission)
-#   hv_*        — annualized log-return volatility from risk_metrics.compute_hv_series
-#   risk_*      — trailing 1y risk metrics from risk_metrics.compute_risk_series
+#   close_adj                  — price snapshot aliased from df["close"] by the engine
+#   volatility_20d / _60d      — annualized log-return volatility (compute_hv_series)
+#   hv_252                     — long-window HV (no v1 counterpart)
+#   sharpe_1y / sortino_1y /
+#     calmar_ratio /
+#     max_drawdown_1y /
+#     beta_nifty               — v1-compatible names (renamed from risk_* in mig 010)
+#   risk_alpha_nifty /
+#     risk_omega /
+#     risk_information_ratio   — kept under risk_ prefix (no v1 counterpart)
 _RISK_COLUMNS: frozenset[str] = frozenset(
     {
         "close_adj",
-        "risk_sharpe_1y",
-        "risk_sortino_1y",
-        "risk_calmar_1y",
-        "risk_max_drawdown_1y",
-        "risk_beta_nifty",
+        # Renamed to match v1 schema (migration 010)
+        "sharpe_1y",
+        "sortino_1y",
+        "calmar_ratio",
+        "max_drawdown_1y",
+        "beta_nifty",
+        "volatility_20d",
+        "volatility_60d",
+        # Kept under v2 names (no v1 counterpart)
         "risk_alpha_nifty",
         "risk_omega",
         "risk_information_ratio",
-        "hv_20",
-        "hv_60",
         "hv_252",
     }
 )

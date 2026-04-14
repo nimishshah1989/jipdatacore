@@ -591,7 +591,7 @@ def _build_close_series(n: int, seed: int = 42) -> pd.Series:
 
 
 def test_hv_series_annualized_percent() -> None:
-    """hv_20 last row must equal daily_stdev * sqrt(252) * 100 within 1e-6."""
+    """volatility_20d last row must equal daily_stdev * sqrt(252) * 100 within 1e-6."""
     import numpy as np
     from app.computation.indicators_v2.risk_metrics import compute_hv_series
 
@@ -602,12 +602,12 @@ def test_hv_series_annualized_percent() -> None:
     log_ret = np.log(close / close.shift(1))
     expected_hv20 = log_ret.iloc[-20:].std() * np.sqrt(252) * 100
 
-    assert "hv_20" in hv_df.columns
-    assert "hv_60" in hv_df.columns
+    assert "volatility_20d" in hv_df.columns
+    assert "volatility_60d" in hv_df.columns
     assert "hv_252" in hv_df.columns
-    actual = float(hv_df["hv_20"].iloc[-1])
+    actual = float(hv_df["volatility_20d"].iloc[-1])
     assert abs(actual - float(expected_hv20)) < 1e-6, (
-        f"hv_20 mismatch: got {actual}, expected {float(expected_hv20)}"
+        f"volatility_20d mismatch: got {actual}, expected {float(expected_hv20)}"
     )
 
 
@@ -617,12 +617,12 @@ def test_hv_series_annualized_percent() -> None:
 
 
 def test_hv_series_insufficient_history_is_nan() -> None:
-    """Close series with 10 rows must produce all-NaN hv_20."""
+    """Close series with 10 rows must produce all-NaN volatility_20d."""
     from app.computation.indicators_v2.risk_metrics import compute_hv_series
 
     close = _build_close_series(10)
     hv_df = compute_hv_series(close)
-    assert hv_df["hv_20"].isna().all(), "hv_20 must be all NaN when fewer than 20 rows"
+    assert hv_df["volatility_20d"].isna().all(), "volatility_20d must be all NaN when fewer than 20 rows"
 
 
 # ---------------------------------------------------------------------------
@@ -631,7 +631,7 @@ def test_hv_series_insufficient_history_is_nan() -> None:
 
 
 def test_risk_series_sharpe_matches_direct_empyrical() -> None:
-    """risk_sharpe_1y last row must match empyrical.sharpe_ratio on the same window."""
+    """sharpe_1y last row must match empyrical.sharpe_ratio on the same window."""
     import empyrical
     from app.computation.indicators_v2.risk_metrics import compute_risk_series, TRADING_DAYS_PER_YEAR
 
@@ -641,10 +641,10 @@ def test_risk_series_sharpe_matches_direct_empyrical() -> None:
     returns = close.pct_change().astype(float)
     last_window = returns.iloc[-TRADING_DAYS_PER_YEAR:].dropna()
     expected = float(empyrical.sharpe_ratio(last_window, annualization=TRADING_DAYS_PER_YEAR))
-    actual = float(risk_df["risk_sharpe_1y"].iloc[-1])
+    actual = float(risk_df["sharpe_1y"].iloc[-1])
 
     assert abs(actual - expected) < 1e-6, (
-        f"risk_sharpe_1y mismatch: got {actual}, expected {expected}"
+        f"sharpe_1y mismatch: got {actual}, expected {expected}"
     )
 
 
@@ -660,11 +660,11 @@ def test_risk_series_without_benchmark_fills_beta_nan() -> None:
     close = _build_close_series(500)
     risk_df = compute_risk_series(close, benchmark_close=None)
 
-    assert risk_df["risk_beta_nifty"].isna().all(), "risk_beta_nifty must be all NaN without benchmark"
+    assert risk_df["beta_nifty"].isna().all(), "beta_nifty must be all NaN without benchmark"
     assert risk_df["risk_alpha_nifty"].isna().all(), "risk_alpha_nifty must be all NaN without benchmark"
     assert risk_df["risk_information_ratio"].isna().all(), "info_ratio must be all NaN without benchmark"
     # Sharpe should have non-NaN values for the last rows
-    assert risk_df["risk_sharpe_1y"].notna().any(), "risk_sharpe_1y should have values for 500-row series"
+    assert risk_df["sharpe_1y"].notna().any(), "sharpe_1y should have values for 500-row series"
 
 
 # ---------------------------------------------------------------------------
@@ -674,7 +674,7 @@ def test_risk_series_without_benchmark_fills_beta_nan() -> None:
 
 @pytest.mark.asyncio
 async def test_engine_full_pipeline_with_risk() -> None:
-    """400-row instrument: upserted rows must contain sma_50, risk_sharpe_1y, hv_20."""
+    """400-row instrument: upserted rows must contain sma_50, sharpe_1y, volatility_20d."""
     spec = _make_spec(min_history_days=50)
     ohlcv_df = _build_synthetic_ohlcv(400)
 
@@ -706,15 +706,15 @@ async def test_engine_full_pipeline_with_risk() -> None:
     all_rows = [r for batch in captured_batches for r in batch]
     assert len(all_rows) == 400
 
-    # Every row must carry sma_50, risk_sharpe_1y, hv_20 keys
+    # Every row must carry sma_50, sharpe_1y, volatility_20d keys
     for row in all_rows:
         assert "sma_50" in row, "sma_50 missing from upserted row"
-        assert "risk_sharpe_1y" in row, "risk_sharpe_1y missing from upserted row"
-        assert "hv_20" in row, "hv_20 missing from upserted row"
+        assert "sharpe_1y" in row, "sharpe_1y missing from upserted row"
+        assert "volatility_20d" in row, "volatility_20d missing from upserted row"
 
-    # risk_sharpe_1y must have non-None values for later rows (>252 warmup)
-    non_null_sharpe = [r for r in all_rows if r.get("risk_sharpe_1y") is not None]
-    assert len(non_null_sharpe) > 0, "Expected at least some non-NULL risk_sharpe_1y in 400-row run"
+    # sharpe_1y must have non-None values for later rows (>252 warmup)
+    non_null_sharpe = [r for r in all_rows if r.get("sharpe_1y") is not None]
+    assert len(non_null_sharpe) > 0, "Expected at least some non-NULL sharpe_1y in 400-row run"
 
     # No floats must leak (Fix 5)
     allowed = (Decimal, type(None), int, bool, date, uuid.UUID)
@@ -731,17 +731,18 @@ async def test_engine_full_pipeline_with_risk() -> None:
 
 
 def test_get_schema_columns_includes_risk_and_hv() -> None:
-    """All risk+HV+close_adj columns must be in get_schema_columns for equity and mf."""
+    """All risk+volatility+close_adj columns must be in get_schema_columns for equity and mf."""
     from app.computation.indicators_v2.strategy_loader import _RISK_COLUMNS
 
     # close_adj is aliased from df["close"] by the engine; it's in _RISK_COLUMNS
     # because it lives outside strategy.yaml, not because it's a risk metric.
+    # The v1-compatible names (sharpe_1y etc.) were renamed via migration 010.
     expected = {
         "close_adj",
-        "risk_sharpe_1y", "risk_sortino_1y", "risk_calmar_1y",
-        "risk_max_drawdown_1y", "risk_beta_nifty", "risk_alpha_nifty",
-        "risk_omega", "risk_information_ratio",
-        "hv_20", "hv_60", "hv_252",
+        "sharpe_1y", "sortino_1y", "calmar_ratio",
+        "max_drawdown_1y", "beta_nifty",
+        "volatility_20d", "volatility_60d", "hv_252",
+        "risk_alpha_nifty", "risk_omega", "risk_information_ratio",
     }
     assert expected == set(_RISK_COLUMNS), f"_RISK_COLUMNS mismatch: {_RISK_COLUMNS}"
 

@@ -47,7 +47,7 @@ def compute_hv_series(close: pd.Series) -> pd.DataFrame:
         close: closing price series (float/Decimal-compatible), DatetimeIndex required.
 
     Returns:
-        DataFrame with columns hv_20, hv_60, hv_252.
+        DataFrame with columns volatility_20d, volatility_60d, hv_252.
         Rows before window fills are NaN (standard pandas rolling).
     """
     # Clip to positive values to avoid log(0) or log(negative)
@@ -55,8 +55,11 @@ def compute_hv_series(close: pd.Series) -> pd.DataFrame:
     log_ret = np.log(safe_close / safe_close.shift(1))
     annualizer = np.sqrt(TRADING_DAYS_PER_YEAR) * 100
     out = pd.DataFrame(index=close.index)
+    # Column naming matches v1: volatility_20d / volatility_60d / hv_252.
+    # hv_252 keeps the hv_ prefix because v1 had no 252-day column.
+    _col_names = {20: "volatility_20d", 60: "volatility_60d", 252: "hv_252"}
     for window in (20, 60, 252):
-        out[f"hv_{window}"] = (
+        out[_col_names[window]] = (
             log_ret.rolling(window=window, min_periods=window).std() * annualizer
         )
     return out
@@ -83,8 +86,8 @@ def compute_risk_series(
 
     Returns:
         DataFrame with columns:
-          risk_sharpe_1y, risk_sortino_1y, risk_calmar_1y,
-          risk_max_drawdown_1y, risk_beta_nifty, risk_alpha_nifty,
+          sharpe_1y, sortino_1y, calmar_ratio,
+          max_drawdown_1y, beta_nifty, risk_alpha_nifty,
           risk_omega, risk_information_ratio
     """
     import empyrical
@@ -97,11 +100,11 @@ def compute_risk_series(
         np.nan,
         index=close.index,
         columns=[
-            "risk_sharpe_1y",
-            "risk_sortino_1y",
-            "risk_calmar_1y",
-            "risk_max_drawdown_1y",
-            "risk_beta_nifty",
+            "sharpe_1y",
+            "sortino_1y",
+            "calmar_ratio",
+            "max_drawdown_1y",
+            "beta_nifty",
             "risk_alpha_nifty",
             "risk_omega",
             "risk_information_ratio",
@@ -129,7 +132,7 @@ def compute_risk_series(
         sharpe_arr = empyrical.roll_sharpe_ratio(
             returns, window=window, annualization=window
         )
-        out["risk_sharpe_1y"] = _align(np.asarray(sharpe_arr, dtype=float))
+        out["sharpe_1y"] = _align(np.asarray(sharpe_arr, dtype=float))
     except Exception:
         pass
 
@@ -137,13 +140,13 @@ def compute_risk_series(
         sortino_arr = empyrical.roll_sortino_ratio(
             returns, window=window, annualization=window
         )
-        out["risk_sortino_1y"] = _align(np.asarray(sortino_arr, dtype=float))
+        out["sortino_1y"] = _align(np.asarray(sortino_arr, dtype=float))
     except Exception:
         pass
 
     try:
         mdd_arr = empyrical.roll_max_drawdown(returns, window=window)
-        out["risk_max_drawdown_1y"] = _align(np.asarray(mdd_arr, dtype=float))
+        out["max_drawdown_1y"] = _align(np.asarray(mdd_arr, dtype=float))
     except Exception:
         pass
 
@@ -156,7 +159,7 @@ def compute_risk_series(
         if len(window_ret) < _MIN_OBSERVATIONS:
             continue
         try:
-            out.iloc[i, out.columns.get_loc("risk_calmar_1y")] = float(
+            out.iloc[i, out.columns.get_loc("calmar_ratio")] = float(
                 empyrical.calmar_ratio(window_ret, annualization=window)
             )
         except Exception:
@@ -177,7 +180,7 @@ def compute_risk_series(
 
         try:
             beta_arr = empyrical.roll_beta(returns, bench_returns, window=window)
-            out["risk_beta_nifty"] = _align(np.asarray(beta_arr, dtype=float))
+            out["beta_nifty"] = _align(np.asarray(beta_arr, dtype=float))
         except Exception:
             pass
 
@@ -190,8 +193,8 @@ def compute_risk_series(
             if ab.ndim == 2 and ab.shape[1] == 2:
                 out["risk_alpha_nifty"] = _align(ab[:, 0])
                 # beta already computed above; only overwrite if prior failed
-                if out["risk_beta_nifty"].isna().all():
-                    out["risk_beta_nifty"] = _align(ab[:, 1])
+                if out["beta_nifty"].isna().all():
+                    out["beta_nifty"] = _align(ab[:, 1])
         except Exception:
             pass
 

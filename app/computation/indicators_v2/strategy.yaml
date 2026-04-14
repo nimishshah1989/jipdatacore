@@ -17,7 +17,7 @@
 #   Confirmed: SMA_5..SMA_200, EMA_5..EMA_200
 #
 # IND-C3b (2026-04-14): expanded to full ~80-entry catalog.
-#   - HV (hv_20, hv_60, hv_252): NOT mapped here. pandas-ta STDEV_N is raw price std,
+#   - Volatility (volatility_20d / volatility_60d / hv_252): NOT mapped here. pandas-ta STDEV_N is raw price std,
 #     not annualized log-return vol. Populated by IND-C3c using empyrical.
 #   - risk_* columns: deferred to IND-C3c (empyrical-based).
 #   - close_adj: populated by the price-snapshot step, not by this catalog.
@@ -327,10 +327,12 @@ indicators:
     kind: bbands
     params: { length: 20, std: 2.0 }
     output_columns:
-      "BBU_20_2.0": bb_upper
+      # Bollinger_upper/lower/width renamed to v1 schema names via mig 010.
+      # bb_middle / bb_pct_b keep pandas-ta-style names — no v1 counterpart.
+      "BBU_20_2.0": bollinger_upper
       "BBM_20_2.0": bb_middle
-      "BBL_20_2.0": bb_lower
-      "BBB_20_2.0": bb_width
+      "BBL_20_2.0": bollinger_lower
+      "BBB_20_2.0": bollinger_width
       "BBP_20_2.0": bb_pct_b
     applies_to: [equity, etf, index, mf, global]
     requires_volume: false

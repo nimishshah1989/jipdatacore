@@ -142,11 +142,11 @@ def test_golden_equity_has_expected_families(golden_equity):
     required = {
         "sma_50", "ema_20",                     # overlap
         "rsi_14", "macd_line",                  # momentum
-        "bb_upper", "atr_14",                   # volatility
+        "bollinger_upper", "atr_14",            # volatility
         "obv", "cmf_20",                        # volume
         "adx_14", "plus_di",                    # trend
         "zscore_20", "linreg_slope_20",         # statistics
-        "hv_20", "risk_sharpe_1y",              # C3c (HV + empyrical)
+        "volatility_20d", "sharpe_1y",          # C3c (HV + empyrical, renamed to v1)
     }
     missing = required - cols
     assert not missing, f"equity fixture missing expected families: {missing}"
