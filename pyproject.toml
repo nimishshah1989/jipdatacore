@@ -29,6 +29,8 @@ dependencies = [
     # Technical indicators — pinned exact per eng-review Fix 11 (drift detection via golden tests)
     "pandas-ta-classic==0.4.47",
     "empyrical-reloaded==0.5.12",
+    # Parquet I/O for golden fixtures (drift-detection tests)
+    "pyarrow>=15.0.0",
     # HTTP clients
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",

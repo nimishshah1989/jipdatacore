@@ -287,13 +287,14 @@
     },
     {
       "id": "IND-C4",
-      "name": "TA-Lib oracle + golden-file tests",
-      "status": "pending",
+      "name": "Golden snapshot fixtures (drift detection)",
+      "status": "done",
       "spec": "docs/specs/chunks/indicators-chunk-4.md",
       "layer": 11,
-      "dependencies": ["IND-C3"],
-      "complexity": "medium",
-      "build": "indicators-overhaul"
+      "dependencies": ["IND-C3a","IND-C3b","IND-C3c"],
+      "complexity": "low",
+      "build": "indicators-overhaul",
+      "completed_at": "2026-04-14"
     },
     {
       "id": "IND-C5",
