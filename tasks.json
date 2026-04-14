@@ -357,14 +357,71 @@
       "build": "indicators-overhaul"
     },
     {
+      "id": "IND-C4",
+      "name": "Golden snapshot fixtures",
+      "status": "done",
+      "completed_at": "2026-04-14",
+      "build": "indicators-overhaul",
+      "dependencies": ["IND-C3c"]
+    },
+    {
+      "id": "IND-C5",
+      "name": "Equity wrapper + backfill + diff",
+      "status": "done",
+      "completed_at": "2026-04-14",
+      "build": "indicators-overhaul",
+      "dependencies": ["IND-C4"]
+    },
+    {
+      "id": "IND-C7-etf",
+      "name": "ETF asset wrapper",
+      "status": "done",
+      "completed_at": "2026-04-14",
+      "build": "indicators-overhaul",
+      "dependencies": ["IND-C3c"]
+    },
+    {
+      "id": "IND-C7-global",
+      "name": "Global asset wrapper",
+      "status": "done",
+      "completed_at": "2026-04-14",
+      "build": "indicators-overhaul",
+      "dependencies": ["IND-C3c"]
+    },
+    {
+      "id": "IND-C8",
+      "name": "Index asset wrapper (greenfield)",
+      "status": "done",
+      "completed_at": "2026-04-14",
+      "build": "indicators-overhaul",
+      "dependencies": ["IND-C3c"]
+    },
+    {
+      "id": "IND-C9",
+      "name": "purchase_mode from Morningstar",
+      "status": "blocked",
+      "blocker": "reports/morningstar-client-broken.md",
+      "build": "indicators-overhaul",
+      "dependencies": ["IND-C2"]
+    },
+    {
+      "id": "IND-C10",
+      "name": "MF asset wrapper + backfill",
+      "status": "blocked",
+      "blocker": "depends on IND-C9",
+      "build": "indicators-overhaul",
+      "dependencies": ["IND-C3c", "IND-C9"]
+    },
+    {
       "id": "IND-C11",
-      "name": "Pipeline registration + cron wiring",
-      "status": "pending",
+      "name": "Pipeline registration + runner",
+      "status": "done",
       "spec": "docs/specs/chunks/indicators-chunk-11.md",
       "layer": 14,
-      "dependencies": ["IND-C8", "IND-C10"],
+      "dependencies": ["IND-C8"],
       "complexity": "low",
-      "build": "indicators-overhaul"
+      "build": "indicators-overhaul",
+      "completed_at": "2026-04-14"
     },
     {
       "id": "IND-C12",
