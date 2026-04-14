@@ -35,6 +35,10 @@ FUND_MASTER_DATAPOINTS: list[str] = [
     "TotalNetAssets",
     "InceptionDate",
     "Benchmark",
+    # IND-C9: Regular (1) vs Direct (2) plan identifier. Drives the MF
+    # technical-indicators eligibility filter — only purchase_mode=1 funds
+    # with broad_category='Equity' and non-IDCW names are processed.
+    "PurchaseMode",
 ]
 
 # Number of days after which a 404 triggers is_active = False
@@ -66,6 +70,16 @@ def _safe_date(value: Any) -> Optional[date]:
         return None
 
 
+def _safe_int(value: Any) -> Optional[int]:
+    """Coerce a value to int. Returns None on failure or empty string."""
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_fund_master_response(
     mstar_id: str,
     data: dict[str, Any],
@@ -88,6 +102,7 @@ def parse_fund_master_response(
         "primary_benchmark": data.get("Benchmark") or None,
         "inception_date": _safe_date(data.get("InceptionDate")),
         "investment_strategy": data.get("ManagerName") or None,  # reuse field for manager
+        "purchase_mode": _safe_int(data.get("PurchaseMode")),
     }
 
 
@@ -126,7 +141,7 @@ async def update_fund_master_row(
 
     for col in ("fund_name", "category_name", "broad_category",
                 "expense_ratio", "primary_benchmark", "inception_date",
-                "investment_strategy"):
+                "investment_strategy", "purchase_mode"):
         val = fields.get(col)
         if val is not None:
             update_values[col] = val

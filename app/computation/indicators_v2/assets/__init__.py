@@ -6,3 +6,6 @@ architectural notes.
 """
 
 from app.computation.indicators_v2.assets import equity  # noqa: F401
+from app.computation.indicators_v2.assets import etf  # noqa: F401
+from app.computation.indicators_v2.assets import global_  # noqa: F401
+from app.computation.indicators_v2.assets import index_  # noqa: F401
