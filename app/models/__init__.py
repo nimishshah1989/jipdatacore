@@ -75,6 +75,13 @@ from app.models.goldilocks import (  # noqa: F401
 from app.models.champion import DeChampionTrades  # noqa: F401
 from app.models.holdings import DeMfHoldings  # noqa: F401
 from app.models.mf_derived import DeMfDerivedDaily  # noqa: F401
+from app.models.indicators_v2 import (  # noqa: F401
+    DeEquityTechnicalDailyV2,
+    DeEtfTechnicalDailyV2,
+    DeGlobalTechnicalDailyV2,
+    DeIndexTechnicalDaily,
+    DeMfTechnicalDaily,
+)
 
 __all__ = [
     # instruments
@@ -147,4 +154,10 @@ __all__ = [
     "DeMfHoldings",
     # mf derived
     "DeMfDerivedDaily",
+    # indicators v2
+    "DeEquityTechnicalDailyV2",
+    "DeEtfTechnicalDailyV2",
+    "DeGlobalTechnicalDailyV2",
+    "DeIndexTechnicalDaily",
+    "DeMfTechnicalDaily",
 ]

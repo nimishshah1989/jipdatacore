@@ -190,6 +190,9 @@ class DeMfMaster(Base):
     primary_benchmark: Mapped[Optional[str]] = mapped_column(sa.String(100), nullable=True)
     expense_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 4), nullable=True)
     investment_strategy: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
+    # Morningstar purchase mode: 1=Regular, 2=Direct. Added by migration 007.
+    # Drives MF technical eligibility filter in chunk 10 (only purchase_mode=1 funds).
+    purchase_mode: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
     )

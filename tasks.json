@@ -244,12 +244,13 @@
     {
       "id": "IND-C2",
       "name": "Alembic migrations: v2 tables + purchase_mode",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/indicators-chunk-2.md",
       "layer": 9,
       "dependencies": ["IND-C1"],
       "complexity": "medium",
-      "build": "indicators-overhaul"
+      "build": "indicators-overhaul",
+      "completed_at": "2026-04-14"
     },
     {
       "id": "IND-C3",

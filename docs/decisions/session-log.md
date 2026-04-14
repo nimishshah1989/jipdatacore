@@ -27,6 +27,37 @@
 
 ---
 
+## 2026-04-14 — IND-C2: Indicators overhaul — v2 tables + purchase_mode migration
+
+**Build**: indicators-overhaul
+**Files created**: `alembic/versions/007_add_purchase_mode_to_mf_master.py` (32 lines), `alembic/versions/008_indicators_v2_tables.py` (492 lines), `app/models/indicators_v2.py` (621 lines), `reports/alembic-drift-ticket.md`
+**Files modified**: `app/models/__init__.py` (5 new exports), `app/models/instruments.py` (added `DeMfMaster.purchase_mode`)
+
+**Key decisions**:
+- Wide tables built via raw SQL `op.execute()` (matching migration 001 style) rather than 130 × `sa.Column()` calls — 3 shared column-block constants for DRY
+- Generated columns hardcoded as SQL string literals, never Python f-strings, to guarantee byte-identity with v1 production (Fix 9)
+- Used `sa.Computed()` in SQLAlchemy models with the exact same expression strings
+- ETF FK column sized `VARCHAR(30)` (matches existing `de_etf_master.ticker`, not the `VARCHAR(20)` specified in chunk 2 — agent caught this)
+- `price_above_vwap` excluded transitively from index table (references `vwap` which Fix 12 excludes)
+- `adx_strong_trend` excluded transitively from MF table (references `adx_14` which Fix 13 excludes)
+
+**Verification evidence**:
+1. Docker rebuild clean (image `jip-data-engine:ind-c2`, 8s with cache)
+2. Raw SQL from migration 008 extracted via mock-patched `alembic.op.execute`, captured 15 statements, executed directly against throwaway `postgres:15` container → all cleanly applied
+3. **Fix 9 smoke test passed**: inserted dummy row with known indicator values, all 8 generated columns returned the mathematically expected booleans (`above_50dma=t`, `above_200dma=t`, `above_20ema=t`, `price_above_vwap=t`, `rsi_overbought=t`, `rsi_oversold=f`, `macd_bullish=t`, `adx_strong_trend=t`)
+4. Column counts: equity/etf/global v2 = 104 each; index = 93 (−11 volume cols); mf = 67 (strict single-price subset) — matches Fix 12/13 exclusions exactly
+5. Generated expressions byte-identical across equity/etf/global v2: `(close_adj > sma_50)`, `(close_adj > sma_200)`, `(macd_line > macd_signal)` — transparent rename in chunk 6 will work
+6. Model import: all 5 classes importable, `DeMfMaster.purchase_mode` present as `INTEGER nullable=True`
+7. Model regression: `pytest tests/ -k "model or schema"` → 185 passed
+
+**Pre-existing drift discovered** (filed as P1 ticket, not blocking):
+- `reports/alembic-drift-ticket.md` — migration 002 declares `revision="002"` but migration 003's `down_revision="002_expand_global_instrument_type"`. Chain broken at that boundary. `alembic.ScriptDirectory.from_config()` raises KeyError. Impact: `alembic upgrade head` fails on fresh DB today. Fix is a one-line rename in migration 002. Not blocking because production is already past this point and my 007/008 chain is internally consistent.
+- Additional drift: production `de_equity_technical_daily` has 46 columns vs 10 defined in migration 001. The extra 36 columns were added via `Base.metadata.create_all()` or manual ALTERs outside of Alembic. Also filed in the same ticket.
+
+**Next**: IND-C3 (engine core — `spec.py`, `engine.py`, `strategy.yaml`, `risk_metrics.py`). Per Fix 2 this chunk is split into 3a/3b/3c.
+
+---
+
 ## 2026-04-05 — C1-C3: Foundation (scaffold + schema + auth)
 
 **Chunks:** C1 (Project Scaffold), C2 (Database Schema), C3 (API Auth + Middleware)
