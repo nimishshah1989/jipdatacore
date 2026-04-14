@@ -26,6 +26,9 @@ dependencies = [
     "xlrd>=2.0.1",       # AMFI publishes monthly category flows as .xls
     "openpyxl>=3.1.0",   # Fallback for .xlsx variants
     "fastembed>=0.4.0",  # ONNX-based local embedder (bge-small-en-v1.5, 384d)
+    # Technical indicators — pinned exact per eng-review Fix 11 (drift detection via golden tests)
+    "pandas-ta-classic==0.4.47",
+    "empyrical-reloaded==0.5.12",
     # HTTP clients
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",

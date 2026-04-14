@@ -1,8 +1,8 @@
 {
   "project": "jip-data-engine",
-  "version": "2.1",
-  "active_build": "etf-universe-expansion",
-  "total_chunks": 22,
+  "version": "2.2",
+  "active_build": "indicators-overhaul",
+  "total_chunks": 34,
   "chunks": [
     {
       "id": "C1",
@@ -229,6 +229,127 @@
       "complexity": "low",
       "build": "etf-universe-expansion",
       "completed_at": "2026-04-10"
+    },
+    {
+      "id": "IND-C1",
+      "name": "Dependencies & package scaffold",
+      "status": "done",
+      "spec": "docs/specs/chunks/indicators-chunk-1.md",
+      "layer": 9,
+      "dependencies": [],
+      "complexity": "low",
+      "build": "indicators-overhaul",
+      "completed_at": "2026-04-14"
+    },
+    {
+      "id": "IND-C2",
+      "name": "Alembic migrations: v2 tables + purchase_mode",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-2.md",
+      "layer": 9,
+      "dependencies": ["IND-C1"],
+      "complexity": "medium",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C3",
+      "name": "Engine core: spec, engine, strategy.yaml, risk_metrics",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-3.md",
+      "layer": 10,
+      "dependencies": ["IND-C2"],
+      "complexity": "high",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C4",
+      "name": "TA-Lib oracle + golden-file tests",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-4.md",
+      "layer": 11,
+      "dependencies": ["IND-C3"],
+      "complexity": "medium",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C5",
+      "name": "Equity asset wrapper + backfill + diff",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-5.md",
+      "layer": 11,
+      "dependencies": ["IND-C4"],
+      "complexity": "high",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C6",
+      "name": "Equity cutover: dump, drop, rename",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-6.md",
+      "layer": 12,
+      "dependencies": ["IND-C5"],
+      "complexity": "medium",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C7",
+      "name": "ETF + global asset wrappers + cutovers",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-7.md",
+      "layer": 12,
+      "dependencies": ["IND-C6"],
+      "complexity": "medium",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C8",
+      "name": "Index asset wrapper (new table)",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-8.md",
+      "layer": 13,
+      "dependencies": ["IND-C7"],
+      "complexity": "low",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C9",
+      "name": "purchase_mode bootstrap + Morningstar fix",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-9.md",
+      "layer": 10,
+      "dependencies": ["IND-C2"],
+      "complexity": "medium",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C10",
+      "name": "MF asset wrapper + backfill",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-10.md",
+      "layer": 13,
+      "dependencies": ["IND-C3", "IND-C9"],
+      "complexity": "medium",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C11",
+      "name": "Pipeline registration + cron wiring",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-11.md",
+      "layer": 14,
+      "dependencies": ["IND-C8", "IND-C10"],
+      "complexity": "low",
+      "build": "indicators-overhaul"
+    },
+    {
+      "id": "IND-C12",
+      "name": "Cleanup: delete old code after 7-day soak",
+      "status": "pending",
+      "spec": "docs/specs/chunks/indicators-chunk-12.md",
+      "layer": 15,
+      "dependencies": ["IND-C11"],
+      "complexity": "low",
+      "build": "indicators-overhaul"
     }
   ]
 }

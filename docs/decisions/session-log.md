@@ -1,5 +1,32 @@
 # Session Log — JIP Data Engine v2.0
 
+## 2026-04-14 — IND-C1: Indicators overhaul — dependencies & package scaffold
+
+**Build**: indicators-overhaul (12 chunks)
+**Files modified**: `pyproject.toml` (+2 deps pinned exact), `app/computation/indicators_v2/__init__.py` (new), `app/computation/indicators_v2/assets/__init__.py` (new)
+
+**Key decisions**:
+- pandas-ta-classic pinned exact to `==0.4.47` (Fix 11 from eng review — drift detection via golden tests, not free-form upgrades)
+- empyrical-reloaded pinned exact to `==0.5.12`
+- Discovery: module name is `pandas_ta_classic`, NOT `pandas_ta` — chunk 3 spec needs this noted before implementation
+- Discovery: project has no local venv and no lockfile; all installs via `docker build .`. Verification path for this build = docker build + pytest inside image.
+
+**Verification evidence** (Docker image `jip-data-engine:ind-c1`):
+- Build succeeded (exit 0, ~130s)
+- Import smoke test: `pandas_ta_classic 0.4.47`, `empyrical 0.5.12`, `app.computation.indicators_v2.assets` all importable
+- Functional smoke: RSI(14) computes correct values on synthetic OHLCV, empyrical.sharpe_ratio and max_drawdown work on random returns
+- Existing suite: `tests/computation/` = 428 passed, 3 failed. All 3 failures are pre-existing (see `reports/stale-tests-indicators-build.md`) — grep confirms no existing code imports the new deps, so my changes cannot have caused them. Filed as P2/P3 follow-ups.
+
+**Pre-flight finding** (not a chunk, but did the work):
+- `reports/morningstar_purchase_mode_investigation.md` — `app/pipelines/morningstar/fund_master.py` does NOT fetch `PurchaseMode` today. But the client uses a generic datapoint API so adding it is a one-line change. Chunk 9 stays single (no 9a/9b split).
+
+**Pre-existing dep drift observed** (flagged, not fixed):
+- Fresh build pulled `pandas 3.0.2`, `numpy 2.4.4`, `sqlalchemy 2.0.49` — major bumps from the `>=` constraints. This is not my change but should be addressed in a lockfile project. For now: acknowledged, not blocking.
+
+**Next**: IND-C2 (Alembic migrations for 5 new technical tables + `de_mf_master.purchase_mode`)
+
+---
+
 ## 2026-04-05 — C1-C3: Foundation (scaffold + schema + auth)
 
 **Chunks:** C1 (Project Scaffold), C2 (Database Schema), C3 (API Auth + Middleware)
