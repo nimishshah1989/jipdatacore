@@ -62,6 +62,12 @@ _Q = Decimal("0.0001")
 # Sourced from alembic/versions/008_indicators_v2_tables.py.
 _INT_COLUMNS: frozenset[str] = frozenset({"obv", "ad", "pvt"})
 
+# Postgres BIGINT range. OBV/AD accumulators on high-volume global instruments
+# (e.g. ^NKX Nikkei) over 20+ years can exceed int64. Clamp to NULL rather
+# than let the whole instrument upsert fail.
+_INT64_MAX = 9223372036854775807
+_INT64_MIN = -9223372036854775808
+
 
 @dataclass
 class CompResult:
@@ -105,7 +111,8 @@ def _to_decimal_row(
             out[col] = None
         elif isinstance(raw, float):
             if is_int_col:
-                out[col] = int(raw)
+                ival = int(raw)
+                out[col] = ival if _INT64_MIN <= ival <= _INT64_MAX else None
             else:
                 try:
                     out[col] = Decimal(str(raw)).quantize(_Q)
@@ -118,7 +125,8 @@ def _to_decimal_row(
                 if math.isnan(fval) or math.isinf(fval):
                     out[col] = None
                 elif is_int_col:
-                    out[col] = int(fval)
+                    ival = int(fval)
+                    out[col] = ival if _INT64_MIN <= ival <= _INT64_MAX else None
                 else:
                     out[col] = Decimal(str(fval)).quantize(_Q)
             except Exception:

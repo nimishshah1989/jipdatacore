@@ -3,45 +3,9 @@
 Purely structural — no DB connection needed.
 Verifies INDEX_SPEC is wired to the correct models, columns, and that
 Fix 12 invariant (volume_col=None) holds.
-
-pandas_ta_classic and yaml are Docker-only deps; both are stubbed via
-sys.modules BEFORE any indicators_v2 import (engine.py → strategy_loader
-imports them at module level).
 """
 
 from __future__ import annotations
-
-import sys
-import types
-from unittest.mock import MagicMock
-
-
-def _ensure_docker_deps_stubbed() -> None:
-    """Stub out Docker-only deps (pandas_ta_classic, yaml) before imports."""
-    if "yaml" not in sys.modules:
-        yaml_stub = types.ModuleType("yaml")
-        yaml_stub.safe_load = MagicMock(return_value=[])  # type: ignore[attr-defined]
-        sys.modules["yaml"] = yaml_stub
-
-    if "pandas_ta_classic" not in sys.modules:
-        ta_stub = types.ModuleType("pandas_ta_classic")
-        ta_stub.Strategy = MagicMock()  # type: ignore[attr-defined]
-        sys.modules["pandas_ta_classic"] = ta_stub
-
-    # strategy_loader calls yaml.safe_load and ta.Strategy at module level;
-    # stub the whole module so cached lru_cache returns a MagicMock strategy
-    if "app.computation.indicators_v2.strategy_loader" not in sys.modules:
-        sl_stub = types.ModuleType("app.computation.indicators_v2.strategy_loader")
-        sl_stub.load_strategy_for_asset = MagicMock(  # type: ignore[attr-defined]
-            return_value=MagicMock(ta=[])
-        )
-        sl_stub.get_rename_map = MagicMock(return_value={})  # type: ignore[attr-defined]
-        sl_stub.get_schema_columns = MagicMock(return_value=[])  # type: ignore[attr-defined]
-        sys.modules["app.computation.indicators_v2.strategy_loader"] = sl_stub
-
-
-# Stub before any indicators_v2 import happens
-_ensure_docker_deps_stubbed()
 
 
 def test_index_spec_no_volume() -> None:

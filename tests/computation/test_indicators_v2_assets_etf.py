@@ -3,28 +3,9 @@
 Purely structural — no DB connection needed.
 Verifies ETF_SPEC is wired to the correct models, columns, and that
 the public interface is importable and correctly typed.
-
-pandas_ta_classic is Docker-only; stubbed via sys.modules BEFORE any
-indicators_v2 import (engine.py imports it at module level).
 """
 
 from __future__ import annotations
-
-import sys
-import types
-from unittest.mock import MagicMock
-
-
-def _ensure_pandas_ta_classic_stubbed() -> None:
-    """Stub out pandas_ta_classic (Docker-only dep) so local imports work."""
-    if "pandas_ta_classic" not in sys.modules:
-        stub = types.ModuleType("pandas_ta_classic")
-        stub.Strategy = MagicMock()  # type: ignore[attr-defined]
-        sys.modules["pandas_ta_classic"] = stub
-
-
-# Stub before any indicators_v2 import happens
-_ensure_pandas_ta_classic_stubbed()
 
 
 def test_etf_spec_columns_match_model() -> None:
