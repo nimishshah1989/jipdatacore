@@ -59,6 +59,11 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
 }
 
 # ---------------------------------------------------------------------------
+# Indicators v2 runner — async function, not a BasePipeline subclass.
+# Registered in COMPUTATION_SCRIPTS below.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # DAG alias map — translates DAG graph names → actual pipeline_name values
 # The DAG executor uses short names; pipeline classes use prefixed names.
 # ---------------------------------------------------------------------------
@@ -78,6 +83,7 @@ DAG_ALIAS: dict[str, str] = {
     "india_vix": "india_vix",
     "nse_etf_sync": "nse_etf_sync",
     "etf_prices": "etf_prices",
+    "compute_indicators_v2": "compute_indicators_v2",
 }
 
 # Reverse map: pipeline_name → DAG alias (for lookups going the other direction)
@@ -134,6 +140,9 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
         "global_technicals",
         "global_rs",
         "full_runner",
+        # IND-C11: indicators v2 daily incremental run (equity/index/etf/global)
+        # MF excluded — deferred to IND-C9/C10 completion
+        "compute_indicators_v2",
         "__goldilocks_compute__",
     ],
 }
@@ -156,6 +165,9 @@ COMPUTATION_SCRIPTS: dict[str, str] = {
     # Full runner — oscillators, pivots, intermarket, fibonacci, divergence
     # These steps ONLY exist in the in-process runner, not as standalone scripts
     "full_runner": "scripts.run_computations",
+    # Indicators v2 — daily incremental runner (all asset classes except MF)
+    # MF deferred: blocked on IND-C9 (purchase_mode bootstrap). P1 follow-up.
+    "compute_indicators_v2": "app.computation.indicators_v2.runner",
 }
 
 
