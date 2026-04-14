@@ -57,6 +57,11 @@ DEFAULT_BATCH_SIZE = 200
 # Decimal quantization step per project convention (Numeric(18,4) scale=4)
 _Q = Decimal("0.0001")
 
+# BIGINT columns in the v2 technical tables. These must land as Python int,
+# not Decimal, or Postgres raises "invalid input syntax for type bigint".
+# Sourced from alembic/versions/008_indicators_v2_tables.py.
+_INT_COLUMNS: frozenset[str] = frozenset({"obv", "ad", "pvt"})
+
 
 @dataclass
 class CompResult:
@@ -88,6 +93,7 @@ def _to_decimal_row(
     out: dict[str, Any] = {id_col: id_value, date_col: date_value}
     for col in schema_columns:
         raw = row.get(col)
+        is_int_col = col in _INT_COLUMNS
         if raw is None:
             out[col] = None
         elif isinstance(raw, bool):
@@ -98,21 +104,42 @@ def _to_decimal_row(
         elif isinstance(raw, float) and (math.isnan(raw) or math.isinf(raw)):
             out[col] = None
         elif isinstance(raw, float):
-            try:
-                out[col] = Decimal(str(raw)).quantize(_Q)
-            except Exception:
-                out[col] = None
+            if is_int_col:
+                out[col] = int(raw)
+            else:
+                try:
+                    out[col] = Decimal(str(raw)).quantize(_Q)
+                except Exception:
+                    out[col] = None
         else:
             # numpy scalar or other numeric type — go through str(float()) path
             try:
                 fval = float(raw)
                 if math.isnan(fval) or math.isinf(fval):
                     out[col] = None
+                elif is_int_col:
+                    out[col] = int(fval)
                 else:
                     out[col] = Decimal(str(fval)).quantize(_Q)
             except Exception:
                 out[col] = None
     return out
+
+
+def _col_select(model: Any, ref: Any) -> Any:
+    """Build a SELECT expression for a column reference.
+
+    ``ref`` is either a single column name or a tuple of names. For tuples the
+    engine emits SQL ``COALESCE(col1, col2, ...)`` so the first non-null value
+    wins. This lets specs declare a preference order like
+    ``close_col=("close_adj", "close")`` — use adjusted when available, fall
+    back to the raw column when it isn't — without per-asset branches.
+    """
+    if isinstance(ref, str):
+        return getattr(model, ref)
+    if isinstance(ref, tuple):
+        return sa.func.coalesce(*(getattr(model, name) for name in ref))
+    raise TypeError(f"unsupported column ref: {ref!r}")
 
 
 async def _load_ohlcv(
@@ -122,10 +149,10 @@ async def _load_ohlcv(
 ) -> pd.DataFrame:
     """Load full OHLCV history for one instrument as a pandas DataFrame."""
     model = spec.source_model
-    cols = [getattr(model, spec.date_column), getattr(model, spec.close_col)]
+    cols = [getattr(model, spec.date_column), _col_select(model, spec.close_col)]
     for extra in (spec.open_col, spec.high_col, spec.low_col, spec.volume_col):
         if extra is not None:
-            cols.append(getattr(model, extra))
+            cols.append(_col_select(model, extra))
 
     id_attr = getattr(model, spec.id_column)
     stmt = (
@@ -168,6 +195,18 @@ async def _load_ohlcv(
 
     df = pd.DataFrame(data)
     df = df.set_index(spec.date_column)
+    # Coerce to DatetimeIndex — pandas-ta VWAP and some other indicators
+    # call .to_period() on the index, which a plain Index-of-date objects
+    # does not support. DatetimeIndex does.
+    df.index = pd.DatetimeIndex(df.index)
+    # Coerce OHLCV columns to numeric float dtype. If any Python None values
+    # are in the lists, the column infers as object dtype; pandas-ta's VWAP
+    # cumsum then raises "cumsum is not supported for object dtype".
+    for col in ("open", "high", "low", "close"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    if "volume" in df.columns:
+        df["volume"] = pd.to_numeric(df["volume"], errors="coerce")
     return df
 
 
@@ -268,6 +307,15 @@ async def compute_indicators(
 
             # Fix 3: rename pandas-ta output columns → schema names
             df = df.rename(columns=rename_map)
+
+            # Alias the source close column into the schema-required
+            # ``close_adj`` price-snapshot column. All 5 v2 tables use
+            # ``close_adj`` as the snapshot column regardless of asset
+            # class (MFs store NAV here, indices store raw close, etc.).
+            # This is not a rename-map entry because "close" is the
+            # input column, not a pandas-ta emission.
+            if "close_adj" not in df.columns:
+                df["close_adj"] = df["close"]
 
             # IND-C3c: compute risk + HV metrics and merge into df.
             # close column is still present after rename (pandas-ta appends,

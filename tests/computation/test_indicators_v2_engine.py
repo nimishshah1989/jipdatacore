@@ -442,6 +442,11 @@ def test_full_catalog_emits_expected_columns() -> None:
 
     df = df.rename(columns=rename)
 
+    # Mirror the engine's close→close_adj alias step (added after the
+    # production smoke test showed close_adj landing NULL).
+    if "close_adj" not in df.columns:
+        df["close_adj"] = df["close"]
+
     # IND-C3c: merge risk + HV columns (not in rename_map — computed separately)
     df_hv = compute_hv_series(df["close"])
     df_risk = compute_risk_series(df["close"], benchmark_close=None)
@@ -726,10 +731,13 @@ async def test_engine_full_pipeline_with_risk() -> None:
 
 
 def test_get_schema_columns_includes_risk_and_hv() -> None:
-    """All 11 risk+HV columns must be in get_schema_columns for equity and mf."""
+    """All risk+HV+close_adj columns must be in get_schema_columns for equity and mf."""
     from app.computation.indicators_v2.strategy_loader import _RISK_COLUMNS
 
+    # close_adj is aliased from df["close"] by the engine; it's in _RISK_COLUMNS
+    # because it lives outside strategy.yaml, not because it's a risk metric.
     expected = {
+        "close_adj",
         "risk_sharpe_1y", "risk_sortino_1y", "risk_calmar_1y",
         "risk_max_drawdown_1y", "risk_beta_nifty", "risk_alpha_nifty",
         "risk_omega", "risk_information_ratio",

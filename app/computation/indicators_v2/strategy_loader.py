@@ -80,10 +80,14 @@ def get_rename_map(asset_class: str, has_volume: bool) -> dict[str, str]:
     return rename
 
 
-# Risk and HV columns produced by risk_metrics.py, NOT by strategy.yaml.
-# These are present in ALL five v2 tables — they are asset-class-independent.
+# Non-yaml-sourced columns present in every v2 table. Sources:
+#   close_adj   — price snapshot column aliased from df["close"] by the engine
+#                 (input column, not a pandas-ta emission)
+#   hv_*        — annualized log-return volatility from risk_metrics.compute_hv_series
+#   risk_*      — trailing 1y risk metrics from risk_metrics.compute_risk_series
 _RISK_COLUMNS: frozenset[str] = frozenset(
     {
+        "close_adj",
         "risk_sharpe_1y",
         "risk_sortino_1y",
         "risk_calmar_1y",

@@ -13,7 +13,14 @@ Row-position semantics (Fix 6, binding per eng-review addendum):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Type
+from typing import Optional, Tuple, Type, Union
+
+# A column reference can be a single column name, OR a tuple of column names
+# where the engine applies SQL COALESCE in order (first non-null wins).
+# Example: ``close_col=("close_adj", "close")`` means "use close_adj when
+# available, fall back to close". This lets specs survive data-quality
+# drift without per-asset branches.
+ColRef = Union[str, Tuple[str, ...]]
 
 
 @dataclass(frozen=True)
@@ -51,9 +58,9 @@ class AssetSpec:
     output_model: Type
     id_column: str
     date_column: str
-    close_col: str
-    open_col: Optional[str]
-    high_col: Optional[str]
-    low_col: Optional[str]
-    volume_col: Optional[str]
+    close_col: ColRef
+    open_col: Optional[ColRef]
+    high_col: Optional[ColRef]
+    low_col: Optional[ColRef]
+    volume_col: Optional[ColRef]
     min_history_days: int = 250
