@@ -35,6 +35,19 @@ IND-C2 was verified by extracting the raw SQL from migration 008 and executing i
 
 The alembic drift does NOT invalidate 008 — it just means we need to fix the drift before running the full upgrade sequence on any new environment.
 
+## Additional drift discovered 2026-04-14 (during IND-C3c sidetask)
+Production `alembic_version.version_num` = `003_goldilocks`, but the schema clearly has migrations 004/005/006 applied:
+- `de_healing_log` table exists (migration 004)
+- `de_cron_run` table exists (migration 005)
+- `de_qual_documents.embedding` is `vector(384)` with HNSW index (migration 006)
+
+**Actual prod state after today**: migrations 001–006 applied to schema, migration 009 (`ix_de_mf_holdings_asof_instr` index) manually applied today to prod via SSH+psql, but `alembic_version` still reads `003_goldilocks`. Migrations 007 (purchase_mode) and 008 (v2 technical tables) not yet applied to prod — those will land in IND-C5/C6/C7 cutover phases.
+
+**Reconciliation plan** (when this ticket is picked up):
+1. Fix the 002→003 revision chain (one-line rename in migration 002)
+2. Verify `alembic_version` reflects actual schema state; `alembic stamp 006_embedding_384` if needed
+3. Separate stamp for 009 once 007/008 have been properly applied
+
 ## Fix
 **Option A (recommended)**: rename migration 002 to match the down_revision that 003 expects. One-line change:
 ```python

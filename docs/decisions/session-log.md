@@ -157,6 +157,27 @@
 
 ---
 
+## 2026-04-14 — Side task: de_mf_holdings composite index applied to prod
+
+**Context**: User-requested out-of-band index creation mid-IND-C4 spawn.
+
+**Two indexes requested**:
+1. `ix_de_market_cap_history_instr_eff ON de_market_cap_history (instrument_id, effective_from DESC)` — **skipped**, already exists under name `ix_cap_history_instrument` with identical column and sort definition
+2. `ix_de_mf_holdings_asof_instr ON de_mf_holdings (as_of_date, instrument_id)` — **applied**
+
+**Action**:
+- Wrote `alembic/versions/009_mf_holdings_composite_index.py` using `disable_ddl_transaction = True` pattern so `CREATE INDEX CONCURRENTLY` can run outside alembic's transaction wrapper
+- Applied directly to production RDS via SSH jumpbox (user request): `CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_de_mf_holdings_asof_instr ON de_mf_holdings (as_of_date, instrument_id)`
+- First SSH attempt's session dropped but the DDL completed server-side; second attempt hit `IF NOT EXISTS` → no-op
+- Verified: index live, 1824 kB on 230,254 rows
+- `alembic_version` NOT stamped — already drifted at `003_goldilocks` while schema has 004/005/006 applied; touching it without a full reconciliation plan risks making things worse. Added to the existing alembic drift ticket for pickup with the rest of the hygiene work.
+
+**Also flagged** (not fixed): pre-existing duplicate single-column index on `de_mf_holdings` — both `ix_de_mf_holdings_instrument_id` and `ix_mf_holdings_instrument` index `(instrument_id)`. One should be dropped.
+
+**Back to**: IND-C4 spawn
+
+---
+
 ## 2026-04-05 — C1-C3: Foundation (scaffold + schema + auth)
 
 **Chunks:** C1 (Project Scaffold), C2 (Database Schema), C3 (API Auth + Middleware)
