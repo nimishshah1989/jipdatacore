@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     fred_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    groq_api_key: str = ""
 
     # Goldilocks
     goldilocks_email: str = ""
@@ -74,7 +75,14 @@ class Settings(BaseSettings):
     # Dashboard CORS origin
     dashboard_origin: str = "http://localhost:8099"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # extra="ignore" tolerates unknown env vars (e.g. platform-specific
+    # fields someone adds to .env without updating this class). Prevents
+    # Pydantic from crashing the service on startup if .env drifts.
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 @lru_cache
