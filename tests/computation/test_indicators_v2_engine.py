@@ -226,11 +226,12 @@ async def test_engine_skips_short_history() -> None:
     short_df = _build_ohlcv_df(50)
     session = AsyncMock()
     session.flush = AsyncMock()
+    iid = uuid.uuid4()
 
     with (
         patch(
-            "app.computation.indicators_v2.engine._load_ohlcv",
-            new=AsyncMock(return_value=short_df),
+            "app.computation.indicators_v2.engine._load_ohlcv_bulk",
+            new=AsyncMock(return_value={iid: short_df}),
         ),
         patch(
             "app.computation.indicators_v2.engine._upsert_batch", new_callable=AsyncMock
@@ -239,7 +240,7 @@ async def test_engine_skips_short_history() -> None:
         result = await compute_indicators(
             spec,
             session,
-            instrument_ids=[uuid.uuid4()],
+            instrument_ids=[iid],
         )
 
     assert result.instruments_skipped_insufficient_history == 1
@@ -261,24 +262,17 @@ async def test_engine_per_instrument_error_isolation() -> None:
     # 350 rows: enough for ROC_252 (needs 252 rows) + warmup buffer
     good_df = _build_ohlcv_df(350)
 
-    call_count = 0
-
-    async def load_ohlcv_side_effect(
-        session: Any, sp: Any, instrument_id: Any
-    ) -> pd.DataFrame:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise RuntimeError("synthetic DB error for instrument 1")
-        return good_df
+    # bad_df has shuffled dates → monotonic assertion fires inside the
+    # per-instrument try/except, recording an error without loading again.
+    bad_df = _build_ohlcv_df(350, shuffled=True)
 
     session = AsyncMock()
     session.flush = AsyncMock()
 
     with (
         patch(
-            "app.computation.indicators_v2.engine._load_ohlcv",
-            side_effect=load_ohlcv_side_effect,
+            "app.computation.indicators_v2.engine._load_ohlcv_bulk",
+            new=AsyncMock(return_value={iid_bad: bad_df, iid_good: good_df}),
         ),
         patch(
             "app.computation.indicators_v2.engine._upsert_batch", new_callable=AsyncMock
@@ -308,11 +302,12 @@ async def test_engine_monotonic_assertion() -> None:
 
     session = AsyncMock()
     session.flush = AsyncMock()
+    iid = uuid.uuid4()
 
     with (
         patch(
-            "app.computation.indicators_v2.engine._load_ohlcv",
-            new=AsyncMock(return_value=shuffled_df),
+            "app.computation.indicators_v2.engine._load_ohlcv_bulk",
+            new=AsyncMock(return_value={iid: shuffled_df}),
         ),
         patch(
             "app.computation.indicators_v2.engine._upsert_batch", new_callable=AsyncMock
@@ -321,7 +316,7 @@ async def test_engine_monotonic_assertion() -> None:
         result = await compute_indicators(
             spec,
             session,
-            instrument_ids=[uuid.uuid4()],
+            instrument_ids=[iid],
         )
 
     assert result.instruments_errored == 1
@@ -341,6 +336,7 @@ async def test_engine_emits_sma_ema_columns() -> None:
 
     session = AsyncMock()
     session.flush = AsyncMock()
+    iid = uuid.uuid4()
 
     captured_batches: list[list[dict]] = []
 
@@ -351,8 +347,8 @@ async def test_engine_emits_sma_ema_columns() -> None:
 
     with (
         patch(
-            "app.computation.indicators_v2.engine._load_ohlcv",
-            new=AsyncMock(return_value=ohlcv_df),
+            "app.computation.indicators_v2.engine._load_ohlcv_bulk",
+            new=AsyncMock(return_value={iid: ohlcv_df}),
         ),
         patch(
             "app.computation.indicators_v2.engine._upsert_batch",
@@ -362,7 +358,7 @@ async def test_engine_emits_sma_ema_columns() -> None:
         result = await compute_indicators(
             spec,
             session,
-            instrument_ids=[uuid.uuid4()],
+            instrument_ids=[iid],
         )
 
     assert result.instruments_processed == 1
@@ -686,10 +682,11 @@ async def test_engine_full_pipeline_with_risk() -> None:
     async def capture_upsert(sess: Any, sp: Any, batch: list[dict]) -> None:
         captured_batches.append(batch)
 
+    iid = uuid.uuid4()
     with (
         patch(
-            "app.computation.indicators_v2.engine._load_ohlcv",
-            new=AsyncMock(return_value=ohlcv_df),
+            "app.computation.indicators_v2.engine._load_ohlcv_bulk",
+            new=AsyncMock(return_value={iid: ohlcv_df}),
         ),
         patch(
             "app.computation.indicators_v2.engine._upsert_batch",
@@ -699,7 +696,7 @@ async def test_engine_full_pipeline_with_risk() -> None:
         result = await compute_indicators(
             spec,
             session,
-            instrument_ids=[uuid.uuid4()],
+            instrument_ids=[iid],
         )
 
     assert result.instruments_processed == 1
