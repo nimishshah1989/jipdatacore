@@ -324,11 +324,22 @@ async def compute_indicators(
             df_risk = compute_risk_series(df["close"], benchmark_close)
             df = pd.concat([df, df_hv, df_risk], axis=1)
 
-            # Defensive: assert every schema column is present
+            # Defensive: fill any schema columns that pandas-ta did NOT emit
+            # with NaN. This happens when an instrument is too short for a
+            # given window (e.g. a 260-row series fails ROC(252) because
+            # pandas-ta silently skips rather than returning all-NaN, or
+            # returns a single valid row that then doesn't register as a
+            # column in some corner cases). NaN will land as NULL at the
+            # _to_decimal_row boundary — Fix 4 semantics.
             missing = schema_cols - set(df.columns)
+            for col in missing:
+                df[col] = float("nan")
             if missing:
-                raise RuntimeError(
-                    f"pandas-ta did not emit expected columns after rename: {sorted(missing)}"
+                logger.debug(
+                    "indicators_v2_columns_filled_nan",
+                    asset_class=spec.asset_class_name,
+                    instrument_id=str(iid),
+                    missing=sorted(missing),
                 )
 
             # Window filter
