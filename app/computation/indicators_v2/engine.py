@@ -75,6 +75,14 @@ _INT_COLUMNS: frozenset[str] = frozenset({"obv", "ad", "pvt"})
 _INT64_MAX = 9223372036854775807
 _INT64_MIN = -9223372036854775808
 
+# Conservative clamp for Decimal columns: the tightest precision in the v2
+# schema is Numeric(10,4), which maxes out at 999,999.9999. Indian equity
+# prices cap at ~400,000 INR so even Numeric(18,4) price columns stay well
+# under this in practice. Degenerate risk-metric values (e.g., skew/kurtosis
+# on a synthetic constant series) can overflow without bounds. Clamp to
+# abs < 1e6 and NULL overflows so one bad row doesn't abort the chunk.
+_DECIMAL_ABS_MAX = Decimal("999999.9999")
+
 
 @dataclass
 class CompResult:
@@ -122,7 +130,9 @@ def _to_decimal_row(
                 out[col] = ival if _INT64_MIN <= ival <= _INT64_MAX else None
             else:
                 try:
-                    out[col] = Decimal(str(raw)).quantize(_Q)
+                    dec = Decimal(str(raw)).quantize(_Q)
+                    # Clamp to tightest Numeric(10,4) range — overflow → NULL
+                    out[col] = dec if abs(dec) <= _DECIMAL_ABS_MAX else None
                 except Exception:
                     out[col] = None
         else:
@@ -135,7 +145,8 @@ def _to_decimal_row(
                     ival = int(fval)
                     out[col] = ival if _INT64_MIN <= ival <= _INT64_MAX else None
                 else:
-                    out[col] = Decimal(str(fval)).quantize(_Q)
+                    dec = Decimal(str(fval)).quantize(_Q)
+                    out[col] = dec if abs(dec) <= _DECIMAL_ABS_MAX else None
             except Exception:
                 out[col] = None
     return out
