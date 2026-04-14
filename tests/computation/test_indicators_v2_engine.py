@@ -753,3 +753,108 @@ def test_get_schema_columns_includes_risk_and_hv() -> None:
     mf_cols = get_schema_columns("mf", False)
     for col in expected:
         assert col in mf_cols, f"{col!r} missing from mf schema cols"
+
+
+# ---------------------------------------------------------------------------
+# Test 22: vectorized calmar/omega/information_ratio match empyrical scalar
+# ---------------------------------------------------------------------------
+
+
+def test_vectorized_risk_metrics_match_empyrical_scalar() -> None:
+    """Vectorized calmar/omega/information_ratio must match empyrical's scalar
+    per-row output within 1e-4 on the last row of a 500-row series.
+
+    This is the parity gate for the 50x speedup rewrite — if the vectorized
+    implementation drifts, this test fails and we can eyeball the diff.
+    """
+    import empyrical
+    import numpy as np
+    from app.computation.indicators_v2.risk_metrics import (
+        compute_risk_series,
+        TRADING_DAYS_PER_YEAR,
+    )
+
+    # Build a deterministic synthetic close series with some drawdowns
+    rng = np.random.default_rng(123)
+    n = 500
+    daily_returns = rng.normal(0.0008, 0.015, n)
+    close_vals = 100.0 * np.cumprod(1 + daily_returns)
+    close = pd.Series(
+        close_vals,
+        index=pd.date_range("2022-01-03", periods=n, freq="B"),
+        name="close",
+    )
+    bench_vals = 100.0 * np.cumprod(1 + rng.normal(0.0005, 0.01, n))
+    bench = pd.Series(bench_vals, index=close.index, name="close")
+
+    risk_df = compute_risk_series(close, benchmark_close=bench)
+
+    returns = close.pct_change().astype(float)
+    bench_returns = bench.pct_change().astype(float)
+    last_window = returns.iloc[-TRADING_DAYS_PER_YEAR:].dropna()
+    last_bench_window = bench_returns.iloc[-TRADING_DAYS_PER_YEAR:].dropna()
+    common = last_window.index.intersection(last_bench_window.index)
+    wr = last_window.loc[common]
+    br = last_bench_window.loc[common]
+
+    # Expected via empyrical scalar (the old code path)
+    expected_calmar = float(
+        empyrical.calmar_ratio(last_window, annualization=TRADING_DAYS_PER_YEAR)
+    )
+    expected_omega = float(empyrical.omega_ratio(last_window))
+    expected_ir = float(empyrical.excess_sharpe(wr, br))
+
+    actual_calmar = float(risk_df["calmar_ratio"].iloc[-1])
+    actual_omega = float(risk_df["risk_omega"].iloc[-1])
+    actual_ir = float(risk_df["risk_information_ratio"].iloc[-1])
+
+    assert abs(actual_calmar - expected_calmar) < 1e-4, (
+        f"calmar drift: vectorized={actual_calmar} empyrical={expected_calmar}"
+    )
+    assert abs(actual_omega - expected_omega) < 1e-4, (
+        f"omega drift: vectorized={actual_omega} empyrical={expected_omega}"
+    )
+    assert abs(actual_ir - expected_ir) < 1e-3, (
+        f"information_ratio drift: vectorized={actual_ir} empyrical={expected_ir}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 23: vectorized risk metrics are fast (regression guard on speedup)
+# ---------------------------------------------------------------------------
+
+
+def test_vectorized_risk_metrics_finish_under_5_seconds() -> None:
+    """A 4800-row instrument must compute_risk_series in under 5 seconds.
+
+    The pre-vectorization code took ~20 seconds per 4800-row instrument;
+    this test asserts the per-instrument budget is at most 25% of that.
+    Replaces the "trust me it'll be fast" claim with an actual timer.
+    """
+    import time
+    import numpy as np
+    from app.computation.indicators_v2.risk_metrics import compute_risk_series
+
+    rng = np.random.default_rng(42)
+    n = 4800
+    daily = rng.normal(0.0005, 0.012, n)
+    close = pd.Series(
+        100.0 * np.cumprod(1 + daily),
+        index=pd.date_range("2007-01-03", periods=n, freq="B"),
+    )
+    bench = pd.Series(
+        100.0 * np.cumprod(1 + rng.normal(0.0004, 0.009, n)),
+        index=close.index,
+    )
+
+    t0 = time.perf_counter()
+    risk_df = compute_risk_series(close, benchmark_close=bench)
+    elapsed = time.perf_counter() - t0
+
+    assert elapsed < 5.0, (
+        f"compute_risk_series took {elapsed:.2f}s for 4800 rows — regression"
+    )
+    # Sanity: some risk columns must be populated
+    assert risk_df["sharpe_1y"].notna().any()
+    assert risk_df["calmar_ratio"].notna().any()
+    assert risk_df["risk_omega"].notna().any()
