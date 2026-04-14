@@ -266,12 +266,13 @@
     {
       "id": "IND-C3b",
       "name": "Full strategy.yaml catalog + pandas-ta wiring",
-      "status": "pending",
+      "status": "done",
       "spec": "docs/specs/chunks/indicators-chunk-3.md",
       "layer": 10,
       "dependencies": ["IND-C3a"],
       "complexity": "medium",
-      "build": "indicators-overhaul"
+      "build": "indicators-overhaul",
+      "completed_at": "2026-04-14"
     },
     {
       "id": "IND-C3c",

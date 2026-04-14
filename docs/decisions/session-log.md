@@ -90,6 +90,41 @@
 
 ---
 
+## 2026-04-14 — IND-C3b: Indicators overhaul — full strategy.yaml catalog
+
+**Build**: indicators-overhaul (sub-chunk 3b of 3)
+**Files modified**: `strategy.yaml` (12 → 64 entries), `tests/computation/test_indicators_v2_engine.py` (10 → 15 tests)
+
+**What landed**:
+- Full pandas-ta-classic catalog: 64 indicator yaml entries covering momentum (RSI/MACD/Stoch/CCI/MFI/ROC/TSI/Williams/CMO/TRIX/UO), overlap (SMA/EMA/DEMA/TEMA/WMA/HMA/VWAP/KAMA/ZL_EMA/ALMA), volatility (BBands/ATR/NATR/TrueRange/Keltner/Donchian), volume (OBV/AD/ADOSC/CMF/EFI/EOM/KVO/PVT), trend (ADX/DMP/DMN/Aroon/Supertrend/PSAR), statistics (ZScore/LinReg/Skew/Kurt)
+- Schema column coverage per asset: equity/etf/global 80 cols, index 70 cols, mf 45 cols — all ≤ their table's non-audit non-generated column set
+- Deferred to IND-C3c: `hv_20/60/252` (pandas-ta `stdev` is raw price stdev, not annualized log-return vol — needs empyrical) and all `risk_*` columns
+
+**Ground-truth column-name discovery** (discrepancies from chunk-3 spec):
+- `KCUe_20_2.0` (not `KCUe_20_2`) — scalar rendered as float
+- `LRm_20` / `LRr_20` / `LRa_20` require 3 separate `linreg(slope=True/r=True/angle=True)` calls; passing all three together produces a combined `LRmar_20`
+- `ATRr_14` (default RMA variant, not `ATR_14`)
+- `ZL_EMA_20` (not `ZLMA_20`)
+- `ZS_20` (not `ZSCORE_20`)
+- `VWAP_D` (D for daily anchor, not just `VWAP`)
+- `DMP_14`/`DMN_14` for +DI/−DI (not `PLUSDI_14`)
+- `TRUERANGE_1` (not `TRUERANGE`)
+- PSAR emits 4 columns (`PSARl`, `PSARs`, `PSARaf`, `PSARr`) — only `PSARl` is mapped to `psar` schema col; short-trend days will be NULL. Documented caveat.
+- `linreg_r2_20` schema column actually stores `r` (correlation coefficient), not `r²` — documented caveat, future fix
+
+**Verification evidence**:
+1. Catalog emission test: all 5 asset classes (equity/etf/global/index/mf) show every rename-map key present in pandas-ta output and every schema column present after rename
+2. `test_full_catalog_emits_expected_columns` — Fix 3 at test time, green
+3. `test_mf_catalog_excludes_ohlc_and_volume_indicators` — Fix 13 enforcement, green
+4. `test_index_catalog_excludes_volume_indicators` — Fix 12 enforcement, green
+5. `test_strategy_column_set_is_subset_of_table_schema` — cross-check against SQLAlchemy models for all 5 asset classes, green
+6. `test_rename_map_has_no_duplicate_targets` — catches silent overwrite bugs, green
+7. 389 existing tests still pass (regression clean)
+
+**Next**: IND-C3c (empyrical risk metrics + annualized HV)
+
+---
+
 ## 2026-04-05 — C1-C3: Foundation (scaffold + schema + auth)
 
 **Chunks:** C1 (Project Scaffold), C2 (Database Schema), C3 (API Auth + Middleware)

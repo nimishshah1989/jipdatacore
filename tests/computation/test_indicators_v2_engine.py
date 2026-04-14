@@ -258,8 +258,8 @@ async def test_engine_per_instrument_error_isolation() -> None:
     spec = _make_spec(min_history_days=10)
     iid_bad = uuid.uuid4()
     iid_good = uuid.uuid4()
-    # 250 rows so pandas-ta emits SMA_200 / EMA_200 columns without error
-    good_df = _build_ohlcv_df(250)
+    # 350 rows: enough for ROC_252 (needs 252 rows) + warmup buffer
+    good_df = _build_ohlcv_df(350)
 
     call_count = 0
 
@@ -393,3 +393,167 @@ async def test_engine_emits_sma_ema_columns() -> None:
             assert not isinstance(v, float), (
                 f"Float leaked in upserted row column {k!r}: {v!r}"
             )
+
+
+# ---------------------------------------------------------------------------
+# IND-C3b Tests
+# ---------------------------------------------------------------------------
+
+
+def _build_synthetic_ohlcv(n: int = 400) -> pd.DataFrame:
+    """Return a 400-row OHLCV DataFrame with DatetimeIndex suitable for full catalog."""
+    import numpy as np
+
+    rng = np.random.default_rng(7)
+    close = (100 + rng.normal(0, 1, n).cumsum()).clip(min=10)
+    df = pd.DataFrame(
+        {
+            "open": close + rng.normal(0, 0.3, n),
+            "high": close + np.abs(rng.normal(0.5, 0.3, n)),
+            "low": close - np.abs(rng.normal(0.5, 0.3, n)),
+            "close": close,
+            "volume": rng.integers(1000, 100000, n).astype(float),
+        },
+        index=pd.date_range("2020-01-01", periods=n, freq="B"),
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Test 11: full catalog emits expected schema columns for equity/has_volume=True
+# ---------------------------------------------------------------------------
+
+
+def test_full_catalog_emits_expected_columns() -> None:
+    """400-row equity run: every schema column must be present after rename (Fix 3)."""
+    import pandas_ta_classic as ta  # noqa: F401 — side-effect import
+
+    df = _build_synthetic_ohlcv(400)
+    strategy = load_strategy_for_asset("equity", True)
+    df.ta.strategy(strategy)
+    rename = get_rename_map("equity", True)
+
+    # Keys in rename map that pandas-ta did NOT emit
+    missing_keys = [k for k in rename if k not in df.columns]
+    assert not missing_keys, (
+        f"pandas-ta-classic did not emit these rename-map keys: {missing_keys}"
+    )
+
+    df = df.rename(columns=rename)
+    schema_cols = get_schema_columns("equity", True)
+    missing_schema = schema_cols - set(df.columns)
+    assert not missing_schema, (
+        f"Schema columns missing after rename: {sorted(missing_schema)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 12: MF catalog excludes OHLC and volume indicators
+# ---------------------------------------------------------------------------
+
+
+def test_mf_catalog_excludes_ohlc_and_volume_indicators() -> None:
+    """MF strategy (has_volume=False) must not include any OHLC/volume-dependent columns."""
+    excluded = {
+        "atr_14", "keltner_upper", "donchian_lower", "supertrend_10_3",
+        "psar", "cci_20", "williams_r_14", "ultosc", "aroon_up",
+        "adx_14", "plus_di", "minus_di", "stochastic_k", "stochastic_d",
+        "obv", "ad", "cmf_20", "efi_13", "vwap", "mfi_14",
+    }
+    schema_cols = get_schema_columns("mf", False)
+    present = excluded & schema_cols
+    assert not present, (
+        f"MF strategy must not include OHLC/volume columns, but found: {sorted(present)}"
+    )
+    # Sanity: MF must still have SMA/EMA/RSI/MACD
+    assert "sma_50" in schema_cols
+    assert "rsi_14" in schema_cols
+    assert "macd_line" in schema_cols
+
+
+# ---------------------------------------------------------------------------
+# Test 13: index catalog excludes volume-dependent columns
+# ---------------------------------------------------------------------------
+
+
+def test_index_catalog_excludes_volume_indicators() -> None:
+    """Index strategy (has_volume=False, applies_to=index) must exclude volume columns."""
+    volume_cols = {
+        "obv", "ad", "adosc_3_10", "cmf_20", "efi_13",
+        "eom_14", "kvo", "pvt", "vwap", "mfi_14",
+    }
+    schema_cols = get_schema_columns("index", False)
+    present = volume_cols & schema_cols
+    assert not present, (
+        f"Index strategy must not include volume columns, but found: {sorted(present)}"
+    )
+    # Index still has OHLC indicators
+    assert "atr_14" in schema_cols
+    assert "adx_14" in schema_cols
+    assert "cci_20" in schema_cols
+
+
+# ---------------------------------------------------------------------------
+# Test 14: strategy column set is a subset of the corresponding table schema
+# ---------------------------------------------------------------------------
+
+
+def test_strategy_column_set_is_subset_of_table_schema() -> None:
+    """get_schema_columns must only produce columns that exist in the ORM model (Fix 3)."""
+    from app.models.indicators_v2 import (
+        DeEquityTechnicalDailyV2,
+        DeEtfTechnicalDailyV2,
+        DeGlobalTechnicalDailyV2,
+        DeIndexTechnicalDaily,
+        DeMfTechnicalDaily,
+    )
+
+    _AUDIT = {"created_at", "updated_at"}
+
+    def _model_columns(model: type, pk_cols: set[str]) -> set[str]:
+        return {
+            c.name
+            for c in model.__table__.columns
+            if c.computed is None and c.name not in _AUDIT and c.name not in pk_cols
+        }
+
+    cases = [
+        ("equity", True, DeEquityTechnicalDailyV2, {"date", "instrument_id"}),
+        ("etf", True, DeEtfTechnicalDailyV2, {"date", "ticker"}),
+        ("global", True, DeGlobalTechnicalDailyV2, {"date", "ticker"}),
+        ("index", False, DeIndexTechnicalDaily, {"date", "index_code"}),
+        ("mf", False, DeMfTechnicalDaily, {"nav_date", "mstar_id"}),
+    ]
+
+    for asset_class, has_vol, model, pk_cols in cases:
+        schema_cols = get_schema_columns(asset_class, has_vol)
+        model_cols = _model_columns(model, pk_cols)
+        extras = schema_cols - model_cols
+        assert not extras, (
+            f"[{asset_class}] get_schema_columns returned columns not in {model.__tablename__}: "
+            f"{sorted(extras)}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 15: rename map has no duplicate target schema columns
+# ---------------------------------------------------------------------------
+
+
+def test_rename_map_has_no_duplicate_targets() -> None:
+    """Two pandas-ta keys must not map to the same schema column — silent overwrite risk.
+
+    PSAR is the known exception: PSARl -> psar, PSARs dropped.
+    This test documents that the current map has NO duplicate targets.
+    """
+    for asset_class, has_vol in [
+        ("equity", True), ("etf", True), ("global", True),
+        ("index", False), ("mf", False),
+    ]:
+        rename = get_rename_map(asset_class, has_vol)
+        targets = list(rename.values())
+        unique_targets = set(targets)
+        assert len(targets) == len(unique_targets), (
+            f"[{asset_class}] rename map has duplicate targets: "
+            f"{[t for t in targets if targets.count(t) > 1]}"
+        )

@@ -14,12 +14,29 @@
 #
 # Column name verification (IND-C3a, 2026-04-14):
 #   docker run jip-data-engine:ind-c2 python -c "import pandas_ta_classic as ta; ..."
-#   Confirmed: SMA_5, SMA_10, SMA_20, SMA_50, SMA_100, SMA_200
-#             EMA_5, EMA_10, EMA_20, EMA_50, EMA_100, EMA_200
+#   Confirmed: SMA_5..SMA_200, EMA_5..EMA_200
 #
-# IND-C3b will extend this file with the full ~130-indicator catalog.
+# IND-C3b (2026-04-14): expanded to full ~80-entry catalog.
+#   - HV (hv_20, hv_60, hv_252): NOT mapped here. pandas-ta STDEV_N is raw price std,
+#     not annualized log-return vol. Populated by IND-C3c using empyrical.
+#   - risk_* columns: deferred to IND-C3c (empyrical-based).
+#   - close_adj: populated by the price-snapshot step, not by this catalog.
+#   - PSAR caveat: PSARl_0.02_0.2 maps to psar (long-trend days).
+#     PSARs_0.02_0.2 (short-trend days) is dropped to avoid two keys
+#     mapping to the same schema column. Short-trend days will be NULL in psar.
+#   - linreg_r2_20 caveat: LRr_20 is Pearson r (correlation coefficient),
+#     not r². The schema column is named linreg_r2_20 from migration 008.
+#     We map LRr_20 -> linreg_r2_20 and document that it actually stores r.
+#     Future work: rename schema column to linreg_r_20.
+#   - ZL_EMA_20: pandas-ta-classic emits "ZL_EMA_20" not "ZLMA_20".
+#     Maps to schema column zlma_20.
+#   - ATRr_*: 'r' suffix = RMA smoothing (pandas-ta-classic default).
+#   - KCBe/KCLe/KCUe: 'e' suffix = EMA-based Keltner (pandas-ta-classic default).
 
 indicators:
+
+  # === Overlap / Trend ===
+
   - name: SMA(5)
     kind: sma
     params: { length: 5 }
@@ -101,5 +118,441 @@ indicators:
     kind: ema
     params: { length: 200 }
     output_columns: { "EMA_200": "ema_200" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: DEMA(20)
+    kind: dema
+    params: { length: 20 }
+    output_columns: { "DEMA_20": "dema_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: TEMA(20)
+    kind: tema
+    params: { length: 20 }
+    output_columns: { "TEMA_20": "tema_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: WMA(20)
+    kind: wma
+    params: { length: 20 }
+    output_columns: { "WMA_20": "wma_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: HMA(20)
+    kind: hma
+    params: { length: 20 }
+    output_columns: { "HMA_20": "hma_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: KAMA(20)
+    kind: kama
+    params: { length: 20 }
+    output_columns: { "KAMA_20_2_30": "kama_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: ZLEMA(20)
+    # pandas-ta-classic emits ZL_EMA_20, NOT ZLMA_20
+    kind: zlma
+    params: { length: 20 }
+    output_columns: { "ZL_EMA_20": "zlma_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: ALMA(20)
+    kind: alma
+    params: { length: 20, sigma: 6.0, distribution_offset: 0.85 }
+    output_columns: { "ALMA_20_6.0_0.85": "alma_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: VWAP
+    # Requires volume; excluded for index and mf asset classes.
+    # pandas-ta-classic emits VWAP_D when anchor="D" (default daily anchor).
+    kind: vwap
+    params: { anchor: "D" }
+    output_columns: { "VWAP_D": "vwap" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  # === Momentum ===
+
+  - name: RSI(7)
+    kind: rsi
+    params: { length: 7 }
+    output_columns: { "RSI_7": "rsi_7" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: RSI(9)
+    kind: rsi
+    params: { length: 9 }
+    output_columns: { "RSI_9": "rsi_9" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: RSI(14)
+    kind: rsi
+    params: { length: 14 }
+    output_columns: { "RSI_14": "rsi_14" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: RSI(21)
+    kind: rsi
+    params: { length: 21 }
+    output_columns: { "RSI_21": "rsi_21" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: MACD(12,26,9)
+    kind: macd
+    params: { fast: 12, slow: 26, signal: 9 }
+    output_columns:
+      "MACD_12_26_9":  macd_line
+      "MACDh_12_26_9": macd_histogram
+      "MACDs_12_26_9": macd_signal
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: Stochastic(14,3,3)
+    # Requires OHLC width — excluded from mf (open=high=low=close=nav synthesis)
+    kind: stoch
+    params: { k: 14, d: 3, smooth_k: 3 }
+    output_columns:
+      "STOCHk_14_3_3": stochastic_k
+      "STOCHd_14_3_3": stochastic_d
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: CCI(20)
+    # Requires OHLC width — excluded from mf
+    kind: cci
+    params: { length: 20 }
+    output_columns: { "CCI_20_0.015": "cci_20" }
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: MFI(14)
+    # Requires volume AND OHLC
+    kind: mfi
+    params: { length: 14 }
+    output_columns: { "MFI_14": "mfi_14" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  - name: ROC(5)
+    kind: roc
+    params: { length: 5 }
+    output_columns: { "ROC_5": "roc_5" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: ROC(10)
+    kind: roc
+    params: { length: 10 }
+    output_columns: { "ROC_10": "roc_10" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: ROC(21)
+    kind: roc
+    params: { length: 21 }
+    output_columns: { "ROC_21": "roc_21" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: ROC(63)
+    kind: roc
+    params: { length: 63 }
+    output_columns: { "ROC_63": "roc_63" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: ROC(252)
+    kind: roc
+    params: { length: 252 }
+    output_columns: { "ROC_252": "roc_252" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: TSI(13,25)
+    # TSIs_13_25_13 is the signal line — not in schema, dropped.
+    kind: tsi
+    params: { fast: 13, slow: 25 }
+    output_columns: { "TSI_13_25_13": "tsi_13_25" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: Williams%R(14)
+    # Requires OHLC width — excluded from mf
+    kind: willr
+    params: { length: 14 }
+    output_columns: { "WILLR_14": "williams_r_14" }
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: CMO(14)
+    kind: cmo
+    params: { length: 14 }
+    output_columns: { "CMO_14": "cmo_14" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: TRIX(15)
+    # TRIXs_15_9 is the signal line — not in schema, dropped.
+    kind: trix
+    params: { length: 15, signal: 9 }
+    output_columns: { "TRIX_15_9": "trix_15" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: UltOsc(7,14,28)
+    # Requires OHLC width — excluded from mf
+    kind: uo
+    params: { fast: 7, medium: 14, slow: 28 }
+    output_columns: { "UO_7_14_28": "ultosc" }
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  # === Volatility ===
+
+  - name: BollingerBands(20,2)
+    # BBB = bandwidth, BBP = %B
+    kind: bbands
+    params: { length: 20, std: 2.0 }
+    output_columns:
+      "BBU_20_2.0": bb_upper
+      "BBM_20_2.0": bb_middle
+      "BBL_20_2.0": bb_lower
+      "BBB_20_2.0": bb_width
+      "BBP_20_2.0": bb_pct_b
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: ATR(7)
+    # ATRr = RMA-smoothed ATR (pandas-ta-classic default). Requires OHLC — excluded from mf.
+    kind: atr
+    params: { length: 7 }
+    output_columns: { "ATRr_7": "atr_7" }
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: ATR(14)
+    kind: atr
+    params: { length: 14 }
+    output_columns: { "ATRr_14": "atr_14" }
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: ATR(21)
+    kind: atr
+    params: { length: 21 }
+    output_columns: { "ATRr_21": "atr_21" }
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: NATR(14)
+    # Normalized ATR. Requires OHLC — excluded from mf.
+    kind: natr
+    params: { length: 14 }
+    output_columns: { "NATR_14": "natr_14" }
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: TrueRange
+    # Requires OHLC — excluded from mf.
+    kind: true_range
+    params: {}
+    output_columns: { "TRUERANGE_1": "true_range" }
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: KeltnerChannel(20,2)
+    # 'e' suffix because pandas-ta-classic uses EMA variant by default.
+    # KCBe = middle, KCLe = lower, KCUe = upper.
+    # Note: pandas-ta-classic emits scalar as float: KCUe_20_2.0 (not KCUe_20_2).
+    # Requires OHLC — excluded from mf.
+    kind: kc
+    params: { length: 20, scalar: 2 }
+    output_columns:
+      "KCUe_20_2.0": keltner_upper
+      "KCBe_20_2.0": keltner_middle
+      "KCLe_20_2.0": keltner_lower
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: DonchianChannel(20)
+    # Requires OHLC width — excluded from mf.
+    kind: donchian
+    params: { lower_length: 20, upper_length: 20 }
+    output_columns:
+      "DCU_20_20": donchian_upper
+      "DCM_20_20": donchian_middle
+      "DCL_20_20": donchian_lower
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  # === Volume ===
+
+  - name: OBV
+    kind: obv
+    params: {}
+    output_columns: { "OBV": "obv" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  - name: AD
+    kind: ad
+    params: {}
+    output_columns: { "AD": "ad" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  - name: ADOSC(3,10)
+    kind: adosc
+    params: { fast: 3, slow: 10 }
+    output_columns: { "ADOSC_3_10": "adosc_3_10" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  - name: CMF(20)
+    kind: cmf
+    params: { length: 20 }
+    output_columns: { "CMF_20": "cmf_20" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  - name: EFI(13)
+    kind: efi
+    params: { length: 13 }
+    output_columns: { "EFI_13": "efi_13" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  - name: EOM(14)
+    kind: eom
+    params: { length: 14 }
+    output_columns: { "EOM_14_100000000": "eom_14" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  - name: KVO(34,55,13)
+    # KVOs_34_55_13 is the signal line — not in schema, dropped.
+    kind: kvo
+    params: { fast: 34, slow: 55, signal: 13 }
+    output_columns: { "KVO_34_55_13": "kvo" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  - name: PVT
+    kind: pvt
+    params: {}
+    output_columns: { "PVT": "pvt" }
+    applies_to: [equity, etf, global]
+    requires_volume: true
+
+  # === Trend Strength ===
+
+  - name: ADX(14)
+    # ADX + DMP (plus_di) + DMN (minus_di) in one call.
+    # Requires OHLC width — excluded from mf.
+    kind: adx
+    params: { length: 14 }
+    output_columns:
+      "ADX_14":  adx_14
+      "DMP_14":  plus_di
+      "DMN_14":  minus_di
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: Aroon(14)
+    # Requires OHLC (high/low) — excluded from mf.
+    kind: aroon
+    params: { length: 14 }
+    output_columns:
+      "AROONU_14":   aroon_up
+      "AROOND_14":   aroon_down
+      "AROONOSC_14": aroon_osc
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: Supertrend(10,3)
+    # SUPERTd = direction (SMALLINT). SUPERTl/SUPERTs = long/short bands — dropped.
+    # Requires OHLC — excluded from mf.
+    kind: supertrend
+    params: { length: 10, multiplier: 3.0 }
+    output_columns:
+      "SUPERT_10_3.0":  supertrend_10_3
+      "SUPERTd_10_3.0": supertrend_direction
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  - name: PSAR(0.02,0.2)
+    # PSARl = long-trend values, PSARs = short-trend values (mutually exclusive per row).
+    # Only PSARl is mapped to psar — short-trend days will be NULL in psar column.
+    # PSARaf (acceleration factor) and PSARr (reversal signal) are dropped.
+    # Requires OHLC — excluded from mf.
+    kind: psar
+    params: { af0: 0.02, af: 0.02, max_af: 0.2 }
+    output_columns:
+      "PSARl_0.02_0.2": psar
+    applies_to: [equity, etf, index, global]
+    requires_volume: false
+
+  # === Statistics ===
+
+  - name: ZScore(20)
+    # pandas-ta-classic emits ZS_20, not ZSCORE_20
+    kind: zscore
+    params: { length: 20 }
+    output_columns: { "ZS_20": "zscore_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: LinReg slope(20)
+    # pandas-ta-classic emits each linreg output separately depending on params.
+    # slope=True emits LRm_20 (not combined with r/angle).
+    kind: linreg
+    params: { length: 20, slope: true }
+    output_columns:
+      "LRm_20": linreg_slope_20
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: LinReg r(20)
+    # r=True emits LRr_20 (Pearson r, stored in linreg_r2_20 column — see header caveat).
+    kind: linreg
+    params: { length: 20, r: true }
+    output_columns:
+      "LRr_20": linreg_r2_20
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: LinReg angle(20)
+    # angle=True emits LRa_20.
+    kind: linreg
+    params: { length: 20, angle: true }
+    output_columns:
+      "LRa_20": linreg_angle_20
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: Skew(20)
+    kind: skew
+    params: { length: 20 }
+    output_columns: { "SKEW_20": "skew_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: Kurtosis(20)
+    kind: kurtosis
+    params: { length: 20 }
+    output_columns: { "KURT_20": "kurt_20" }
     applies_to: [equity, etf, index, mf, global]
     requires_volume: false
