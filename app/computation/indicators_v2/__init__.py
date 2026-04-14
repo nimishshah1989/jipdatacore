@@ -20,3 +20,20 @@ are computed via empyrical-reloaded and land in the same tables under
 
 See ``docs/specs/indicators-prd.md`` and ``docs/specs/indicators-review-fixes.md``.
 """
+
+from app.computation.indicators_v2.engine import CompResult, compute_indicators
+from app.computation.indicators_v2.spec import AssetSpec
+from app.computation.indicators_v2.strategy_loader import (
+    get_rename_map,
+    get_schema_columns,
+    load_strategy_for_asset,
+)
+
+__all__ = [
+    "AssetSpec",
+    "CompResult",
+    "compute_indicators",
+    "get_rename_map",
+    "get_schema_columns",
+    "load_strategy_for_asset",
+]

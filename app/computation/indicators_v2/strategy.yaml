@@ -1,0 +1,105 @@
+# Technical indicator catalog for the indicators v2 engine.
+# Each entry describes one pandas-ta-classic indicator to compute.
+#
+# Fields:
+#   name:           human-readable label
+#   kind:           pandas-ta-classic function name (e.g. "sma", "ema")
+#   params:         kwargs passed to the pandas-ta-classic function
+#   output_columns: map of pandas-ta emitted column name -> schema column name (Fix 3)
+#                   Keys verified against pandas-ta-classic==0.4.47 output exactly.
+#   applies_to:     list of asset classes this indicator runs on
+#   requires_volume: bool — skipped for assets where AssetSpec.volume_col is None
+#
+# Supported asset classes: equity, etf, index, mf, global
+#
+# Column name verification (IND-C3a, 2026-04-14):
+#   docker run jip-data-engine:ind-c2 python -c "import pandas_ta_classic as ta; ..."
+#   Confirmed: SMA_5, SMA_10, SMA_20, SMA_50, SMA_100, SMA_200
+#             EMA_5, EMA_10, EMA_20, EMA_50, EMA_100, EMA_200
+#
+# IND-C3b will extend this file with the full ~130-indicator catalog.
+
+indicators:
+  - name: SMA(5)
+    kind: sma
+    params: { length: 5 }
+    output_columns: { "SMA_5": "sma_5" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: SMA(10)
+    kind: sma
+    params: { length: 10 }
+    output_columns: { "SMA_10": "sma_10" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: SMA(20)
+    kind: sma
+    params: { length: 20 }
+    output_columns: { "SMA_20": "sma_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: SMA(50)
+    kind: sma
+    params: { length: 50 }
+    output_columns: { "SMA_50": "sma_50" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: SMA(100)
+    kind: sma
+    params: { length: 100 }
+    output_columns: { "SMA_100": "sma_100" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: SMA(200)
+    kind: sma
+    params: { length: 200 }
+    output_columns: { "SMA_200": "sma_200" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: EMA(5)
+    kind: ema
+    params: { length: 5 }
+    output_columns: { "EMA_5": "ema_5" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: EMA(10)
+    kind: ema
+    params: { length: 10 }
+    output_columns: { "EMA_10": "ema_10" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: EMA(20)
+    kind: ema
+    params: { length: 20 }
+    output_columns: { "EMA_20": "ema_20" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: EMA(50)
+    kind: ema
+    params: { length: 50 }
+    output_columns: { "EMA_50": "ema_50" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: EMA(100)
+    kind: ema
+    params: { length: 100 }
+    output_columns: { "EMA_100": "ema_100" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false
+
+  - name: EMA(200)
+    kind: ema
+    params: { length: 200 }
+    output_columns: { "EMA_200": "ema_200" }
+    applies_to: [equity, etf, index, mf, global]
+    requires_volume: false

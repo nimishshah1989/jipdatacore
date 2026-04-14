@@ -58,6 +58,38 @@
 
 ---
 
+## 2026-04-14 — IND-C3a: Indicators overhaul — engine skeleton (SMA/EMA only)
+
+**Build**: indicators-overhaul (sub-chunk 3a of 3a/3b/3c split per Fix 2)
+**Files created**:
+- `app/computation/indicators_v2/spec.py` — frozen `AssetSpec` dataclass
+- `app/computation/indicators_v2/strategy.yaml` — 12 entries (SMA/EMA 5/10/20/50/100/200)
+- `app/computation/indicators_v2/strategy_loader.py` — `load_strategy_for_asset`, `get_rename_map`, `get_schema_columns` (lru_cached)
+- `app/computation/indicators_v2/engine.py` — `compute_indicators`, `CompResult`, `_to_decimal_row`, `_upsert_batch` with tenacity retry
+- `tests/computation/test_indicators_v2_engine.py` — 10 unit tests
+
+**Files modified**:
+- `pyproject.toml` — `pyyaml>=6.0` added (linter then auto-formatted)
+- `app/computation/indicators_v2/__init__.py` — 6 exports
+
+**Binding fixes implemented**:
+- **Fix 3** (pandas-ta → schema column rename): `strategy.yaml` carries `output_columns` maps; engine applies `df.rename(columns=rename_map)` after `df.ta.strategy(strategy)`; asserts every expected schema column is present post-rename
+- **Fix 4** (NaN write policy): `_to_decimal_row` converts NaN → None per column; rows are never skipped on individual NaNs; entire instruments skipped only when `len(df) < spec.min_history_days`
+- **Fix 5** (Decimal boundary): one `_to_decimal_row` call per row; its output dict is used for both INSERT VALUES and ON CONFLICT UPDATE SET (built from the same `non_pk` column list, filtering out `c.computed is not None` to exclude GENERATED columns)
+- **Fix 6** (row-position semantics): `assert df.index.is_monotonic_increasing` before strategy runs; engine does NOT reindex calendar gaps (documented in module docstring)
+- **Fix 15** (RDS retry): `_execute_upsert_with_retry` wraps `session.execute(stmt)` with `tenacity.retry(stop_after_attempt(3), wait_exponential(min=2, max=30), retry_if_exception_type((OperationalError, InterfaceError)))`
+
+**Verification evidence**:
+1. pandas-ta-classic 0.4.47 emits exactly `SMA_5`, `SMA_10`, ..., `EMA_200` — matches strategy.yaml `output_columns` keys byte-for-byte
+2. Engine import test green: `load_strategy_for_asset("equity", True)` returns Strategy with 12 indicators
+3. 10/10 new unit tests pass (`test_indicators_v2_engine.py`):
+   - lru_cache correctness, rename map correctness, NaN→None, float→Decimal quantization (0.0001), no-floats-leak assertion (every upsert value is Decimal/None/int/bool/date/datetime, never float), insufficient-history skip, per-instrument error isolation, monotonic-date assertion, end-to-end SMA/EMA columns
+4. Regression: 384 existing computation tests still pass (57 deselected = pre-existing stale tests)
+
+**Next**: IND-C3b (full strategy.yaml catalog + pandas-ta wiring — ~130 indicators)
+
+---
+
 ## 2026-04-05 — C1-C3: Foundation (scaffold + schema + auth)
 
 **Chunks:** C1 (Project Scaffold), C2 (Database Schema), C3 (API Auth + Middleware)
