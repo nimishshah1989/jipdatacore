@@ -75,13 +75,25 @@ _INT_COLUMNS: frozenset[str] = frozenset({"obv", "ad", "pvt"})
 _INT64_MAX = 9223372036854775807
 _INT64_MIN = -9223372036854775808
 
-# Conservative clamp for Decimal columns: the tightest precision in the v2
-# schema is Numeric(10,4), which maxes out at 999,999.9999. Indian equity
-# prices cap at ~400,000 INR so even Numeric(18,4) price columns stay well
-# under this in practice. Degenerate risk-metric values (e.g., skew/kurtosis
-# on a synthetic constant series) can overflow without bounds. Clamp to
-# abs < 1e6 and NULL overflows so one bad row doesn't abort the chunk.
+# Fallback clamp for Decimal columns without explicit precision metadata.
 _DECIMAL_ABS_MAX = Decimal("999999.9999")
+
+
+def _build_column_limits(model: Any) -> dict[str, Decimal]:
+    """Build per-column max absolute value from SQLAlchemy Numeric(precision, scale).
+
+    Numeric(p, s) holds values up to 10^(p-s) - 10^(-s).
+    E.g. Numeric(8,4) → 9999.9999, Numeric(10,4) → 999999.9999.
+    """
+    limits: dict[str, Decimal] = {}
+    for col in model.__table__.columns:
+        col_type = getattr(col.type, "impl", col.type) if hasattr(col.type, "impl") else col.type
+        precision = getattr(col_type, "precision", None)
+        scale = getattr(col_type, "scale", None)
+        if isinstance(precision, int) and isinstance(scale, int) and precision > 0:
+            int_digits = precision - scale
+            limits[col.name] = Decimal(10) ** int_digits - Decimal(10) ** (-scale)
+    return limits
 
 
 @dataclass
@@ -104,21 +116,25 @@ def _to_decimal_row(
     date_col: str,
     id_value: Any,
     date_value: date,
+    column_limits: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
     """Convert one pandas row + metadata into a DB-ready dict.
 
     - Float / int / np.float64 → Decimal quantized to 0.0001, or None if NaN
     - Only columns in ``schema_columns`` plus id + date are included
     - Fix 5: this dict is used for BOTH INSERT VALUES and ON CONFLICT UPDATE SET
+    - Per-column precision clamp: uses column_limits when available,
+      falls back to _DECIMAL_ABS_MAX
     """
     out: dict[str, Any] = {id_col: id_value, date_col: date_value}
+    _limits = column_limits or {}
     for col in schema_columns:
         raw = row.get(col)
         is_int_col = col in _INT_COLUMNS
+        col_max = _limits.get(col, _DECIMAL_ABS_MAX)
         if raw is None:
             out[col] = None
         elif isinstance(raw, bool):
-            # bool must come before int check (bool is subclass of int)
             out[col] = raw
         elif isinstance(raw, int):
             out[col] = raw
@@ -131,12 +147,10 @@ def _to_decimal_row(
             else:
                 try:
                     dec = Decimal(str(raw)).quantize(_Q)
-                    # Clamp to tightest Numeric(10,4) range — overflow → NULL
-                    out[col] = dec if abs(dec) <= _DECIMAL_ABS_MAX else None
+                    out[col] = dec if abs(dec) <= col_max else None
                 except Exception:
                     out[col] = None
         else:
-            # numpy scalar or other numeric type — go through str(float()) path
             try:
                 fval = float(raw)
                 if math.isnan(fval) or math.isinf(fval):
@@ -146,7 +160,7 @@ def _to_decimal_row(
                     out[col] = ival if _INT64_MIN <= ival <= _INT64_MAX else None
                 else:
                     dec = Decimal(str(fval)).quantize(_Q)
-                    out[col] = dec if abs(dec) <= _DECIMAL_ABS_MAX else None
+                    out[col] = dec if abs(dec) <= col_max else None
             except Exception:
                 out[col] = None
     return out
@@ -401,6 +415,7 @@ async def compute_indicators(
     strategy = load_strategy_for_asset(spec.asset_class_name, has_volume)
     rename_map = get_rename_map(spec.asset_class_name, has_volume)
     schema_cols = get_schema_columns(spec.asset_class_name, has_volume)
+    column_limits = _build_column_limits(spec.output_model)
 
     result = CompResult(asset_class=spec.asset_class_name)
     buffer: list[dict[str, Any]] = []
@@ -497,6 +512,7 @@ async def compute_indicators(
                     date_col=spec.date_column,
                     id_value=iid,
                     date_value=idx.date() if hasattr(idx, "date") else idx,
+                    column_limits=column_limits,
                 )
                 buffer.append(db_row)
 

@@ -18,6 +18,7 @@ import pytest
 
 from app.computation.indicators_v2.engine import (
     CompResult,
+    _build_column_limits,
     _to_decimal_row,
     compute_indicators,
 )
@@ -855,3 +856,81 @@ def test_vectorized_risk_metrics_finish_under_5_seconds() -> None:
     assert risk_df["sharpe_1y"].notna().any()
     assert risk_df["calmar_ratio"].notna().any()
     assert risk_df["risk_omega"].notna().any()
+
+
+# ---------------------------------------------------------------------------
+# Test 24: per-column precision clamp (GAP-04)
+# ---------------------------------------------------------------------------
+
+
+def test_to_decimal_row_per_column_precision_clamp() -> None:
+    """Values exceeding Numeric(8,4) max (9999.9999) must be NULLed even if
+    they fit within the old global clamp of 999999.9999.
+    """
+    column_limits = {
+        "rsi_14": Decimal("9999.9999"),       # Numeric(8,4)
+        "cci_20": Decimal("999999.9999"),      # Numeric(10,4)
+        "sma_50": Decimal("99999999999999.9999"),  # Numeric(18,4)
+    }
+    schema_cols = {"rsi_14", "cci_20", "sma_50"}
+
+    row = {
+        "rsi_14": 50000.0,   # exceeds Numeric(8,4) max of 9999.9999
+        "cci_20": 50000.0,   # fits Numeric(10,4)
+        "sma_50": 50000.0,   # fits Numeric(18,4)
+    }
+    result = _to_decimal_row(
+        row,
+        schema_cols,
+        id_col="instrument_id",
+        date_col="date",
+        id_value="TEST",
+        date_value=date(2024, 1, 1),
+        column_limits=column_limits,
+    )
+    assert result["rsi_14"] is None, (
+        f"rsi_14=50000 should overflow Numeric(8,4), got {result['rsi_14']}"
+    )
+    assert result["cci_20"] == Decimal("50000.0000"), (
+        f"cci_20=50000 fits Numeric(10,4), got {result['cci_20']}"
+    )
+    assert result["sma_50"] == Decimal("50000.0000"), (
+        f"sma_50=50000 fits Numeric(18,4), got {result['sma_50']}"
+    )
+
+
+def test_to_decimal_row_numpy_scalar_per_column_clamp() -> None:
+    """numpy float64 values must also respect per-column limits."""
+    import numpy as np
+
+    column_limits = {
+        "bollinger_width": Decimal("9999.9999"),  # Numeric(8,4)
+    }
+    schema_cols = {"bollinger_width"}
+
+    row = {"bollinger_width": np.float64(15000.0)}
+    result = _to_decimal_row(
+        row,
+        schema_cols,
+        id_col="instrument_id",
+        date_col="date",
+        id_value="TEST",
+        date_value=date(2024, 1, 1),
+        column_limits=column_limits,
+    )
+    assert result["bollinger_width"] is None, (
+        f"bollinger_width=15000 should overflow Numeric(8,4), got {result['bollinger_width']}"
+    )
+
+
+def test_build_column_limits_from_model() -> None:
+    """_build_column_limits must extract correct max values from SQLAlchemy model."""
+    from app.models.indicators_v2 import DeIndexTechnicalDaily
+
+    limits = _build_column_limits(DeIndexTechnicalDaily)
+
+    assert limits["rsi_14"] == Decimal("9999.9999"), f"Numeric(8,4) → 9999.9999, got {limits['rsi_14']}"
+    assert limits["cci_20"] == Decimal("999999.9999"), f"Numeric(10,4) → 999999.9999, got {limits['cci_20']}"
+    assert limits["close_adj"] == Decimal("99999999999999.9999"), (
+        f"Numeric(18,4) → 99999999999999.9999, got {limits['close_adj']}"
+    )
