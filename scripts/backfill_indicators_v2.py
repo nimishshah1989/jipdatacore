@@ -34,7 +34,7 @@ REPORTS_DIR = pathlib.Path("reports")
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--asset", required=True, choices=["equity", "etf", "global", "index"], help="Asset class")
+    p.add_argument("--asset", required=True, choices=["equity", "etf", "global", "index", "mf"], help="Asset class")
     p.add_argument("--from", dest="from_date", type=date.fromisoformat, default=None)
     p.add_argument("--to", dest="to_date", type=date.fromisoformat, default=None)
     p.add_argument(
@@ -269,6 +269,20 @@ async def run_index_backfill(args):
     )
 
 
+async def run_mf_backfill(args):
+    from app.computation.indicators_v2.assets.mf import (
+        compute_mf_indicators,
+        load_eligible_mf_ids,
+    )
+
+    async def compute(session, ids, **kw):
+        return await compute_mf_indicators(session, mstar_ids=ids, **kw)
+
+    return await _run_generic_backfill(
+        args, "mf", load_eligible_mf_ids, compute, id_cast=str
+    )
+
+
 def main() -> int:
     args = parse_args()
     if args.asset == "equity":
@@ -279,6 +293,8 @@ def main() -> int:
         return asyncio.run(run_global_backfill(args))
     if args.asset == "index":
         return asyncio.run(run_index_backfill(args))
+    if args.asset == "mf":
+        return asyncio.run(run_mf_backfill(args))
     raise NotImplementedError(f"asset={args.asset} not wired yet")
 
 
