@@ -26,6 +26,9 @@ LOG_DIR=/home/ubuntu/jip-data-engine/logs
 # job picks them up before nightly compute runs.
 0 17 * * 1-5  $WRAPPER amfi_late >> $LOG_DIR/amfi_late_cron.log 2>&1
 
+# BSE filings: announcements + corp actions + result calendar (IST 01:30 = UTC 20:00)
+0 20 * * 1-5  $WRAPPER bse_filings_daily >> $LOG_DIR/bse_filings_cron.log 2>&1
+
 # Nightly compute (IST 00:30 NEXT DAY = UTC 19:00, after AMFI late catch-up)
 0 19 * * 1-5  $WRAPPER nightly_compute >> $LOG_DIR/nightly_compute_cron.log 2>&1
 

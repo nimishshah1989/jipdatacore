@@ -58,6 +58,8 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     # Qualitative
     "qualitative_rss": ("app.pipelines.qualitative.rss", "RssPipeline"),
     "qualitative_goldilocks": ("app.pipelines.qualitative.playwright_goldilocks", "GoldilocksScraperPipeline"),
+    # BSE
+    "bse_filings": ("app.pipelines.bse.filings", "BseFilingsPipeline"),
 }
 
 # ---------------------------------------------------------------------------
@@ -86,6 +88,7 @@ DAG_ALIAS: dict[str, str] = {
     "nse_etf_sync": "nse_etf_sync",
     "etf_prices": "etf_prices",
     "compute_indicators_v2": "compute_indicators_v2",
+    "bse_filings": "bse_filings",
 }
 
 # Reverse map: pipeline_name → DAG alias (for lookups going the other direction)
@@ -124,6 +127,7 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "morningstar_weekly": ["morningstar_nav"],
     "fundamentals_weekly": ["equity_fundamentals"],
     "holdings_monthly": ["morningstar_portfolio", "mf_category_flows"],
+    "bse_filings_daily": ["bse_filings"],
     "reconciliation": ["__reconciliation__"],
     "full_rs_rebuild": ["relative_strength"],
     # Nightly: validate → compute everything → goldilocks scrape

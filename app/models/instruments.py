@@ -34,6 +34,7 @@ class DeInstrument(Base):
     nifty_500: Mapped[bool] = mapped_column(sa.Boolean, default=False, nullable=False)
     listing_date: Mapped[Optional[date]] = mapped_column(sa.Date, nullable=True)
     bse_symbol: Mapped[Optional[str]] = mapped_column(sa.String(50), nullable=True)
+    bse_scripcode: Mapped[Optional[str]] = mapped_column(sa.String(20), nullable=True, unique=True)
     is_active: Mapped[bool] = mapped_column(sa.Boolean, default=True, nullable=False)
     is_suspended: Mapped[bool] = mapped_column(sa.Boolean, default=False, nullable=False)
     suspended_from: Mapped[Optional[date]] = mapped_column(sa.Date, nullable=True)

@@ -77,6 +77,11 @@ from app.models.champion import DeChampionTrades  # noqa: F401
 from app.models.fundamentals import DeEquityFundamentals  # noqa: F401
 from app.models.holdings import DeMfHoldings  # noqa: F401
 from app.models.mf_derived import DeMfDerivedDaily  # noqa: F401
+from app.models.bse import (  # noqa: F401
+    DeBseAnnouncements,
+    DeBseCorpActions,
+    DeBseResultCalendar,
+)
 from app.models.indicators_v2 import (  # noqa: F401
     DeEquityTechnicalDailyV2,
     DeEtfTechnicalDailyV2,
@@ -165,4 +170,8 @@ __all__ = [
     "DeGlobalTechnicalDailyV2",
     "DeIndexTechnicalDaily",
     "DeMfTechnicalDaily",
+    # bse
+    "DeBseAnnouncements",
+    "DeBseCorpActions",
+    "DeBseResultCalendar",
 ]
