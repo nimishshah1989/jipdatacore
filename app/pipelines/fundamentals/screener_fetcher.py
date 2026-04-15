@@ -7,6 +7,7 @@ Rate limit: ~1 request per 1.2 seconds (free tier).
 
 import re
 from calendar import monthrange
+from datetime import date as date_type
 from typing import Optional
 
 import httpx
@@ -302,6 +303,121 @@ def extract_balance_sheet_latest(html: str) -> dict:
         result["debt_to_equity"] = round(borrowings / net_worth, 4)
 
     return result
+
+
+_PL_ROW_MAP = {
+    "Sales": "revenue_cr",
+    "Revenue": "revenue_cr",
+    "Expenses": "expenses_cr",
+    "Operating Profit": "operating_profit_cr",
+    "OPM %": "opm_pct",
+    "Other Income": "other_income_cr",
+    "Interest": "interest_cr",
+    "Depreciation": "depreciation_cr",
+    "Profit before tax": "profit_before_tax_cr",
+    "Tax %": "tax_pct",
+    "Net Profit": "net_profit_cr",
+    "EPS in Rs": "eps",
+}
+
+_BS_ROW_MAP = {
+    "Equity Capital": "equity_capital_cr",
+    "Reserves": "reserves_cr",
+    "Borrowings": "borrowings_cr",
+    "Other Liabilities": "other_liabilities_cr",
+    "Fixed Assets": "fixed_assets_cr",
+    "CWIP": "cwip_cr",
+    "Investments": "investments_cr",
+    "Other Assets": "other_assets_cr",
+    "Total Assets": "total_assets_cr",
+}
+
+_CF_ROW_MAP = {
+    "Cash from Operating Activity": "cfo_cr",
+    "Cash from Investing Activity": "cfi_cr",
+    "Cash from Financing Activity": "cff_cr",
+}
+
+
+def _extract_history_section(
+    html: str,
+    section_name: str,
+    row_map: dict[str, str],
+    period_type: str,
+) -> list[dict]:
+    """Parse a screener history table into a list of per-period dicts."""
+    table_html = _find_section_table(html, section_name)
+    if not table_html:
+        return []
+
+    data = _parse_html_table(table_html)
+    headers = data["headers"]
+    if len(headers) < 2:
+        return []
+
+    period_dates: list[tuple[int, date_type]] = []
+    for i, h in enumerate(headers):
+        if i == 0:
+            continue
+        d = parse_screener_date(h)
+        if d:
+            period_dates.append((i, date_type.fromisoformat(d)))
+
+    if not period_dates:
+        return []
+
+    rows_by_date: dict[date_type, dict] = {}
+    for col_idx, dt in period_dates:
+        rows_by_date.setdefault(dt, {
+            "fiscal_period_end": dt,
+            "period_type": period_type,
+        })
+
+    for row_name, values in data["rows"].items():
+        field = row_map.get(row_name)
+        if not field:
+            continue
+        for col_idx, dt in period_dates:
+            adj = col_idx - 1
+            if 0 <= adj < len(values):
+                rows_by_date[dt][field] = safe_float(values[adj])
+
+    return list(rows_by_date.values())
+
+
+def extract_fundamentals_history(html: str) -> list[dict]:
+    """Extract all historical fundamentals rows from a screener company page.
+
+    Returns a list of dicts, each representing one period (annual or quarterly)
+    with P&L, balance sheet, and cash flow fields merged.
+    """
+    annual_pl = _extract_history_section(html, "profit_loss", _PL_ROW_MAP, "annual")
+    quarterly_pl = _extract_history_section(html, "quarters", _PL_ROW_MAP, "quarterly")
+
+    bs_rows = _extract_history_section(html, "balance_sheet", _BS_ROW_MAP, "annual")
+    cf_rows = _extract_history_section(html, "cash_flow", _CF_ROW_MAP, "annual")
+
+    annual_by_date: dict[date_type, dict] = {}
+    for row in annual_pl:
+        annual_by_date[row["fiscal_period_end"]] = row
+    for row in bs_rows:
+        key = row["fiscal_period_end"]
+        if key in annual_by_date:
+            annual_by_date[key].update(
+                {k: v for k, v in row.items() if k not in ("fiscal_period_end", "period_type")}
+            )
+        else:
+            annual_by_date[key] = row
+    for row in cf_rows:
+        key = row["fiscal_period_end"]
+        if key in annual_by_date:
+            annual_by_date[key].update(
+                {k: v for k, v in row.items() if k not in ("fiscal_period_end", "period_type")}
+            )
+        else:
+            annual_by_date[key] = row
+
+    return list(annual_by_date.values()) + quarterly_pl
 
 
 def build_http_client(session_cookie: str) -> httpx.AsyncClient:

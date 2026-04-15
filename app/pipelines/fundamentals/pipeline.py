@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logging import get_logger
 from app.models.fundamentals import DeEquityFundamentals
+from app.models.fundamentals_history import DeEquityFundamentalsHistory
 from app.models.instruments import DeInstrument
 from app.models.pipeline import DePipelineLog
 from app.pipelines.framework import BasePipeline, ExecutionResult
@@ -22,6 +23,7 @@ from app.pipelines.fundamentals.screener_enricher import parse_screener_html
 from app.pipelines.fundamentals.screener_fetcher import (
     build_http_client,
     extract_balance_sheet_latest,
+    extract_fundamentals_history,
     extract_pl_growth,
     extract_shareholding,
     fetch_company_html,
@@ -98,6 +100,7 @@ class FundamentalsPipeline(BasePipeline):
                         rows_ok += 1
                     else:
                         rows_fail += 1
+                    await self._ingest_history(session, instrument_id, html)
                 except Exception as e:
                     logger.debug("fundamentals_store_failed", symbol=symbol, error=str(e)[:100])
                     rows_fail += 1
@@ -180,3 +183,29 @@ class FundamentalsPipeline(BasePipeline):
             set_=update_cols,
         )
         await session.execute(stmt)
+
+    async def _ingest_history(
+        self, session: AsyncSession, instrument_id: uuid.UUID, html: str,
+    ) -> None:
+        history_rows = extract_fundamentals_history(html)
+        if not history_rows:
+            return
+        async with session.begin_nested():
+            for row in history_rows:
+                row["instrument_id"] = instrument_id
+                for field in list(row.keys()):
+                    if field in ("instrument_id", "fiscal_period_end", "period_type", "source"):
+                        continue
+                    row[field] = _to_decimal(row.get(field), 4 if field in ("opm_pct", "tax_pct", "eps") else 2)
+                row["source"] = "screener"
+                stmt = pg_insert(DeEquityFundamentalsHistory).values(**row)
+                update_cols = {
+                    c: stmt.excluded[c]
+                    for c in row
+                    if c not in ("instrument_id", "fiscal_period_end", "period_type", "created_at")
+                }
+                stmt = stmt.on_conflict_do_update(
+                    constraint=DeEquityFundamentalsHistory.__table__.primary_key,
+                    set_=update_cols,
+                )
+                await session.execute(stmt)
