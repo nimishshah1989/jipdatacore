@@ -2,10 +2,11 @@
 
 Called by the nightly compute pipeline. Computes a small date window
 (default: last 5 business days to cover weekends/holidays and catch any
-retroactive NAV corrections) for every asset class except MF.
+retroactive NAV corrections) for every asset class.
 
-MF is deferred — depends on IND-C9 (purchase_mode bootstrap) which is
-blocked on the Morningstar client being broken. Filed as P1 follow-up.
+GAP-14: MF is now included — GAP-01 bootstrapped purchase_mode, GAP-14
+relaxed min_history to 20 days so young funds still get short-window
+indicators.
 
 The full historical backfill is handled by scripts/backfill_indicators_v2.py;
 this runner is for the cron path only.
@@ -22,6 +23,7 @@ from app.computation.indicators_v2.assets.equity import compute_equity_indicator
 from app.computation.indicators_v2.assets.etf import compute_etf_indicators
 from app.computation.indicators_v2.assets.global_ import compute_global_indicators
 from app.computation.indicators_v2.assets.index_ import compute_index_indicators
+from app.computation.indicators_v2.assets.mf import compute_mf_indicators
 from app.computation.indicators_v2.engine import CompResult
 from app.logging import get_logger
 
@@ -65,7 +67,7 @@ async def run_indicators_v2_pipeline(
     (partial success preferred over total failure). Returns a report the
     caller can record to de_pipeline_log / de_cron_run.
 
-    MF is intentionally NOT included — blocked on purchase_mode fetch.
+    All 5 asset classes (equity/index/etf/global/mf) run.
     """
     from_date = business_date - timedelta(days=lookback_days)
     to_date = business_date
@@ -85,6 +87,7 @@ async def run_indicators_v2_pipeline(
         ("index", compute_index_indicators),
         ("etf", compute_etf_indicators),
         ("global", compute_global_indicators),
+        ("mf", compute_mf_indicators),
     ]
 
     for asset_name, compute_fn in asset_steps:

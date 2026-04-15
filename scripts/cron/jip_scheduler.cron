@@ -60,6 +60,11 @@ LOG_DIR=/home/ubuntu/jip-data-engine/logs
 # Morningstar fund master refresh (IST 04:00 Sunday = UTC 22:30 Saturday)
 30 22 * * 6   $WRAPPER morningstar_weekly >> $LOG_DIR/morningstar_cron.log 2>&1
 
+# GAP-08: Equity fundamentals via screener.in (IST 05:00 Sunday = UTC 23:30 Saturday)
+# Rate-limited at 1 req/1.2s → ~45 min for 2,200 stocks. Requires
+# SCREENER_SESSION_COOKIE in .env.
+30 23 * * 6   $WRAPPER fundamentals_weekly >> $LOG_DIR/fundamentals_cron.log 2>&1
+
 # ============================================================
 # MONTHLY (1st of month)
 # ============================================================
