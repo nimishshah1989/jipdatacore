@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logging import get_logger
-from app.models.computed import DeRsScores
+from app.models.computed import DeRsDailySummary, DeRsScores
 
 logger = get_logger(__name__)
 
@@ -338,6 +338,91 @@ async def compute_rs_scores(
 
     logger.info(
         "rs_scores_compute_complete",
+        business_date=business_date.isoformat(),
+        rows_upserted=total_upserted,
+    )
+
+    return total_upserted
+
+
+async def populate_rs_daily_summary(
+    session: AsyncSession,
+    business_date: date,
+) -> int:
+    """Populate de_rs_daily_summary from de_rs_scores JOIN de_instrument (Step 13).
+
+    Args:
+        session: Async DB session.
+        business_date: Date for which to populate summary.
+
+    Returns:
+        Number of rows upserted.
+    """
+    logger.info(
+        "rs_daily_summary_start",
+        business_date=business_date.isoformat(),
+    )
+
+    select_stmt = sa.text("""
+        SELECT
+            s.date,
+            s.entity_id::uuid AS instrument_id,
+            i.current_symbol AS symbol,
+            i.sector,
+            s.vs_benchmark,
+            s.rs_composite,
+            s.rs_1m,
+            s.rs_3m
+        FROM de_rs_scores s
+        JOIN de_instrument i ON i.id = s.entity_id::uuid
+        WHERE s.date = :bdate AND s.entity_type = 'equity'
+    """)
+
+    rows = (await session.execute(select_stmt, {"bdate": business_date})).fetchall()
+
+    if not rows:
+        logger.warning(
+            "rs_daily_summary_no_data",
+            business_date=business_date.isoformat(),
+        )
+        return 0
+
+    batch_size = 1000
+    total_upserted = 0
+
+    for offset in range(0, len(rows), batch_size):
+        batch = [
+            {
+                "date": r.date,
+                "instrument_id": r.instrument_id,
+                "symbol": r.symbol,
+                "sector": r.sector,
+                "vs_benchmark": r.vs_benchmark,
+                "rs_composite": r.rs_composite,
+                "rs_1m": r.rs_1m,
+                "rs_3m": r.rs_3m,
+            }
+            for r in rows[offset : offset + batch_size]
+        ]
+        stmt = pg_insert(DeRsDailySummary).values(batch)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["date", "instrument_id", "vs_benchmark"],
+            set_={
+                "symbol": stmt.excluded.symbol,
+                "sector": stmt.excluded.sector,
+                "rs_composite": stmt.excluded.rs_composite,
+                "rs_1m": stmt.excluded.rs_1m,
+                "rs_3m": stmt.excluded.rs_3m,
+                "updated_at": sa.func.now(),
+            },
+        )
+        await session.execute(stmt)
+        total_upserted += len(batch)
+
+    await session.flush()
+
+    logger.info(
+        "rs_daily_summary_complete",
         business_date=business_date.isoformat(),
         rows_upserted=total_upserted,
     )

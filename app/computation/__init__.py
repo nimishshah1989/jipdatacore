@@ -17,7 +17,7 @@ from app.computation.technicals import (
     compute_obv,
     compute_relative_volume,
 )
-from app.computation.rs import compute_rs_scores
+from app.computation.rs import compute_rs_scores, populate_rs_daily_summary
 from app.computation.breadth import compute_breadth
 from app.computation.regime import compute_market_regime
 
@@ -38,6 +38,7 @@ __all__ = [
     "compute_obv",
     "compute_relative_volume",
     "compute_rs_scores",
+    "populate_rs_daily_summary",
     "compute_breadth",
     "compute_market_regime",
 ]

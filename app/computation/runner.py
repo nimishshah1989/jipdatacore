@@ -38,7 +38,7 @@ from app.computation.oscillators import (
 from app.computation.pivots import compute_index_pivots
 from app.computation.qa_types import QAReport, StepResult
 from app.computation.regime import compute_market_regime
-from app.computation.rs import compute_rs_scores
+from app.computation.rs import compute_rs_scores, populate_rs_daily_summary
 from app.computation.sectors import compute_sector_metrics
 from app.computation.technicals import compute_ema, compute_sma
 from app.logging import get_logger
@@ -345,10 +345,28 @@ async def run_full_computation_pipeline(
         logger.warning(
             "computation_pipeline_skipping_downstream",
             reason="rs_failed",
-            skipped=["breadth", "regime", "sectors", "fund_derived"],
+            skipped=["rs_daily_summary", "breadth", "regime", "sectors", "fund_derived"],
         )
         report.mark_complete()
         return report
+
+    # --- Step 2b: rs_daily_summary (Step 13) ---
+    try:
+        summary_rows = await populate_rs_daily_summary(session, business_date)
+        report.steps.append(
+            StepResult(step_name="rs_daily_summary", status="passed", rows_affected=summary_rows)
+        )
+    except Exception as exc:
+        await session.rollback()
+        report.steps.append(
+            StepResult(step_name="rs_daily_summary", status="failed", errors=[str(exc)])
+        )
+        logger.error(
+            "computation_step_failed",
+            step="rs_daily_summary",
+            business_date=business_date.isoformat(),
+            error=str(exc),
+        )
 
     # --- Step 3: breadth ---
     try:
