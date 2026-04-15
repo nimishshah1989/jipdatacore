@@ -38,6 +38,41 @@ GLOBAL_INDEX_TICKERS = [
     "URTH",     # MSCI World ETF
 ]
 
+# Global ETFs — top US-listed ETFs by AUM (GAP-12)
+GLOBAL_ETF_TICKERS = [
+    "QQQ",   # Invesco QQQ Trust
+    "IVV",   # iShares Core S&P 500
+    "VTI",   # Vanguard Total Stock Market
+    "VEA",   # Vanguard FTSE Developed Markets
+    "VWO",   # Vanguard FTSE Emerging Markets
+    "IEFA",  # iShares Core MSCI EAFE
+    "AGG",   # iShares Core US Aggregate Bond
+    "BND",   # Vanguard Total Bond Market
+    "VOO",   # Vanguard S&P 500
+    "VIG",   # Vanguard Dividend Appreciation
+    "VGT",   # Vanguard Information Technology
+    "SOXX",  # iShares Semiconductor
+    "XLE",   # Energy Select Sector SPDR
+    "XLF",   # Financial Select Sector SPDR
+    "XLK",   # Technology Select Sector SPDR
+    "XLV",   # Health Care Select Sector SPDR
+    "XLU",   # Utilities Select Sector SPDR
+    "XLP",   # Consumer Staples Select Sector SPDR
+    "XLY",   # Consumer Discret Select Sector SPDR
+    "XLI",   # Industrial Select Sector SPDR
+    "XLB",   # Materials Select Sector SPDR
+    "XLRE",  # Real Estate Select Sector SPDR
+    "ARKK",  # ARK Innovation
+    "EFA",   # iShares MSCI EAFE
+    "TLT",   # iShares 20+ Year Treasury Bond
+    "IEF",   # iShares 7-10 Year Treasury Bond
+    "HYG",   # iShares iBoxx High Yield Corp Bond
+    "LQD",   # iShares iBoxx Inv Grade Corp Bond
+    "SLV",   # iShares Silver Trust
+    "GLD",   # SPDR Gold Shares
+    "USO",   # United States Oil Fund
+]
+
 # Commodities and FX (original set)
 COMMODITY_FX_TICKERS = [
     "DX-Y.NYB",   # US Dollar Index
@@ -90,6 +125,7 @@ CRYPTO_TICKERS = [
 
 ALL_TICKERS = (
     GLOBAL_INDEX_TICKERS
+    + GLOBAL_ETF_TICKERS
     + COMMODITY_FX_TICKERS
     + BOND_TICKERS
     + COMMODITY_EXTRA_TICKERS
