@@ -38,8 +38,9 @@ OVERLAP_COLS: list[tuple[str, str]] = [
     ("macd_line", "core"),
     ("macd_signal", "core"),
     ("macd_histogram", "core"),
-    ("bb_upper", "core"),
-    ("bb_lower", "core"),
+    ("bollinger_upper", "core"),
+    ("bollinger_lower", "core"),
+    ("bollinger_width", "core"),
     ("atr_14", "core"),
     # Secondary — (threshold 1e-3, min pct 99.0%)
     ("adx_14", "secondary"),
@@ -135,6 +136,10 @@ async def run(args: argparse.Namespace) -> int:
             try:
                 row = (await session.execute(q, {"cutoff": cutoff})).first()
             except Exception as exc:
+                # One failed query poisons the session transaction — reset
+                # so subsequent columns get a fresh state instead of
+                # "current transaction is aborted" cascade.
+                await session.rollback()
                 report_lines.append(
                     f"| {col} | {cls} | ERR | — | — | — | — | — | skip({exc!s:.60}) |"
                 )

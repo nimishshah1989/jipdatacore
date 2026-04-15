@@ -51,3 +51,13 @@ logs/
 *.sql
 *.dump
 data/
+
+# Forge runner state (machine-local)
+.forge/
+.ralph/
+orchestrator/state.db
+orchestrator/state.db-*
+exports/
+atlas_demo.html
+docs/chunks/
+reports/
