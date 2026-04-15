@@ -19,6 +19,7 @@ from app.api.v1.pipeline_trigger import router as pipeline_trigger_router
 from app.api.v1.goldilocks import router as goldilocks_router
 from app.api.v1.instrument_deepdive import router as instrument_deepdive_router
 from app.api.v1.qualitative import router as qualitative_router
+from app.api.v1.sectors import router as sectors_router
 
 all_routers = [
     auth_router,
@@ -33,6 +34,7 @@ all_routers = [
     pipeline_trigger_router,
     goldilocks_router,
     instrument_deepdive_router,
+    sectors_router,
 ]
 
 __all__ = [

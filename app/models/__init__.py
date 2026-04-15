@@ -44,6 +44,7 @@ from app.models.computed import (  # noqa: F401
     DeMarketRegime,
     DeRsDailySummary,
     DeRsScores,
+    DeSectorBreadthDaily,
 )
 from app.models.qualitative import (  # noqa: F401
     DeQualDocuments,
@@ -124,6 +125,7 @@ __all__ = [
     "DeRsDailySummary",
     "DeMarketRegime",
     "DeBreadthDaily",
+    "DeSectorBreadthDaily",
     "DeFoSummary",
     # qualitative
     "DeQualSources",

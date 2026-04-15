@@ -207,6 +207,35 @@ class DeBreadthDaily(Base):
     )
 
 
+class DeSectorBreadthDaily(Base):
+    """Per-sector breadth rollups — % above DMA, RSI, MACD splits."""
+
+    __tablename__ = "de_sector_breadth_daily"
+
+    date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    sector: Mapped[str] = mapped_column(sa.String(100), primary_key=True)
+    stocks_total: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    stocks_above_50dma: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    stocks_above_200dma: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    stocks_above_20ema: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    pct_above_50dma: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    pct_above_200dma: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    pct_above_20ema: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    stocks_rsi_overbought: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    stocks_rsi_oversold: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    stocks_macd_bullish: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    breadth_regime: Mapped[Optional[str]] = mapped_column(sa.String(20), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+        nullable=False,
+    )
+
+
 class DeFoSummary(Base):
     """Daily F&O market summary — PCR, OI, FII positions."""
 
