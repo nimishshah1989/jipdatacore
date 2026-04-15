@@ -73,6 +73,7 @@ from app.models.goldilocks import (  # noqa: F401
     DeOscillatorWeekly,
 )
 from app.models.champion import DeChampionTrades  # noqa: F401
+from app.models.fundamentals import DeEquityFundamentals  # noqa: F401
 from app.models.holdings import DeMfHoldings  # noqa: F401
 from app.models.mf_derived import DeMfDerivedDaily  # noqa: F401
 from app.models.indicators_v2 import (  # noqa: F401
@@ -148,6 +149,8 @@ __all__ = [
     "DeFibLevels",
     "DeIndexPivots",
     "DeIntermarketRatios",
+    # fundamentals
+    "DeEquityFundamentals",
     # champion
     "DeChampionTrades",
     # holdings

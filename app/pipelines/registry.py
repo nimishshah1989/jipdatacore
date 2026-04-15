@@ -53,6 +53,8 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     # ETF
     "nse_etf_sync": ("app.pipelines.etf.nse_etf_sync", "NseEtfSyncPipeline"),
     "etf_prices": ("app.pipelines.etf.etf_prices", "EtfPricePipeline"),
+    # Fundamentals
+    "equity_fundamentals": ("app.pipelines.fundamentals.pipeline", "FundamentalsPipeline"),
     # Qualitative
     "qualitative_rss": ("app.pipelines.qualitative.rss", "RssPipeline"),
     "qualitative_goldilocks": ("app.pipelines.qualitative.playwright_goldilocks", "GoldilocksScraperPipeline"),
@@ -120,6 +122,7 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "global_data": ["yfinance_global"],
     "etf_global": ["etf_technicals", "etf_rs", "global_technicals", "global_rs"],
     "morningstar_weekly": ["morningstar_nav"],
+    "fundamentals_weekly": ["equity_fundamentals"],
     "holdings_monthly": ["morningstar_portfolio", "mf_category_flows"],
     "reconciliation": ["__reconciliation__"],
     "full_rs_rebuild": ["relative_strength"],

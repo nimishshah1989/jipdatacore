@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     goldilocks_email: str = ""
     goldilocks_password: str = ""
 
+    # Screener.in
+    screener_session_cookie: str = ""
+
     # Slack
     slack_webhook_url: str = ""
 
