@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "003_goldilocks"
-down_revision = "002_expand_global_instrument_type"
+down_revision = "002"
 branch_labels = None
 depends_on = None
 

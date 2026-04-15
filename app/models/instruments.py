@@ -133,6 +133,32 @@ class DeIndexMaster(Base):
     )
 
 
+class DeSectorMapping(Base):
+    """Maps JIP internal sector names to NSE sectoral/thematic index codes."""
+
+    __tablename__ = "de_sector_mapping"
+
+    jip_sector_name: Mapped[str] = mapped_column(sa.String(50), primary_key=True)
+    primary_nse_index: Mapped[str] = mapped_column(
+        sa.String(50),
+        ForeignKey("de_index_master.index_code"),
+        nullable=False,
+    )
+    secondary_nse_indices: Mapped[Optional[list[str]]] = mapped_column(
+        sa.ARRAY(sa.Text), nullable=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+        nullable=False,
+    )
+
+
 class DeIndexConstituents(Base):
     """Index constituents with weight and validity range."""
 
