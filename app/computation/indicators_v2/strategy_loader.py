@@ -94,19 +94,41 @@ def get_rename_map(asset_class: str, has_volume: bool) -> dict[str, str]:
 _RISK_COLUMNS: frozenset[str] = frozenset(
     {
         "close_adj",
-        # Renamed to match v1 schema (migration 010)
+        # 1y risk — v1-compatible names (renamed via migration 010)
         "sharpe_1y",
         "sortino_1y",
         "calmar_ratio",
         "max_drawdown_1y",
         "beta_nifty",
-        "volatility_20d",
-        "volatility_60d",
-        # Kept under v2 names (no v1 counterpart)
         "risk_alpha_nifty",
         "risk_omega",
         "risk_information_ratio",
+        "treynor_1y",
+        "downside_risk_1y",
+        # 3y risk (GAP-05)
+        "sharpe_3y",
+        "sortino_3y",
+        "calmar_3y",
+        "max_drawdown_3y",
+        "beta_3y",
+        "information_ratio_3y",
+        "treynor_3y",
+        "downside_risk_3y",
+        # 5y risk (GAP-05)
+        "sharpe_5y",
+        "sortino_5y",
+        "calmar_5y",
+        "max_drawdown_5y",
+        "beta_5y",
+        "information_ratio_5y",
+        "treynor_5y",
+        "downside_risk_5y",
+        # Volatility
+        "volatility_20d",
+        "volatility_60d",
         "hv_252",
+        "volatility_3y",
+        "volatility_5y",
     }
 )
 

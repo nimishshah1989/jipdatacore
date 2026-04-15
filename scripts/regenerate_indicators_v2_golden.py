@@ -68,7 +68,7 @@ def run_indicators(df: pd.DataFrame, asset: str, has_volume: bool) -> pd.DataFra
     strat = load_strategy_for_asset(asset, has_volume)
     d.ta.strategy(strat)
     d = d.rename(columns=get_rename_map(asset, has_volume))
-    hv = compute_hv_series(d["close"])
+    hv = compute_hv_series(d["close"], extra_windows=[("3y", 756), ("5y", 1260)])
     risk = compute_risk_series(d["close"], benchmark_close=None)
     out = pd.concat([d, hv, risk], axis=1)
     # Restrict to schema columns so the fixture is stable against future

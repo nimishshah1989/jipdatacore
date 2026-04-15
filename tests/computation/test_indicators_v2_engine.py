@@ -445,7 +445,7 @@ def test_full_catalog_emits_expected_columns() -> None:
         df["close_adj"] = df["close"]
 
     # IND-C3c: merge risk + HV columns (not in rename_map — computed separately)
-    df_hv = compute_hv_series(df["close"])
+    df_hv = compute_hv_series(df["close"], extra_windows=[("3y", 756), ("5y", 1260)])
     df_risk = compute_risk_series(df["close"], benchmark_close=None)
     df = pd.concat([df, df_hv, df_risk], axis=1)
 
@@ -737,10 +737,22 @@ def test_get_schema_columns_includes_risk_and_hv() -> None:
     # The v1-compatible names (sharpe_1y etc.) were renamed via migration 010.
     expected = {
         "close_adj",
+        # 1y risk
         "sharpe_1y", "sortino_1y", "calmar_ratio",
         "max_drawdown_1y", "beta_nifty",
-        "volatility_20d", "volatility_60d", "hv_252",
         "risk_alpha_nifty", "risk_omega", "risk_information_ratio",
+        "treynor_1y", "downside_risk_1y",
+        # 3y risk
+        "sharpe_3y", "sortino_3y", "calmar_3y",
+        "max_drawdown_3y", "beta_3y",
+        "information_ratio_3y", "treynor_3y", "downside_risk_3y",
+        # 5y risk
+        "sharpe_5y", "sortino_5y", "calmar_5y",
+        "max_drawdown_5y", "beta_5y",
+        "information_ratio_5y", "treynor_5y", "downside_risk_5y",
+        # Volatility
+        "volatility_20d", "volatility_60d", "hv_252",
+        "volatility_3y", "volatility_5y",
     }
     assert expected == set(_RISK_COLUMNS), f"_RISK_COLUMNS mismatch: {_RISK_COLUMNS}"
 
@@ -859,7 +871,197 @@ def test_vectorized_risk_metrics_finish_under_5_seconds() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 24: per-column precision clamp (GAP-04)
+# Test 24: 3y risk parity against empyrical scalar (GAP-06)
+# ---------------------------------------------------------------------------
+
+
+def test_risk_series_3y_matches_empyrical_scalar() -> None:
+    """3y risk columns must match empyrical scalar calls within 1e-4 on a 1500-row series."""
+    import empyrical
+    import numpy as np
+    from app.computation.indicators_v2.risk_metrics import (
+        compute_risk_series,
+        TRADING_DAYS_PER_YEAR,
+    )
+
+    rng = np.random.default_rng(99)
+    n = 1500
+    daily = rng.normal(0.0006, 0.013, n)
+    close = pd.Series(
+        100.0 * np.cumprod(1 + daily),
+        index=pd.date_range("2018-01-03", periods=n, freq="B"),
+        name="close",
+    )
+    bench_vals = 100.0 * np.cumprod(1 + rng.normal(0.0004, 0.01, n))
+    bench = pd.Series(bench_vals, index=close.index, name="close")
+
+    risk_df = compute_risk_series(close, benchmark_close=bench)
+
+    returns = close.pct_change().astype(float)
+    bench_returns = bench.pct_change().astype(float)
+    window_3y = 756
+    last_3y = returns.iloc[-window_3y:].dropna()
+    last_bench_3y = bench_returns.iloc[-window_3y:].dropna()
+    common = last_3y.index.intersection(last_bench_3y.index)
+    wr = last_3y.loc[common]
+    br = last_bench_3y.loc[common]
+
+    # Sharpe
+    expected_sharpe = float(empyrical.sharpe_ratio(last_3y, annualization=TRADING_DAYS_PER_YEAR))
+    actual_sharpe = float(risk_df["sharpe_3y"].iloc[-1])
+    assert abs(actual_sharpe - expected_sharpe) < 1e-4, (
+        f"sharpe_3y: got {actual_sharpe}, expected {expected_sharpe}"
+    )
+
+    # Sortino
+    expected_sortino = float(empyrical.sortino_ratio(last_3y, annualization=TRADING_DAYS_PER_YEAR))
+    actual_sortino = float(risk_df["sortino_3y"].iloc[-1])
+    assert abs(actual_sortino - expected_sortino) < 1e-4, (
+        f"sortino_3y: got {actual_sortino}, expected {expected_sortino}"
+    )
+
+    # Max drawdown
+    expected_mdd = float(empyrical.max_drawdown(last_3y))
+    actual_mdd = float(risk_df["max_drawdown_3y"].iloc[-1])
+    assert abs(actual_mdd - expected_mdd) < 1e-4, (
+        f"max_drawdown_3y: got {actual_mdd}, expected {expected_mdd}"
+    )
+
+    # Calmar
+    expected_calmar = float(empyrical.calmar_ratio(last_3y, annualization=TRADING_DAYS_PER_YEAR))
+    actual_calmar = float(risk_df["calmar_3y"].iloc[-1])
+    assert abs(actual_calmar - expected_calmar) < 1e-4, (
+        f"calmar_3y: got {actual_calmar}, expected {expected_calmar}"
+    )
+
+    # Information ratio
+    expected_ir = float(empyrical.excess_sharpe(wr, br))
+    actual_ir = float(risk_df["information_ratio_3y"].iloc[-1])
+    assert abs(actual_ir - expected_ir) < 1e-3, (
+        f"information_ratio_3y: got {actual_ir}, expected {expected_ir}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 25: 5y risk parity against empyrical scalar (GAP-06)
+# ---------------------------------------------------------------------------
+
+
+def test_risk_series_5y_matches_empyrical_scalar() -> None:
+    """5y risk columns must match empyrical scalar calls within 1e-4 on a 1500-row series."""
+    import empyrical
+    import numpy as np
+    from app.computation.indicators_v2.risk_metrics import (
+        compute_risk_series,
+        TRADING_DAYS_PER_YEAR,
+    )
+
+    rng = np.random.default_rng(77)
+    n = 1500
+    daily = rng.normal(0.0005, 0.014, n)
+    close = pd.Series(
+        100.0 * np.cumprod(1 + daily),
+        index=pd.date_range("2018-01-03", periods=n, freq="B"),
+        name="close",
+    )
+    bench_vals = 100.0 * np.cumprod(1 + rng.normal(0.0003, 0.011, n))
+    bench = pd.Series(bench_vals, index=close.index, name="close")
+
+    risk_df = compute_risk_series(close, benchmark_close=bench)
+
+    returns = close.pct_change().astype(float)
+    bench_returns = bench.pct_change().astype(float)
+    window_5y = 1260
+    last_5y = returns.iloc[-window_5y:].dropna()
+    last_bench_5y = bench_returns.iloc[-window_5y:].dropna()
+    common = last_5y.index.intersection(last_bench_5y.index)
+    wr = last_5y.loc[common]
+    br = last_bench_5y.loc[common]
+
+    # Sharpe
+    expected_sharpe = float(empyrical.sharpe_ratio(last_5y, annualization=TRADING_DAYS_PER_YEAR))
+    actual_sharpe = float(risk_df["sharpe_5y"].iloc[-1])
+    assert abs(actual_sharpe - expected_sharpe) < 1e-4, (
+        f"sharpe_5y: got {actual_sharpe}, expected {expected_sharpe}"
+    )
+
+    # Max drawdown
+    expected_mdd = float(empyrical.max_drawdown(last_5y))
+    actual_mdd = float(risk_df["max_drawdown_5y"].iloc[-1])
+    assert abs(actual_mdd - expected_mdd) < 1e-4, (
+        f"max_drawdown_5y: got {actual_mdd}, expected {expected_mdd}"
+    )
+
+    # Calmar
+    expected_calmar = float(empyrical.calmar_ratio(last_5y, annualization=TRADING_DAYS_PER_YEAR))
+    actual_calmar = float(risk_df["calmar_5y"].iloc[-1])
+    assert abs(actual_calmar - expected_calmar) < 1e-4, (
+        f"calmar_5y: got {actual_calmar}, expected {expected_calmar}"
+    )
+
+    # Information ratio
+    expected_ir = float(empyrical.excess_sharpe(wr, br))
+    actual_ir = float(risk_df["information_ratio_5y"].iloc[-1])
+    assert abs(actual_ir - expected_ir) < 1e-3, (
+        f"information_ratio_5y: got {actual_ir}, expected {expected_ir}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 26: get_schema_columns includes multi-year risk columns (GAP-06)
+# ---------------------------------------------------------------------------
+
+
+def test_get_schema_columns_includes_multi_year_risk() -> None:
+    """Schema columns must include all 3y/5y risk + treynor + downside_risk columns."""
+    multi_year_cols = {
+        "sharpe_3y", "sharpe_5y",
+        "sortino_3y", "sortino_5y",
+        "calmar_3y", "calmar_5y",
+        "max_drawdown_3y", "max_drawdown_5y",
+        "beta_3y", "beta_5y",
+        "information_ratio_3y", "information_ratio_5y",
+        "treynor_1y", "treynor_3y", "treynor_5y",
+        "downside_risk_1y", "downside_risk_3y", "downside_risk_5y",
+        "volatility_3y", "volatility_5y",
+    }
+    equity_cols = get_schema_columns("equity", True)
+    missing = multi_year_cols - equity_cols
+    assert not missing, f"Multi-year risk columns missing from equity schema: {sorted(missing)}"
+
+    mf_cols = get_schema_columns("mf", False)
+    missing_mf = multi_year_cols - mf_cols
+    assert not missing_mf, f"Multi-year risk columns missing from mf schema: {sorted(missing_mf)}"
+
+
+# ---------------------------------------------------------------------------
+# Test 27: compute_risk_series returns >= 20 columns (GAP-06)
+# ---------------------------------------------------------------------------
+
+
+def test_risk_series_returns_at_least_20_columns() -> None:
+    """compute_risk_series with 3 windows must return >= 20 risk columns."""
+    import numpy as np
+    from app.computation.indicators_v2.risk_metrics import compute_risk_series
+
+    rng = np.random.default_rng(55)
+    n = 1500
+    close = pd.Series(
+        100.0 * np.cumprod(1 + rng.normal(0.0005, 0.012, n)),
+        index=pd.date_range("2018-01-03", periods=n, freq="B"),
+    )
+    bench = pd.Series(
+        100.0 * np.cumprod(1 + rng.normal(0.0004, 0.01, n)),
+        index=close.index,
+    )
+    risk_df = compute_risk_series(close, benchmark_close=bench)
+    assert len(risk_df.columns) >= 20, (
+        f"Expected >= 20 risk columns, got {len(risk_df.columns)}: {sorted(risk_df.columns)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 28: per-column precision clamp (GAP-04)
 # ---------------------------------------------------------------------------
 
 

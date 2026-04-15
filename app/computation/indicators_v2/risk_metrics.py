@@ -9,14 +9,16 @@ the same DataFrame and land in the same upsert.
 Functions:
 - ``compute_hv_series``: annualized historical volatility at 20/60/252
   day rolling windows, expressed as percent.
-- ``compute_risk_series``: rolling 1-year risk metrics (Sharpe, Sortino,
-  Calmar, max drawdown, beta, alpha, omega, information ratio).
+- ``compute_risk_series``: rolling risk metrics across 1y/3y/5y windows
+  (Sharpe, Sortino, Calmar, max drawdown, beta, alpha, omega,
+  information ratio, treynor, downside risk).
 
 Implementation notes:
-- 6 of 8 risk metrics use empyrical.roll_* (vectorized, O(N)):
+- 6 of 8 core risk metrics use empyrical.roll_* (vectorized, O(N)):
   sharpe, sortino, max_drawdown, beta, alpha, information_ratio.
 - 2 of 8 (calmar, omega) have no roll_* variant in empyrical-reloaded
-  and fall back to a per-row loop.
+  and use vectorized pandas rolling instead.
+- treynor and downside_risk are computed manually (no empyrical variant).
 - empyrical.roll_* returns an array of length (N - window), aligned to
   the TAIL of the input. First (window - 1) rows remain NaN.
 - Trading-day annualization factor is 252 (Indian market convention,
@@ -33,11 +35,21 @@ import pandas as pd
 # Trading days per year, Indian market convention
 TRADING_DAYS_PER_YEAR = 252
 
-# Allow up to 5 missing trading days within the 252-day window
-_MIN_OBSERVATIONS = TRADING_DAYS_PER_YEAR - 5
+# Allow up to 5 missing trading days within a window
+_MIN_OBS_RATIO = (TRADING_DAYS_PER_YEAR - 5) / TRADING_DAYS_PER_YEAR
+
+DEFAULT_WINDOWS: list[tuple[str, int]] = [
+    ("1y", 252),
+    ("3y", 756),
+    ("5y", 1260),
+]
 
 
-def compute_hv_series(close: pd.Series) -> pd.DataFrame:
+def compute_hv_series(
+    close: pd.Series,
+    *,
+    extra_windows: list[tuple[str, int]] | None = None,
+) -> pd.DataFrame:
     """Annualized historical volatility from log returns.
 
     HV_N = stdev(log_return over N days) * sqrt(252) * 100
@@ -45,200 +57,217 @@ def compute_hv_series(close: pd.Series) -> pd.DataFrame:
 
     Args:
         close: closing price series (float/Decimal-compatible), DatetimeIndex required.
+        extra_windows: additional (label, days) windows to compute volatility for.
+            Produces columns named ``volatility_{label}``.
 
     Returns:
-        DataFrame with columns volatility_20d, volatility_60d, hv_252.
-        Rows before window fills are NaN (standard pandas rolling).
+        DataFrame with columns volatility_20d, volatility_60d, hv_252,
+        plus any extra_windows columns.
     """
-    # Clip to positive values to avoid log(0) or log(negative)
     safe_close = close.clip(lower=1e-9).astype(float)
     log_ret = np.log(safe_close / safe_close.shift(1))
     annualizer = np.sqrt(TRADING_DAYS_PER_YEAR) * 100
     out = pd.DataFrame(index=close.index)
-    # Column naming matches v1: volatility_20d / volatility_60d / hv_252.
-    # hv_252 keeps the hv_ prefix because v1 had no 252-day column.
     _col_names = {20: "volatility_20d", 60: "volatility_60d", 252: "hv_252"}
     for window in (20, 60, 252):
         out[_col_names[window]] = (
             log_ret.rolling(window=window, min_periods=window).std() * annualizer
         )
+    if extra_windows:
+        for label, days in extra_windows:
+            out[f"volatility_{label}"] = (
+                log_ret.rolling(window=days, min_periods=days).std() * annualizer
+            )
     return out
 
 
-def compute_risk_series(
-    close: pd.Series,
-    benchmark_close: Optional[pd.Series] = None,
-) -> pd.DataFrame:
-    """Rolling 1-year risk metrics via empyrical-reloaded.
-
-    6 of 8 metrics use vectorized empyrical.roll_* functions.
-    2 metrics (calmar, omega) fall back to a per-row loop because
-    empyrical-reloaded has no roll_calmar_ratio or roll_omega_ratio.
-
-    empyrical.roll_* returns an array of length (N - window), aligned
-    to the tail of the series. This function pads the front with NaN
-    to produce a Series aligned to ``close.index``.
-
-    Args:
-        close: instrument closing price series, DatetimeIndex required.
-        benchmark_close: benchmark closing price series (for beta/alpha/
-            information ratio). If None, those columns are all NaN.
-
-    Returns:
-        DataFrame with columns:
-          sharpe_1y, sortino_1y, calmar_ratio,
-          max_drawdown_1y, beta_nifty, risk_alpha_nifty,
-          risk_omega, risk_information_ratio
-    """
+def _compute_window_risk(
+    returns: pd.Series,
+    returns_filled: pd.Series,
+    n: int,
+    window: int,
+    label: str,
+    bench_returns: pd.Series | None,
+) -> dict[str, pd.Series]:
+    """Compute all risk metrics for a single rolling window. Returns column_name→Series."""
     import empyrical
 
-    n = len(close)
-    window = TRADING_DAYS_PER_YEAR
-
-    # Build output DataFrame; default NaN
-    out = pd.DataFrame(
-        np.nan,
-        index=close.index,
-        columns=[
-            "sharpe_1y",
-            "sortino_1y",
-            "calmar_ratio",
-            "max_drawdown_1y",
-            "beta_nifty",
-            "risk_alpha_nifty",
-            "risk_omega",
-            "risk_information_ratio",
-        ],
-    )
-
-    if n <= window:
-        # Insufficient history for any 1-year window
-        return out
-
-    returns = close.pct_change().astype(float)
-
-    # -------------------------------------------------------------------
-    # Vectorized metrics via empyrical.roll_*
-    # roll_* output length = N - window; we pad the front with (window-1)
-    # NaN values so the result aligns to close.index.
-    # -------------------------------------------------------------------
+    idx = returns.index
+    cols: dict[str, pd.Series] = {}
+    nan_series = pd.Series(np.nan, index=idx)
+    min_obs = max(int(window * _MIN_OBS_RATIO), window - 5)
 
     def _align(arr: np.ndarray) -> np.ndarray:
-        """Pad front of roll_* output to match close.index length."""
         pad = np.full(n - len(arr), np.nan)
         return np.concatenate([pad, arr])
 
+    # -- Sharpe
     try:
-        sharpe_arr = empyrical.roll_sharpe_ratio(
-            returns, window=window, annualization=window
-        )
-        out["sharpe_1y"] = _align(np.asarray(sharpe_arr, dtype=float))
+        arr = empyrical.roll_sharpe_ratio(returns, window=window, annualization=TRADING_DAYS_PER_YEAR)
+        cols[f"sharpe_{label}"] = pd.Series(_align(np.asarray(arr, dtype=float)), index=idx)
     except Exception:
-        pass
+        cols[f"sharpe_{label}"] = nan_series.copy()
 
+    # -- Sortino
     try:
-        sortino_arr = empyrical.roll_sortino_ratio(
-            returns, window=window, annualization=window
-        )
-        out["sortino_1y"] = _align(np.asarray(sortino_arr, dtype=float))
+        arr = empyrical.roll_sortino_ratio(returns, window=window, annualization=TRADING_DAYS_PER_YEAR)
+        cols[f"sortino_{label}"] = pd.Series(_align(np.asarray(arr, dtype=float)), index=idx)
     except Exception:
-        pass
+        cols[f"sortino_{label}"] = nan_series.copy()
 
+    # -- Max drawdown
     try:
-        mdd_arr = empyrical.roll_max_drawdown(returns, window=window)
-        out["max_drawdown_1y"] = _align(np.asarray(mdd_arr, dtype=float))
+        arr = empyrical.roll_max_drawdown(returns, window=window)
+        mdd_aligned = _align(np.asarray(arr, dtype=float))
+        cols[f"max_drawdown_{label}"] = pd.Series(mdd_aligned, index=idx)
     except Exception:
-        pass
+        mdd_aligned = np.full(n, np.nan)
+        cols[f"max_drawdown_{label}"] = nan_series.copy()
 
-    # -------------------------------------------------------------------
-    # Vectorized calmar and omega (replaces a per-row empyrical loop).
-    #
-    # Calmar ratio (trailing 1y, matching empyrical signature):
-    #   annualized_return = (1 + total_return_over_window) ** (252 / window) - 1
-    #   calmar = annualized_return / abs(rolling_max_drawdown)
-    # With window == 252 (TRADING_DAYS_PER_YEAR), annualized_return is just
-    # the cumulative return over the window. We compute the cumulative
-    # return in log-space for numerical stability, then exp back.
-    #
-    # Omega ratio (required_return=0, matching empyrical default):
-    #   omega = sum(positive_returns) / abs(sum(negative_returns))
-    # Over a rolling 252-day window; threshold 0 so there's no shift.
-    #
-    # Information ratio (excess return Sharpe):
-    #   active = returns - benchmark_returns
-    #   ir = mean(active) / std(active) * sqrt(annualization)
-    # All three are O(N) via pandas rolling, replacing the former
-    # O(N * window) scalar loop. ~50x speedup on a 4800-row instrument.
-    # -------------------------------------------------------------------
-    returns_filled = returns.fillna(0.0)
-
-    # Cumulative return over rolling window, via log-space for stability
+    # -- Calmar (vectorized via pandas rolling)
     log_ret = np.log1p(returns_filled)
     rolling_log_sum = log_ret.rolling(window=window, min_periods=window).sum()
     rolling_cum_ret = np.expm1(rolling_log_sum)
-    # annualization factor: (1+cum) ** (252/window) - 1; when window=252 this is cum itself
     if window == TRADING_DAYS_PER_YEAR:
         annualized_return = rolling_cum_ret
     else:
         annualized_return = np.power(1.0 + rolling_cum_ret, TRADING_DAYS_PER_YEAR / window) - 1.0
 
-    # Use the max-drawdown series we already computed above if available;
-    # otherwise fall back to empyrical.roll_max_drawdown directly.
-    mdd_series = out["max_drawdown_1y"]
-    # Calmar = annualized / abs(mdd); positive when mdd is non-zero
+    mdd_series = cols[f"max_drawdown_{label}"]
     calmar_arr = annualized_return / np.abs(mdd_series)
-    out["calmar_ratio"] = calmar_arr
+    cols[f"calmar_{label}"] = calmar_arr
 
-    # Omega ratio (required_return=0)
+    # -- Omega (required_return=0)
     pos = returns_filled.clip(lower=0.0)
     neg = returns_filled.clip(upper=0.0)
     rolling_pos = pos.rolling(window=window, min_periods=window).sum()
     rolling_neg = neg.rolling(window=window, min_periods=window).sum()
     with np.errstate(divide="ignore", invalid="ignore"):
         omega_arr = rolling_pos / np.abs(rolling_neg)
-    out["risk_omega"] = omega_arr
+    cols[f"omega_{label}"] = omega_arr
 
-    # -------------------------------------------------------------------
-    # Benchmark-dependent metrics (beta, alpha, information_ratio)
-    # -------------------------------------------------------------------
+    # -- Downside risk: stdev of negative returns × sqrt(annualization)
+    neg_returns = returns_filled.clip(upper=0.0)
+    neg_sq = neg_returns ** 2
+    rolling_mean_neg_sq = neg_sq.rolling(window=window, min_periods=min_obs).mean()
+    downside = np.sqrt(rolling_mean_neg_sq) * np.sqrt(TRADING_DAYS_PER_YEAR)
+    cols[f"downside_risk_{label}"] = downside
+
+    # -- Benchmark-dependent metrics
+    if bench_returns is not None:
+        # Beta
+        try:
+            arr = empyrical.roll_beta(returns, bench_returns, window=window)
+            beta_series = pd.Series(_align(np.asarray(arr, dtype=float)), index=idx)
+            cols[f"beta_{label}"] = beta_series
+        except Exception:
+            beta_series = nan_series.copy()
+            cols[f"beta_{label}"] = beta_series
+
+        # Alpha (from roll_alpha_beta)
+        try:
+            ab_arr = empyrical.roll_alpha_beta(
+                returns, bench_returns, window=window, annualization=TRADING_DAYS_PER_YEAR
+            )
+            ab = np.asarray(ab_arr, dtype=float)
+            if ab.ndim == 2 and ab.shape[1] == 2:
+                cols[f"alpha_{label}"] = pd.Series(_align(ab[:, 0]), index=idx)
+                if cols[f"beta_{label}"].isna().all():
+                    cols[f"beta_{label}"] = pd.Series(_align(ab[:, 1]), index=idx)
+                    beta_series = cols[f"beta_{label}"]
+            else:
+                cols[f"alpha_{label}"] = nan_series.copy()
+        except Exception:
+            cols[f"alpha_{label}"] = nan_series.copy()
+
+        # Information ratio
+        active = (returns - bench_returns).fillna(0.0)
+        roll_mean = active.rolling(window=window, min_periods=min_obs).mean()
+        roll_std = active.rolling(window=window, min_periods=min_obs).std(ddof=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ir_arr = roll_mean / roll_std
+        cols[f"information_ratio_{label}"] = ir_arr
+
+        # Treynor = annualized_return / beta
+        with np.errstate(divide="ignore", invalid="ignore"):
+            treynor = annualized_return / beta_series
+        cols[f"treynor_{label}"] = treynor
+    else:
+        cols[f"beta_{label}"] = nan_series.copy()
+        cols[f"alpha_{label}"] = nan_series.copy()
+        cols[f"information_ratio_{label}"] = nan_series.copy()
+        cols[f"treynor_{label}"] = nan_series.copy()
+
+    return cols
+
+
+# Column name mapping from internal multi-window names to schema names.
+# The 1y window uses legacy v1-compatible names.
+_1Y_RENAME = {
+    "sharpe_1y": "sharpe_1y",
+    "sortino_1y": "sortino_1y",
+    "calmar_1y": "calmar_ratio",
+    "max_drawdown_1y": "max_drawdown_1y",
+    "beta_1y": "beta_nifty",
+    "alpha_1y": "risk_alpha_nifty",
+    "omega_1y": "risk_omega",
+    "information_ratio_1y": "risk_information_ratio",
+    "treynor_1y": "treynor_1y",
+    "downside_risk_1y": "downside_risk_1y",
+}
+
+
+def compute_risk_series(
+    close: pd.Series,
+    benchmark_close: Optional[pd.Series] = None,
+    *,
+    windows: list[tuple[str, int]] | None = None,
+) -> pd.DataFrame:
+    """Rolling multi-window risk metrics via empyrical-reloaded.
+
+    Args:
+        close: instrument closing price series, DatetimeIndex required.
+        benchmark_close: benchmark closing price series (for beta/alpha/
+            information ratio/treynor). If None, those columns are all NaN.
+        windows: list of (label, days) tuples. Defaults to 1y/3y/5y.
+
+    Returns:
+        DataFrame with columns for each window's risk metrics.
+    """
+    if windows is None:
+        windows = DEFAULT_WINDOWS
+
+    n = len(close)
+    returns = close.pct_change().astype(float)
+    returns_filled = returns.fillna(0.0)
+
+    bench_returns: pd.Series | None = None
     if benchmark_close is not None:
         bench_aligned = benchmark_close.reindex(close.index).astype(float)
         bench_returns = bench_aligned.pct_change().astype(float)
 
-        try:
-            beta_arr = empyrical.roll_beta(returns, bench_returns, window=window)
-            out["beta_nifty"] = _align(np.asarray(beta_arr, dtype=float))
-        except Exception:
-            pass
+    all_cols: dict[str, pd.Series] = {}
 
-        try:
-            ab_arr = empyrical.roll_alpha_beta(
-                returns, bench_returns, window=window, annualization=window
-            )
-            ab = np.asarray(ab_arr, dtype=float)
-            # roll_alpha_beta returns shape (N-window, 2): col 0 = alpha, col 1 = beta
-            if ab.ndim == 2 and ab.shape[1] == 2:
-                out["risk_alpha_nifty"] = _align(ab[:, 0])
-                # beta already computed above; only overwrite if prior failed
-                if out["beta_nifty"].isna().all():
-                    out["beta_nifty"] = _align(ab[:, 1])
-        except Exception:
-            pass
+    for label, window in windows:
+        if n <= window:
+            # Create NaN columns for this window
+            nan_s = pd.Series(np.nan, index=close.index)
+            for prefix in ("sharpe", "sortino", "calmar", "max_drawdown",
+                           "omega", "downside_risk", "beta", "alpha",
+                           "information_ratio", "treynor"):
+                all_cols[f"{prefix}_{label}"] = nan_s.copy()
+            continue
 
-        # Information ratio — vectorized. Matches ``empyrical.excess_sharpe``:
-        #   active = returns - benchmark
-        #   ir = mean(active) / std(active, ddof=1)
-        # NOTE: empyrical does NOT annualize excess_sharpe (unlike its
-        # sharpe_ratio). A future enhancement could multiply by sqrt(252)
-        # for an annualized IR, but the baseline parity test pins us to
-        # empyrical's convention.
-        active = (returns - bench_returns).fillna(0.0)
-        roll_mean = active.rolling(window=window, min_periods=_MIN_OBSERVATIONS).mean()
-        roll_std = active.rolling(window=window, min_periods=_MIN_OBSERVATIONS).std(ddof=1)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            ir_arr = roll_mean / roll_std
-        out["risk_information_ratio"] = ir_arr
+        cols = _compute_window_risk(
+            returns, returns_filled, n, window, label, bench_returns
+        )
+        all_cols.update(cols)
 
-    # Replace inf/-inf with NaN before returning
+    out = pd.DataFrame(all_cols, index=close.index)
+
+    # Rename 1y columns to legacy schema names
+    rename_map = {k: v for k, v in _1Y_RENAME.items() if k in out.columns and k != v}
+    out = out.rename(columns=rename_map)
+
     out = out.replace([np.inf, -np.inf], np.nan)
     return out

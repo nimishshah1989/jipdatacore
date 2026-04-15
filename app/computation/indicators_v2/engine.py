@@ -459,7 +459,10 @@ async def compute_indicators(
             # IND-C3c: compute risk + HV metrics and merge into df.
             # close column is still present after rename (pandas-ta appends,
             # does not replace original OHLCV columns).
-            df_hv = compute_hv_series(df["close"])
+            df_hv = compute_hv_series(
+                df["close"],
+                extra_windows=[("3y", 756), ("5y", 1260)],
+            )
             df_risk = compute_risk_series(df["close"], benchmark_close)
             df = pd.concat([df, df_hv, df_risk], axis=1)
 
