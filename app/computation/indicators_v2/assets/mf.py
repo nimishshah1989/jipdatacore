@@ -30,7 +30,11 @@ MF_SPEC = AssetSpec(
     high_col=None,
     low_col=None,
     volume_col=None,
-    min_history_days=250,
+    # GAP-14: lowered from 250 to 20 so funds <1y old still get short-window
+    # indicators (SMA/RSI/MACD/Bollinger). Risk/ROC252 columns land as NULL
+    # for short series; frontend should display "fund age <1y — limited
+    # metrics" from the absence of those columns.
+    min_history_days=20,
 )
 
 
