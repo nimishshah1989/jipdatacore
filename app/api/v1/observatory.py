@@ -16,6 +16,7 @@ GET  /api/v1/observatory/health-action  — Self-healing: what's broken + how to
 POST /api/v1/observatory/healing-result — Log a self-healing fix attempt
 GET  /api/v1/observatory/agents         — Managed agent status
 GET  /api/v1/observatory/daily-report   — Daily pipeline summary + 7-day uptime
+GET  /api/v1/observatory/audit          — Live data audit: metrics × instruments × schedule × discrepancies
 """
 
 from __future__ import annotations
@@ -1388,4 +1389,491 @@ async def daily_report(
         "runs": today_runs,
         "heals": today_heals,
         "uptime_by_stream": uptime_by_stream,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Data audit endpoint — live inventory + cron schedule + discrepancies
+# ---------------------------------------------------------------------------
+
+# Candidate columns that identify a distinct "instrument" in each table.
+# First match found in the table is used to COUNT(DISTINCT ...).
+_ENTITY_CANDIDATES: list[str] = [
+    "instrument_id",
+    "mstar_id",
+    "index_id",
+    "entity_id",
+    "ticker",
+    "indicator_id",
+    "pair_code",
+    "isin",
+    "scheme_code",
+    "symbol",
+    "source_id",
+    "category",
+    "sector",
+    "fund_id",
+]
+
+# Columns excluded from the "metrics" listing — these are keys, timestamps,
+# or housekeeping columns, not measured values.
+_METRIC_EXCLUDE_COLS: set[str] = {
+    "id", "created_at", "updated_at", "meta_id", "computation_version",
+    "data_status", "run_number", "business_date", "completed_at", "started_at",
+    "date", "nav_date", "ex_date", "report_date", "as_of_date",
+    "published_date", "month_date", "price_date", "flow_date", "trade_date",
+    "computed_at", "checked_at", "processed_at",
+    "instrument_id", "mstar_id", "index_id", "entity_id", "entity_type",
+    "vs_benchmark", "ticker", "indicator_id", "pair_code", "source_id",
+    "fund_id", "isin", "scheme_code", "symbol",
+    "source", "category", "sector",
+}
+
+# Cron expression → human-readable label
+def _describe_cron(cron_expr: str) -> str:
+    """Best-effort human description of a cron expression."""
+    if not cron_expr:
+        return "triggered"
+    parts = cron_expr.split()
+    if len(parts) != 5:
+        return cron_expr
+    minute, hour, dom, month, dow = parts
+    time_part = f"{hour.zfill(2)}:{minute.zfill(2)} IST"
+    if minute.startswith("*/"):
+        return f"every {minute[2:]} minutes"
+    if dow == "1-5":
+        when = "Mon-Fri"
+    elif dow == "0":
+        when = "Sun"
+    elif dow == "*" and dom == "*":
+        when = "daily"
+    elif dom != "*" and month == "*":
+        when = f"on day {dom} of month"
+    else:
+        when = f"dow={dow} dom={dom}"
+    return f"{time_part}, {when}"
+
+
+@router.get(
+    "/audit",
+    status_code=status.HTTP_200_OK,
+    summary="Live data audit — metrics, instruments, schedules, discrepancies",
+)
+async def get_audit(
+    db=Depends(get_observatory_db),
+) -> dict[str, Any]:
+    """
+    Live data audit that powers the /data-audit dashboard.
+
+    Returns three sections:
+      metric_inventory  — per-table metric list, instrument counts by entity
+                          type, date range, row counts
+      table_schedule    — per-table pipeline, schedule group, cron expression,
+                          last successful run, next scheduled run
+      discrepancies     — tables not scheduled, stale/critical tables, empty
+                          tables, quarantined data, and any de_* tables not
+                          registered in STREAM_DEFINITIONS
+    """
+    from collections import defaultdict
+    from datetime import date as date_type
+    from datetime import timedelta
+
+    from app.orchestrator.scheduler import IST, CronSchedule
+
+    now_utc = datetime.now(tz=timezone.utc)
+    now_ist = now_utc.astimezone(IST)
+
+    schedule = CronSchedule.default()
+
+    # 1. Pull row counts from pg_stat_user_tables (single query)
+    stat_result = await db.execute(
+        sa.text(
+            "SELECT relname, n_live_tup "
+            "FROM pg_stat_user_tables "
+            "WHERE schemaname = 'public' AND relname LIKE 'de_%'"
+        )
+    )
+    row_counts_approx: dict[str, int] = {
+        row.relname: row.n_live_tup for row in stat_result.fetchall()
+    }
+
+    # 2. Pull column lists for all de_* tables in one shot
+    cols_result = await db.execute(
+        sa.text(
+            """
+            SELECT table_name, column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name LIKE 'de_%'
+            ORDER BY table_name, ordinal_position
+            """
+        )
+    )
+    cols_by_table: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for row in cols_result.fetchall():
+        cols_by_table[row.table_name].append((row.column_name, row.data_type))
+
+    # 3. Build schedule_group → cron_expr lookup and pipeline → schedule mapping
+    pipeline_to_schedule: dict[str, dict[str, Any]] = {}
+    for entry in schedule.entries:
+        for pipeline_name in entry.pipelines:
+            # Map both the alias form and the raw form — caller may use either
+            pipeline_to_schedule[pipeline_name] = {
+                "schedule_group": entry.name,
+                "cron_expression": entry.cron_expr or None,
+                "cron_label": _describe_cron(entry.cron_expr),
+                "description": entry.description,
+                "trigger_after": entry.trigger_after,
+            }
+
+    # Also include SCHEDULE_REGISTRY groups that are not in CronSchedule
+    # (e.g. nightly_compute, technicals) — triggered, no cron_expr
+    try:
+        from app.pipelines.registry import SCHEDULE_REGISTRY
+        for group_name, pipelines in SCHEDULE_REGISTRY.items():
+            for pipeline_name in pipelines:
+                if pipeline_name in pipeline_to_schedule:
+                    continue
+                pipeline_to_schedule[pipeline_name] = {
+                    "schedule_group": group_name,
+                    "cron_expression": None,
+                    "cron_label": "triggered (" + group_name + ")",
+                    "description": "",
+                    "trigger_after": None,
+                }
+    except Exception:
+        pass
+
+    # 4. Pull last pipeline runs per pipeline_name (latest successful + latest any)
+    last_run_rows = await db.execute(
+        sa.text(
+            """
+            SELECT DISTINCT ON (pipeline_name, status)
+                pipeline_name, status, completed_at, rows_processed
+            FROM de_pipeline_log
+            WHERE completed_at IS NOT NULL
+            ORDER BY pipeline_name, status, completed_at DESC
+            """
+        )
+    )
+    last_run_by_pipeline: dict[str, dict[str, Any]] = defaultdict(dict)
+    for r in last_run_rows.fetchall():
+        last_run_by_pipeline[r.pipeline_name][r.status] = {
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "rows_processed": r.rows_processed,
+        }
+
+    # 5. For each stream: build metric_inventory + table_schedule entries
+    metric_inventory: list[dict[str, Any]] = []
+    table_schedule: list[dict[str, Any]] = []
+    stale_streams: list[dict[str, Any]] = []
+    empty_streams: list[dict[str, Any]] = []
+    unscheduled_streams: list[dict[str, Any]] = []
+    quarantined_tables: list[dict[str, Any]] = []
+
+    known_tables: set[str] = set()
+
+    for stream in STREAM_DEFINITIONS:
+        table = stream["table"]
+        date_col = stream["date_col"]
+        stream_id = stream["stream_id"]
+        category = stream["category"]
+        label = stream["label"]
+        known_tables.add(table)
+
+        cols = cols_by_table.get(table, [])
+        if not cols:
+            # Table missing altogether
+            metric_inventory.append({
+                "stream_id": stream_id,
+                "label": label,
+                "table": table,
+                "category": category,
+                "exists": False,
+                "metrics": [],
+                "metric_count": 0,
+                "instrument_counts": {},
+                "total_instruments": 0,
+                "min_date": None,
+                "max_date": None,
+                "row_count_exact": 0,
+                "row_count_approx": 0,
+            })
+            table_schedule.append({
+                "stream_id": stream_id,
+                "table": table,
+                "label": label,
+                "exists": False,
+                "pipeline": STREAM_PIPELINE_MAP.get(stream_id),
+                "schedule_group": None,
+                "cron_expression": None,
+                "cron_label": None,
+                "last_success_at": None,
+                "last_run_at": None,
+                "last_run_status": None,
+                "next_run": None,
+            })
+            continue
+
+        col_names = [c[0] for c in cols]
+        has_data_status = "data_status" in col_names
+
+        # Pick entity column
+        entity_col: Optional[str] = None
+        for cand in _ENTITY_CANDIDATES:
+            if cand in col_names:
+                entity_col = cand
+                break
+
+        # Metric columns = all cols minus housekeeping
+        metrics = [c for c in col_names if c not in _METRIC_EXCLUDE_COLS]
+
+        # Query: MIN/MAX date + exact COUNT
+        min_date, max_date, exact_count = None, None, 0
+        try:
+            dr = await db.execute(
+                sa.text(
+                    f"SELECT MIN({date_col}) AS min_d, MAX({date_col}) AS max_d, "  # noqa: S608
+                    f"COUNT(*) AS cnt FROM {table}"  # noqa: S608
+                )
+            )
+            dr_row = dr.fetchone()
+            if dr_row:
+                min_date = str(dr_row.min_d) if dr_row.min_d else None
+                max_date = str(dr_row.max_d) if dr_row.max_d else None
+                exact_count = int(dr_row.cnt or 0)
+        except Exception as exc:
+            logger.warning(
+                "audit_date_range_error", table=table, error=str(exc)
+            )
+
+        # Instrument counts
+        instrument_counts: dict[str, int] = {}
+        total_instruments = 0
+        if entity_col and exact_count > 0:
+            try:
+                if stream_id == "rs_scores" and "entity_type" in col_names:
+                    ic = await db.execute(
+                        sa.text(
+                            f"SELECT entity_type, COUNT(DISTINCT {entity_col}) AS n "  # noqa: S608
+                            f"FROM {table} GROUP BY entity_type"  # noqa: S608
+                        )
+                    )
+                    for ic_row in ic.fetchall():
+                        instrument_counts[str(ic_row.entity_type)] = int(ic_row.n or 0)
+                else:
+                    ic = await db.execute(
+                        sa.text(
+                            f"SELECT COUNT(DISTINCT {entity_col}) AS n FROM {table}"  # noqa: S608
+                        )
+                    )
+                    instrument_counts[category] = int(ic.scalar_one() or 0)
+                total_instruments = sum(instrument_counts.values())
+            except Exception as exc:
+                logger.warning(
+                    "audit_instrument_count_error", table=table, error=str(exc)
+                )
+
+        # Quarantined rows
+        quarantined_count = 0
+        if has_data_status:
+            try:
+                q = await db.execute(
+                    sa.text(
+                        f"SELECT COUNT(*) FROM {table} "  # noqa: S608
+                        f"WHERE data_status = 'quarantined'"  # noqa: S608
+                    )
+                )
+                quarantined_count = int(q.scalar_one() or 0)
+                if quarantined_count > 0:
+                    quarantined_tables.append({
+                        "stream_id": stream_id,
+                        "table": table,
+                        "label": label,
+                        "quarantined_rows": quarantined_count,
+                    })
+            except Exception:
+                pass
+
+        # Freshness
+        hours_old: Optional[float] = None
+        if max_date:
+            try:
+                from datetime import date as dt_date
+                md = datetime.strptime(max_date[:10], "%Y-%m-%d").date()
+                hours_old = (now_utc.date() - md).days * 24.0
+            except Exception:
+                hours_old = None
+
+        freshness = _freshness_status(hours_old)
+
+        metric_inventory.append({
+            "stream_id": stream_id,
+            "label": label,
+            "table": table,
+            "category": category,
+            "exists": True,
+            "metrics": metrics,
+            "metric_count": len(metrics),
+            "entity_column": entity_col,
+            "instrument_counts": instrument_counts,
+            "total_instruments": total_instruments,
+            "min_date": min_date,
+            "max_date": max_date,
+            "row_count_exact": exact_count,
+            "row_count_approx": row_counts_approx.get(table, 0),
+            "hours_old": round(hours_old, 1) if hours_old is not None else None,
+            "freshness": freshness,
+            "quarantined_rows": quarantined_count,
+        })
+
+        # Schedule mapping
+        pipeline_name = STREAM_PIPELINE_MAP.get(stream_id)
+        sched_info = pipeline_to_schedule.get(pipeline_name) if pipeline_name else None
+
+        # Also try matching via DAG alias (e.g. amfi_nav ↔ mf_eod)
+        if sched_info is None and pipeline_name:
+            try:
+                from app.pipelines.registry import DAG_ALIAS
+                for alias, real in DAG_ALIAS.items():
+                    if real == pipeline_name and alias in pipeline_to_schedule:
+                        sched_info = pipeline_to_schedule[alias]
+                        break
+                    if alias == pipeline_name and real in pipeline_to_schedule:
+                        sched_info = pipeline_to_schedule[real]
+                        break
+            except Exception:
+                pass
+
+        last_success = None
+        last_run = None
+        last_status = None
+        if pipeline_name:
+            runs = last_run_by_pipeline.get(pipeline_name, {})
+            if "success" in runs:
+                last_success = runs["success"]["completed_at"]
+            # Latest of any status
+            latest_any = None
+            latest_status = None
+            for stt, info in runs.items():
+                ts = info.get("completed_at")
+                if ts and (latest_any is None or ts > latest_any):
+                    latest_any = ts
+                    latest_status = stt
+            last_run = latest_any
+            last_status = latest_status
+
+        # Next run (only for cron-scheduled entries)
+        next_run = None
+        if sched_info and sched_info.get("cron_expression"):
+            try:
+                entry_obj = None
+                for e in schedule.entries:
+                    if e.name == sched_info["schedule_group"]:
+                        entry_obj = e
+                        break
+                if entry_obj:
+                    nxt = schedule.next_run_after(entry_obj, now_ist)
+                    if nxt:
+                        next_run = nxt.isoformat()
+            except Exception:
+                pass
+
+        table_schedule.append({
+            "stream_id": stream_id,
+            "table": table,
+            "label": label,
+            "exists": True,
+            "pipeline": pipeline_name,
+            "schedule_group": sched_info["schedule_group"] if sched_info else None,
+            "cron_expression": sched_info["cron_expression"] if sched_info else None,
+            "cron_label": sched_info["cron_label"] if sched_info else None,
+            "last_success_at": last_success,
+            "last_run_at": last_run,
+            "last_run_status": last_status,
+            "next_run": next_run,
+            "is_scheduled": bool(sched_info and sched_info.get("cron_expression")),
+            "is_triggered": bool(sched_info and not sched_info.get("cron_expression")),
+        })
+
+        # Discrepancy classification
+        if pipeline_name is None:
+            unscheduled_streams.append({
+                "stream_id": stream_id,
+                "table": table,
+                "label": label,
+                "reason": "no pipeline mapped for stream",
+            })
+        elif sched_info is None:
+            unscheduled_streams.append({
+                "stream_id": stream_id,
+                "table": table,
+                "label": label,
+                "pipeline": pipeline_name,
+                "reason": "pipeline has no schedule or trigger",
+            })
+
+        if freshness == "critical":
+            stale_streams.append({
+                "stream_id": stream_id,
+                "table": table,
+                "label": label,
+                "max_date": max_date,
+                "hours_old": round(hours_old, 1) if hours_old is not None else None,
+                "pipeline": pipeline_name,
+            })
+
+        if exact_count == 0:
+            empty_streams.append({
+                "stream_id": stream_id,
+                "table": table,
+                "label": label,
+                "pipeline": pipeline_name,
+            })
+
+    # 6. de_* tables in DB that are NOT in STREAM_DEFINITIONS
+    all_db_tables = set(cols_by_table.keys())
+    unmapped_tables = sorted(
+        t for t in all_db_tables
+        if t not in known_tables
+        and not t.startswith("de_pipeline_log")
+        and not t.startswith("de_healing_log")
+        and not t.startswith("de_data_quality")
+        and not t.startswith("de_migration")
+        and not t.startswith("de_request_log")
+        and not t.startswith("de_source_files")
+        and not t.startswith("de_system_flags")
+        and not t.startswith("de_client")
+        and not t.startswith("de_portfolio")
+        and not t.startswith("de_pii")
+        and not t.startswith("alembic_")
+    )
+
+    # 7. Summary counters
+    summary = {
+        "stream_count": len(metric_inventory),
+        "existing_tables": sum(1 for s in metric_inventory if s["exists"]),
+        "total_metrics": sum(s["metric_count"] for s in metric_inventory),
+        "total_instruments": sum(s["total_instruments"] for s in metric_inventory),
+        "scheduled": sum(1 for s in table_schedule if s["is_scheduled"]),
+        "triggered": sum(1 for s in table_schedule if s["is_triggered"]),
+        "unscheduled": len(unscheduled_streams),
+        "stale_critical": len(stale_streams),
+        "empty": len(empty_streams),
+        "quarantined": len(quarantined_tables),
+        "unmapped_db_tables": len(unmapped_tables),
+    }
+
+    return {
+        "as_of": now_utc.isoformat(),
+        "as_of_ist": now_ist.isoformat(),
+        "summary": summary,
+        "metric_inventory": metric_inventory,
+        "table_schedule": table_schedule,
+        "discrepancies": {
+            "unscheduled_streams": unscheduled_streams,
+            "stale_streams": stale_streams,
+            "empty_streams": empty_streams,
+            "quarantined_tables": quarantined_tables,
+            "unmapped_db_tables": [{"table": t} for t in unmapped_tables],
+        },
     }
