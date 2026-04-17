@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JIP Data Audit</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --teal:#1D9E75;--teal-dim:rgba(29,158,117,.15);
+  --navy:#0f172a;--navy-2:#1e293b;--navy-3:#293548;
+  --slate:#475569;--slate-lt:#94a3b8;
+  --white:#ffffff;
+  --green:#22c55e;--green-glow:rgba(34,197,94,.3);
+  --amber:#f59e0b;--amber-glow:rgba(245,158,11,.3);
+  --red:#ef4444;--red-glow:rgba(239,68,68,.3);
+  --glass:rgba(30,41,59,0.85);
+  --glass-border:rgba(29,158,117,0.15);
+  --radius:10px;
+}
+body{font-family:'Inter',sans-serif;background:var(--navy);color:var(--white);font-size:13px;line-height:1.5;}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:200;background:rgba(15,23,42,.96);backdrop-filter:blur(20px);border-bottom:1px solid var(--glass-border);height:52px;display:flex;align-items:center;padding:0 20px;gap:16px;}
+.brand{font-weight:900;font-size:14px;white-space:nowrap;}.brand span{color:var(--teal);}
+.summary-pills{display:flex;gap:8px;flex-wrap:wrap;}
+.pill{padding:3px 10px;border-radius:16px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,.08);}
+.pill.green{background:rgba(34,197,94,.15);color:var(--green);}
+.pill.amber{background:rgba(245,158,11,.15);color:var(--amber);}
+.pill.red{background:rgba(239,68,68,.15);color:var(--red);}
+.pill.grey{background:rgba(255,255,255,.06);color:var(--slate-lt);}
+#countdown{margin-left:auto;font-size:11px;color:var(--slate-lt);white-space:nowrap;}
+main{padding:64px 20px 40px;max-width:1500px;margin:0 auto;}
+.section{margin-bottom:32px;}
+.section-title{font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--teal);margin-bottom:12px;}
+.filter-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+.filter-row input{background:var(--navy-2);border:1px solid var(--navy-3);color:var(--white);padding:6px 12px;border-radius:6px;font-size:12px;width:220px;}
+.filter-row select{background:var(--navy-2);border:1px solid var(--navy-3);color:var(--white);padding:6px 10px;border-radius:6px;font-size:12px;}
+table{width:100%;border-collapse:collapse;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);overflow:hidden;}
+th{background:var(--navy-3);text-align:left;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--slate-lt);cursor:pointer;white-space:nowrap;user-select:none;}
+th:hover{color:var(--teal);}
+th .arrow{font-size:9px;margin-left:3px;}
+td{padding:7px 10px;border-top:1px solid rgba(255,255,255,.04);font-size:12px;white-space:nowrap;}
+tr:hover td{background:rgba(29,158,117,.04);}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;}
+.badge.pass,.badge.fresh,.badge.healthy{background:rgba(34,197,94,.15);color:var(--green);}
+.badge.warn,.badge.stale,.badge.degraded{background:rgba(245,158,11,.15);color:var(--amber);}
+.badge.fail,.badge.critical,.badge.unhealthy{background:rgba(239,68,68,.15);color:var(--red);}
+.badge.unknown{background:rgba(255,255,255,.06);color:var(--slate-lt);}
+.badge.scheduled{background:rgba(34,197,94,.12);color:var(--green);}
+.badge.triggered{background:rgba(29,158,117,.15);color:var(--teal);}
+.badge.none{background:rgba(239,68,68,.12);color:var(--red);}
+.metrics-cell{max-width:260px;white-space:normal;line-height:1.8;}
+.chip{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;background:var(--navy-3);color:var(--slate-lt);margin:1px;}
+.num{font-variant-numeric:tabular-nums;text-align:right;}
+.disc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;}
+.disc-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:14px;}
+.disc-card h3{font-size:12px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.disc-card ul{list-style:none;padding:0;}
+.disc-card li{padding:4px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;justify-content:space-between;}
+.disc-card li:last-child{border:none;}
+.loading{text-align:center;padding:40px;color:var(--slate-lt);font-size:14px;}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <div class="brand">JIP <span>Data Audit</span></div>
+  <div class="summary-pills" id="pills"></div>
+  <div id="countdown">Loading...</div>
+</div>
+<main>
+  <!-- HEALTH OVERVIEW -->
+  <div class="section" id="health-section">
+    <div class="section-title">Health Overview (4-Point Check Per Table)</div>
+    <div class="filter-row"><input id="health-search" placeholder="Filter streams..." oninput="renderHealth()"><select id="health-filter" onchange="renderHealth()"><option value="">All</option><option value="healthy">Healthy</option><option value="degraded">Degraded</option><option value="unhealthy">Unhealthy</option></select></div>
+    <div id="health-table"><div class="loading">Loading health data...</div></div>
+  </div>
+  <!-- METRIC INVENTORY -->
+  <div class="section" id="inventory-section">
+    <div class="section-title">Metric Inventory</div>
+    <div class="filter-row"><input id="inv-search" placeholder="Filter tables..." oninput="renderInventory()"><select id="inv-cat" onchange="renderInventory()"><option value="">All categories</option></select></div>
+    <div id="inv-table"><div class="loading">Loading inventory...</div></div>
+  </div>
+  <!-- CRON SCHEDULE -->
+  <div class="section" id="schedule-section">
+    <div class="section-title">Table-Level Cron Schedule</div>
+    <div class="filter-row"><input id="sched-search" placeholder="Filter..." oninput="renderSchedule()"></div>
+    <div id="sched-table"><div class="loading">Loading schedule...</div></div>
+  </div>
+  <!-- DISCREPANCIES -->
+  <div class="section" id="disc-section">
+    <div class="section-title">Discrepancy Report</div>
+    <div id="disc-cards"><div class="loading">Loading discrepancies...</div></div>
+  </div>
+</main>
+<script>
+let auditData=null, healthData=null, sortState={};
+const API_BASE=window.location.origin;
+const $=id=>document.getElementById(id);
+
+async function fetchAll(){
+  const [a,h]=await Promise.all([
+    fetch(API_BASE+'/api/v1/observatory/audit').then(r=>r.json()).catch(()=>null),
+    fetch(API_BASE+'/api/v1/observatory/health-detail').then(r=>r.json()).catch(()=>null),
+  ]);
+  auditData=a; healthData=h;
+  renderAll();
+}
+
+function renderAll(){
+  renderPills();
+  renderHealth();
+  renderInventory();
+  renderSchedule();
+  renderDiscrepancies();
+  populateCatFilter();
+}
+
+function renderPills(){
+  const p=$('pills');
+  if(!healthData){p.innerHTML='';return;}
+  const s=healthData.summary;
+  p.innerHTML=`
+    <span class="pill green">${s.healthy} Healthy</span>
+    <span class="pill amber">${s.degraded} Degraded</span>
+    <span class="pill red">${s.unhealthy} Unhealthy</span>
+    <span class="pill grey">${s.total_streams} Streams</span>`;
+}
+
+function sortBy(table,key,type){
+  const st=sortState[table]||{};
+  if(st.key===key){st.dir=st.dir==='asc'?'desc':'asc';}
+  else{st.key=key;st.dir='asc';}
+  sortState[table]=st;
+  if(table==='health')renderHealth();
+  else if(table==='inv')renderInventory();
+  else if(table==='sched')renderSchedule();
+}
+
+function sorted(arr,table){
+  const st=sortState[table];
+  if(!st||!st.key)return arr;
+  const dir=st.dir==='asc'?1:-1;
+  return[...arr].sort((a,b)=>{
+    let va=a[st.key],vb=b[st.key];
+    if(va==null)return 1;if(vb==null)return-1;
+    if(typeof va==='number')return(va-vb)*dir;
+    return String(va).localeCompare(String(vb))*dir;
+  });
+}
+
+function arrow(table,key){
+  const st=sortState[table]||{};
+  if(st.key!==key)return'<span class="arrow">&#8597;</span>';
+  return st.dir==='asc'?'<span class="arrow">&#9650;</span>':'<span class="arrow">&#9660;</span>';
+}
+
+function thClick(table,key){return`onclick="sortBy('${table}','${key}')"`;}
+
+/* ─── Health Table ─── */
+function renderHealth(){
+  if(!healthData){$('health-table').innerHTML='<div class="loading">No data</div>';return;}
+  const q=($('health-search').value||'').toLowerCase();
+  const f=$('health-filter').value;
+  let rows=healthData.streams.filter(s=>{
+    if(f&&s.overall!==f)return false;
+    if(q&&!s.label.toLowerCase().includes(q)&&!s.table.toLowerCase().includes(q))return false;
+    return true;
+  });
+  rows=sorted(rows,'health');
+  let html=`<table><thead><tr>
+    <th ${thClick('health','label')}>Stream${arrow('health','label')}</th>
+    <th ${thClick('health','table')}>Table${arrow('health','table')}</th>
+    <th ${thClick('health','category')}>Category${arrow('health','category')}</th>
+    <th ${thClick('health','overall')}>Overall${arrow('health','overall')}</th>
+    <th>Freshness</th><th>Completeness</th><th>Quality</th><th>Pipeline</th>
+    <th ${thClick('health','row_count')}>Rows${arrow('health','row_count')}</th>
+    <th ${thClick('health','max_date')}>Latest Date${arrow('health','max_date')}</th>
+    </tr></thead><tbody>`;
+  for(const s of rows){
+    const ck=s.checks||[];
+    html+=`<tr>
+      <td><b>${s.label}</b></td>
+      <td style="color:var(--slate-lt)">${s.table}</td>
+      <td>${s.category}</td>
+      <td><span class="badge ${s.overall}">${s.overall}</span></td>`;
+    for(const c of ck){
+      html+=`<td><span class="badge ${c.status}" title="${c.detail}">${c.status}</span></td>`;
+    }
+    html+=`<td class="num">${s.row_count!=null?s.row_count.toLocaleString():'-'}</td>`;
+    html+=`<td>${s.max_date||'-'}</td></tr>`;
+  }
+  html+='</tbody></table>';
+  $('health-table').innerHTML=html;
+}
+
+/* ─── Metric Inventory ─── */
+function populateCatFilter(){
+  if(!auditData)return;
+  const cats=[...new Set(auditData.metric_inventory.map(m=>m.category))].sort();
+  const sel=$('inv-cat');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">All categories</option>'+cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  sel.value=cur;
+}
+
+function renderInventory(){
+  if(!auditData){$('inv-table').innerHTML='<div class="loading">No data</div>';return;}
+  const q=($('inv-search').value||'').toLowerCase();
+  const cat=$('inv-cat').value;
+  let rows=auditData.metric_inventory.filter(m=>{
+    if(cat&&m.category!==cat)return false;
+    if(q&&!m.label.toLowerCase().includes(q)&&!m.table.toLowerCase().includes(q))return false;
+    return true;
+  });
+  rows=sorted(rows,'inv');
+  let html=`<table><thead><tr>
+    <th ${thClick('inv','label')}>Stream${arrow('inv','label')}</th>
+    <th ${thClick('inv','table')}>Table${arrow('inv','table')}</th>
+    <th ${thClick('inv','category')}>Cat${arrow('inv','category')}</th>
+    <th ${thClick('inv','metric_count')}>Metrics${arrow('inv','metric_count')}</th>
+    <th>Metric Columns</th>
+    <th ${thClick('inv','total_instruments')}>Instruments${arrow('inv','total_instruments')}</th>
+    <th>By Type</th>
+    <th ${thClick('inv','min_date')}>Min Date${arrow('inv','min_date')}</th>
+    <th ${thClick('inv','max_date')}>Max Date${arrow('inv','max_date')}</th>
+    <th ${thClick('inv','row_count_exact')}>Rows${arrow('inv','row_count_exact')}</th>
+    <th ${thClick('inv','freshness')}>Freshness${arrow('inv','freshness')}</th>
+    </tr></thead><tbody>`;
+  for(const m of rows){
+    const chips=(m.metrics||[]).map(c=>`<span class="chip">${c}</span>`).join('');
+    const byType=Object.entries(m.instrument_counts||{}).map(([k,v])=>`${k}:${v.toLocaleString()}`).join(', ')||'-';
+    html+=`<tr>
+      <td><b>${m.label}</b></td>
+      <td style="color:var(--slate-lt)">${m.table}</td>
+      <td>${m.category}</td>
+      <td class="num">${m.metric_count}</td>
+      <td class="metrics-cell">${chips||'-'}</td>
+      <td class="num">${m.total_instruments?m.total_instruments.toLocaleString():'-'}</td>
+      <td style="font-size:11px">${byType}</td>
+      <td>${m.min_date||'-'}</td>
+      <td>${m.max_date||'-'}</td>
+      <td class="num">${m.row_count_exact!=null?m.row_count_exact.toLocaleString():'-'}</td>
+      <td><span class="badge ${m.freshness||'unknown'}">${m.freshness||'?'}</span></td>
+    </tr>`;
+  }
+  html+='</tbody></table>';
+  $('inv-table').innerHTML=html;
+}
+
+/* ─── Schedule Table ─── */
+function renderSchedule(){
+  if(!auditData){$('sched-table').innerHTML='<div class="loading">No data</div>';return;}
+  const q=($('sched-search').value||'').toLowerCase();
+  let rows=auditData.table_schedule.filter(s=>{
+    if(q&&!s.label.toLowerCase().includes(q)&&!s.table.toLowerCase().includes(q)&&!(s.pipeline||'').toLowerCase().includes(q))return false;
+    return true;
+  });
+  rows=sorted(rows,'sched');
+  let html=`<table><thead><tr>
+    <th ${thClick('sched','label')}>Stream${arrow('sched','label')}</th>
+    <th ${thClick('sched','table')}>Table${arrow('sched','table')}</th>
+    <th ${thClick('sched','pipeline')}>Pipeline${arrow('sched','pipeline')}</th>
+    <th ${thClick('sched','schedule_group')}>Group${arrow('sched','schedule_group')}</th>
+    <th>Cron</th><th>Schedule</th>
+    <th ${thClick('sched','last_run_status')}>Last Status${arrow('sched','last_run_status')}</th>
+    <th>Last Success</th><th>Next Run</th>
+    <th>Type</th>
+    </tr></thead><tbody>`;
+  for(const s of rows){
+    const typ=s.is_scheduled?'scheduled':s.is_triggered?'triggered':'none';
+    html+=`<tr>
+      <td><b>${s.label}</b></td>
+      <td style="color:var(--slate-lt)">${s.table}</td>
+      <td>${s.pipeline||'<span style="color:var(--red)">none</span>'}</td>
+      <td>${s.schedule_group||'-'}</td>
+      <td style="font-family:monospace;font-size:11px">${s.cron_expression||'-'}</td>
+      <td style="font-size:11px">${s.cron_label||'-'}</td>
+      <td><span class="badge ${s.last_run_status==='success'?'pass':s.last_run_status==='failed'?'fail':'unknown'}">${s.last_run_status||'-'}</span></td>
+      <td style="font-size:11px">${s.last_success_at?s.last_success_at.slice(0,16):'-'}</td>
+      <td style="font-size:11px">${s.next_run?s.next_run.slice(0,16):'-'}</td>
+      <td><span class="badge ${typ}">${typ}</span></td>
+    </tr>`;
+  }
+  html+='</tbody></table>';
+  $('sched-table').innerHTML=html;
+}
+
+/* ─── Discrepancies ─── */
+function renderDiscrepancies(){
+  if(!auditData){$('disc-cards').innerHTML='<div class="loading">No data</div>';return;}
+  const d=auditData.discrepancies;
+  let html='<div class="disc-grid">';
+  html+=discCard('Stale / Critical Streams','red',d.stale_streams,s=>`<span>${s.label}</span><span>${s.hours_old}h old &middot; ${s.pipeline||'no pipeline'}</span>`);
+  html+=discCard('Empty Tables','amber',d.empty_streams,s=>`<span>${s.label}</span><span>${s.pipeline||'no pipeline'}</span>`);
+  html+=discCard('Unscheduled Streams','amber',d.unscheduled_streams,s=>`<span>${s.label}</span><span style="font-size:11px">${s.reason}</span>`);
+  html+=discCard('Quarantined Data','red',d.quarantined_tables,s=>`<span>${s.label}</span><span>${s.quarantined_rows.toLocaleString()} rows</span>`);
+  html+=discCard('Unmapped DB Tables','grey',d.unmapped_db_tables,s=>`<span>${s.table}</span><span style="color:var(--slate)">not in stream registry</span>`);
+  html+='</div>';
+  $('disc-cards').innerHTML=html;
+}
+
+function discCard(title,color,items,renderItem){
+  const count=items?items.length:0;
+  const dot=count===0?'var(--green)':`var(--${color==='grey'?'slate-lt':color})`;
+  let html=`<div class="disc-card"><h3><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dot}"></span>${title} (${count})</h3>`;
+  if(count===0){html+='<div style="color:var(--green);font-size:12px">All clear</div>';}
+  else{html+='<ul>';for(const s of items){html+=`<li>${renderItem(s)}</li>`;}html+='</ul>';}
+  html+='</div>';
+  return html;
+}
+
+/* ─── Refresh loop ─── */
+let timer=60;
+function tick(){
+  timer--;
+  if(timer<=0){timer=60;fetchAll();}
+  $('countdown').textContent=`Auto-refresh in ${timer}s`;
+}
+fetchAll();
+setInterval(tick,1000);
+</script>
+</body>
+</html>

@@ -41,21 +41,24 @@ class CronSchedule:
     def default(cls) -> "CronSchedule":
         """Build the canonical schedule for JIP Data Engine."""
         entries = [
+            # ── Pre-market (07:30 IST, weekdays) ──
             ScheduleEntry(
                 name="pre_market",
-                cron_expr="30 7 * * 1-5",  # 07:30 IST, weekdays
+                cron_expr="30 7 * * 1-5",
                 pipelines=["nse_bhav", "nse_corporate_actions", "nse_indices"],
                 description="Pre-market: NSE data load",
             ),
+            # ── T+1 delivery (09:00 IST, weekdays) ──
             ScheduleEntry(
                 name="t1_delivery",
-                cron_expr="0 9 * * 1-5",  # 09:00 IST, weekdays
+                cron_expr="0 9 * * 1-5",
                 pipelines=["fii_dii_flows"],
                 description="T+1 delivery: FII/DII flows",
             ),
+            # ── EOD ingestion (18:30 IST, weekdays) ──
             ScheduleEntry(
                 name="eod",
-                cron_expr="30 18 * * 1-5",  # 18:30 IST, weekdays
+                cron_expr="30 18 * * 1-5",
                 pipelines=[
                     "nse_bhav",
                     "nse_corporate_actions",
@@ -64,50 +67,79 @@ class CronSchedule:
                     "amfi_nav",
                     "yfinance_global",
                     "fred_macro",
+                    "india_vix",
+                    "etf_prices",
                 ],
                 description="End of day: full data refresh",
             ),
+            # ── EOD weekend (18:30 IST, Sat-Sun) — global only ──
             ScheduleEntry(
-                name="rs_computation",
-                cron_expr="",  # Triggered after EOD completes
-                pipelines=["relative_strength"],
-                description="RS computation: triggered after EOD",
+                name="eod_weekend",
+                cron_expr="30 18 * * 0,6",
+                pipelines=["yfinance_global", "fred_macro"],
+                description="Weekend EOD: global markets + macro",
+            ),
+            # ── Nightly compute chain (19:30 IST, weekdays) ──
+            # Triggered after EOD completes; runs the full compute DAG
+            ScheduleEntry(
+                name="nightly_compute",
+                cron_expr="",
+                pipelines=[
+                    "__validate_ohlcv__",
+                    "equity_technicals_sql",
+                    "equity_technicals_pandas",
+                    "relative_strength",
+                    "market_breadth",
+                    "mf_derived",
+                    "etf_technicals",
+                    "etf_rs",
+                    "global_technicals",
+                    "global_rs",
+                    "full_runner",
+                    "__goldilocks_compute__",
+                ],
+                description="Nightly compute: technicals → RS → breadth → derived → goldilocks",
                 trigger_after="eod",
             ),
+            # ── F&O summary (20:00 IST, weekdays) ──
             ScheduleEntry(
-                name="regime_computation",
-                cron_expr="",  # Triggered after RS completes
-                pipelines=["regime_detection"],
-                description="Regime detection: triggered after RS",
-                trigger_after="rs_computation",
+                name="fo_summary",
+                cron_expr="0 20 * * 1-5",
+                pipelines=["fo_summary"],
+                description="F&O summary: PCR, OI, FII positions",
             ),
+            # ── Reconciliation (23:00 IST, daily) ──
             ScheduleEntry(
                 name="reconciliation",
-                cron_expr="0 23 * * *",  # 23:00 IST, daily
+                cron_expr="0 23 * * *",
                 pipelines=["__reconciliation__"],
                 description="Cross-source data reconciliation",
             ),
+            # ── Qualitative (every 30 min) ──
             ScheduleEntry(
                 name="qualitative",
-                cron_expr="*/30 * * * *",  # Every 30 minutes
+                cron_expr="*/30 * * * *",
                 pipelines=["qualitative_rss"],
                 description="Qualitative: RSS feed ingestion",
             ),
+            # ── Full RS rebuild (Sunday 02:00 IST) ──
             ScheduleEntry(
                 name="full_rs_rebuild",
-                cron_expr="0 2 * * 0",  # Sunday 02:00 IST
+                cron_expr="0 2 * * 0",
                 pipelines=["relative_strength"],
                 description="Full RS historical rebuild (Sunday)",
             ),
+            # ── Morningstar weekly (Sunday 04:00 IST) ──
             ScheduleEntry(
                 name="morningstar_weekly",
-                cron_expr="0 4 * * 0",  # Sunday 04:00 IST
+                cron_expr="0 4 * * 0",
                 pipelines=["morningstar_nav", "morningstar_portfolio"],
                 description="Morningstar weekly data refresh",
             ),
+            # ── Holdings monthly (1st of month 03:00 IST) ──
             ScheduleEntry(
                 name="holdings_monthly",
-                cron_expr="0 3 1 * *",  # 1st of month 03:00 IST
+                cron_expr="0 3 1 * *",
                 pipelines=["morningstar_portfolio"],
                 description="Holdings: 1st of month refresh",
             ),

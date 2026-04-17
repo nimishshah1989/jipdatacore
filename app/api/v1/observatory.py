@@ -379,6 +379,42 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "date_col": "date",
         "category": "equity",
     },
+    # ── Previously untracked tables ──
+    {
+        "stream_id": "adjustment_factors",
+        "label": "Adjustment Factors",
+        "table": "de_adjustment_factors_daily",
+        "date_col": "date",
+        "category": "equity",
+    },
+    {
+        "stream_id": "mf_dividends",
+        "label": "MF Dividends",
+        "table": "de_mf_dividends",
+        "date_col": "ex_date",
+        "category": "mf",
+    },
+    {
+        "stream_id": "fo_summary",
+        "label": "F&O Summary",
+        "table": "de_fo_summary",
+        "date_col": "date",
+        "category": "equity",
+    },
+    {
+        "stream_id": "rs_daily_summary",
+        "label": "RS Daily Summary",
+        "table": "de_rs_daily_summary",
+        "date_col": "date",
+        "category": "equity",
+    },
+    {
+        "stream_id": "champion_trades",
+        "label": "Champion Trades",
+        "table": "de_champion_trades",
+        "date_col": "trade_date",
+        "category": "equity",
+    },
 ]
 
 
@@ -900,6 +936,11 @@ STREAM_PIPELINE_MAP: dict[str, str] = {
     "intermarket_ratios": "full_runner",
     "fib_levels": "full_runner",
     "divergence_signals": "full_runner",
+    "adjustment_factors": "equity_corporate_actions",
+    "mf_dividends": "mf_eod",
+    "fo_summary": "fo_summary",
+    "rs_daily_summary": "relative_strength",
+    "champion_trades": "__goldilocks_compute__",
 }
 
 
@@ -1876,4 +1917,335 @@ async def get_audit(
             "quarantined_tables": quarantined_tables,
             "unmapped_db_tables": [{"table": t} for t in unmapped_tables],
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Per-table health check — 4-pointer diagnostic per stream
+# ---------------------------------------------------------------------------
+
+# Expected update frequency per category (hours between updates)
+_FRESHNESS_THRESHOLDS: dict[str, dict[str, float]] = {
+    "equity":       {"fresh": 36, "stale": 96},
+    "mf":           {"fresh": 36, "stale": 96},
+    "etf":          {"fresh": 36, "stale": 96},
+    "flows":        {"fresh": 36, "stale": 96},
+    "global":       {"fresh": 48, "stale": 120},
+    "macro":        {"fresh": 168, "stale": 336},     # weekly / biweekly
+    "qualitative":  {"fresh": 2, "stale": 12},        # every 30 min
+    "monthly":      {"fresh": 720, "stale": 1440},    # 30d / 60d
+}
+
+# Minimum expected row count per stream (order-of-magnitude floor)
+_MIN_ROW_EXPECTATIONS: dict[str, int] = {
+    "equity_ohlcv": 100_000,
+    "equity_technicals": 50_000,
+    "rs_scores": 10_000,
+    "mf_nav": 50_000,
+    "mf_holdings": 5_000,
+    "index_prices": 5_000,
+    "global_prices": 1_000,
+    "institutional_flows": 500,
+    "fo_summary": 200,
+}
+
+
+def _freshness_grade(hours_old: float | None, category: str) -> dict[str, Any]:
+    """Grade freshness for a specific category."""
+    thresholds = _FRESHNESS_THRESHOLDS.get(category, {"fresh": 36, "stale": 96})
+    if hours_old is None:
+        return {"check": "freshness", "status": "unknown", "detail": "no data"}
+    if hours_old < thresholds["fresh"]:
+        return {"check": "freshness", "status": "pass", "detail": f"{hours_old:.0f}h old"}
+    if hours_old < thresholds["stale"]:
+        return {"check": "freshness", "status": "warn", "detail": f"{hours_old:.0f}h old (stale)"}
+    return {"check": "freshness", "status": "fail", "detail": f"{hours_old:.0f}h old (critical)"}
+
+
+def _completeness_grade(
+    row_count: int, stream_id: str, has_today: bool,
+) -> dict[str, Any]:
+    """Grade row count and whether today's data exists."""
+    if row_count == 0:
+        return {"check": "completeness", "status": "fail", "detail": "empty table"}
+    min_expected = _MIN_ROW_EXPECTATIONS.get(stream_id, 0)
+    if min_expected and row_count < min_expected:
+        return {
+            "check": "completeness", "status": "warn",
+            "detail": f"{row_count:,} rows (expected >={min_expected:,})",
+        }
+    return {
+        "check": "completeness", "status": "pass",
+        "detail": f"{row_count:,} rows",
+    }
+
+
+def _quality_grade(
+    quarantined: int, total: int,
+) -> dict[str, Any]:
+    """Grade data quality based on quarantined rows."""
+    if total == 0:
+        return {"check": "quality", "status": "unknown", "detail": "no data"}
+    if quarantined == 0:
+        return {"check": "quality", "status": "pass", "detail": "0 quarantined"}
+    pct = quarantined / total * 100
+    if pct < 1:
+        return {
+            "check": "quality", "status": "pass",
+            "detail": f"{quarantined:,} quarantined ({pct:.2f}%)",
+        }
+    if pct < 5:
+        return {
+            "check": "quality", "status": "warn",
+            "detail": f"{quarantined:,} quarantined ({pct:.1f}%)",
+        }
+    return {
+        "check": "quality", "status": "fail",
+        "detail": f"{quarantined:,} quarantined ({pct:.1f}%)",
+    }
+
+
+def _pipeline_grade(
+    last_success_at: str | None, last_status: str | None,
+    is_scheduled: bool, hours_old: float | None,
+) -> dict[str, Any]:
+    """Grade pipeline health — is it running and succeeding?"""
+    if not is_scheduled and last_success_at is None:
+        return {"check": "pipeline", "status": "fail", "detail": "no pipeline / not scheduled"}
+    if last_status == "failed":
+        return {
+            "check": "pipeline", "status": "fail",
+            "detail": f"last run failed (at {last_success_at or 'never'})",
+        }
+    if last_success_at is None:
+        return {"check": "pipeline", "status": "warn", "detail": "never succeeded"}
+    if last_status in ("success", "partial"):
+        return {"check": "pipeline", "status": "pass", "detail": f"last success: {last_success_at}"}
+    return {"check": "pipeline", "status": "warn", "detail": f"status={last_status}"}
+
+
+@router.get(
+    "/health-detail",
+    status_code=status.HTTP_200_OK,
+    summary="Per-table 4-point health check — freshness, completeness, quality, pipeline",
+)
+async def get_health_detail(
+    db=Depends(get_observatory_db),
+) -> dict[str, Any]:
+    """
+    For every tracked stream, run 4 health checks:
+      1. Freshness — is data recent enough for its expected frequency?
+      2. Completeness — does the table have enough rows? Is today present?
+      3. Quality — what fraction of rows are quarantined?
+      4. Pipeline — is the feeding pipeline scheduled and succeeding?
+
+    Returns per-table health card + overall score.
+    """
+    from collections import defaultdict
+    from datetime import date as date_type
+
+    now_utc = datetime.now(tz=timezone.utc)
+    today = date_type.today()
+
+    from app.orchestrator.scheduler import IST, CronSchedule
+    schedule = CronSchedule.default()
+
+    # Pipeline schedule lookup (same logic as /audit)
+    pipeline_to_schedule: dict[str, dict[str, Any]] = {}
+    for entry in schedule.entries:
+        for pname in entry.pipelines:
+            pipeline_to_schedule[pname] = {
+                "schedule_group": entry.name,
+                "cron_expression": entry.cron_expr or None,
+            }
+    try:
+        from app.pipelines.registry import SCHEDULE_REGISTRY
+        for group_name, pipelines in SCHEDULE_REGISTRY.items():
+            for pname in pipelines:
+                if pname not in pipeline_to_schedule:
+                    pipeline_to_schedule[pname] = {
+                        "schedule_group": group_name,
+                        "cron_expression": None,
+                    }
+    except Exception:
+        pass
+
+    # Last pipeline success per pipeline_name
+    try:
+        run_result = await db.execute(
+            sa.text(
+                """
+                SELECT DISTINCT ON (pipeline_name)
+                    pipeline_name, status, completed_at
+                FROM de_pipeline_log
+                WHERE completed_at IS NOT NULL
+                ORDER BY pipeline_name, completed_at DESC
+                """
+            )
+        )
+        last_runs: dict[str, dict[str, Any]] = {
+            r.pipeline_name: {"status": r.status, "at": r.completed_at.isoformat() if r.completed_at else None}
+            for r in run_result.fetchall()
+        }
+    except Exception:
+        last_runs = {}
+
+    # Column existence cache
+    cols_result = await db.execute(
+        sa.text(
+            "SELECT table_name, column_name FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name LIKE 'de_%'"
+        )
+    )
+    cols_by_table: dict[str, set[str]] = defaultdict(set)
+    for r in cols_result.fetchall():
+        cols_by_table[r.table_name].add(r.column_name)
+
+    # Build health cards
+    health_cards: list[dict[str, Any]] = []
+    totals = {"pass": 0, "warn": 0, "fail": 0, "unknown": 0}
+
+    for stream in STREAM_DEFINITIONS:
+        table = stream["table"]
+        date_col = stream["date_col"]
+        sid = stream["stream_id"]
+        cat = stream["category"]
+
+        cols = cols_by_table.get(table, set())
+        if not cols:
+            checks = [
+                {"check": "freshness", "status": "fail", "detail": "table missing"},
+                {"check": "completeness", "status": "fail", "detail": "table missing"},
+                {"check": "quality", "status": "unknown", "detail": "table missing"},
+                {"check": "pipeline", "status": "fail", "detail": "table missing"},
+            ]
+            overall = "fail"
+            health_cards.append({
+                "stream_id": sid, "label": stream["label"], "table": table,
+                "category": cat, "exists": False, "overall": overall,
+                "checks": checks, "pass_count": 0, "fail_count": 4,
+            })
+            totals["fail"] += 1
+            continue
+
+        has_data_status = "data_status" in cols
+
+        # 1. Freshness + row count + quarantined — single compound query
+        query_parts = [
+            f"COUNT(*) AS total",
+            f"MIN({date_col}) AS min_d",
+            f"MAX({date_col}) AS max_d",
+        ]
+        if has_data_status:
+            query_parts.append(
+                "SUM(CASE WHEN data_status='quarantined' THEN 1 ELSE 0 END) AS q_count"
+            )
+
+        try:
+            q = await db.execute(
+                sa.text(f"SELECT {', '.join(query_parts)} FROM {table}")  # noqa: S608
+            )
+            row = q.fetchone()
+            total_rows = int(row.total or 0)
+            max_date = row.max_d
+            quarantined = int(row.q_count) if has_data_status and hasattr(row, "q_count") and row.q_count else 0
+        except Exception:
+            total_rows = 0
+            max_date = None
+            quarantined = 0
+
+        hours_old: float | None = None
+        has_today = False
+        if max_date is not None:
+            try:
+                from datetime import date as dt_date
+                if isinstance(max_date, dt_date):
+                    md = max_date
+                else:
+                    md = datetime.strptime(str(max_date)[:10], "%Y-%m-%d").date()
+                hours_old = (today - md).days * 24.0
+                has_today = md >= today
+            except Exception:
+                pass
+
+        # Pipeline info
+        pipeline_name = STREAM_PIPELINE_MAP.get(sid)
+        sched = pipeline_to_schedule.get(pipeline_name) if pipeline_name else None
+        if sched is None and pipeline_name:
+            try:
+                from app.pipelines.registry import DAG_ALIAS
+                for alias, real in DAG_ALIAS.items():
+                    if real == pipeline_name and alias in pipeline_to_schedule:
+                        sched = pipeline_to_schedule[alias]
+                        break
+            except Exception:
+                pass
+
+        is_scheduled = bool(sched)
+        run_info = last_runs.get(pipeline_name, {}) if pipeline_name else {}
+
+        # Build 4 checks
+        c1 = _freshness_grade(hours_old, cat)
+        c2 = _completeness_grade(total_rows, sid, has_today)
+        c3 = _quality_grade(quarantined, total_rows) if has_data_status else {
+            "check": "quality", "status": "pass", "detail": "no data_status column (validated elsewhere)",
+        }
+        c4 = _pipeline_grade(
+            run_info.get("at"), run_info.get("status"), is_scheduled, hours_old,
+        )
+
+        checks = [c1, c2, c3, c4]
+        pass_count = sum(1 for c in checks if c["status"] == "pass")
+        fail_count = sum(1 for c in checks if c["status"] == "fail")
+        warn_count = sum(1 for c in checks if c["status"] == "warn")
+
+        if fail_count > 0:
+            overall = "unhealthy"
+        elif warn_count > 0:
+            overall = "degraded"
+        elif pass_count == 4:
+            overall = "healthy"
+        else:
+            overall = "unknown"
+
+        totals["pass" if overall == "healthy" else "warn" if overall == "degraded" else "fail"] += 1
+
+        health_cards.append({
+            "stream_id": sid,
+            "label": stream["label"],
+            "table": table,
+            "category": cat,
+            "exists": True,
+            "overall": overall,
+            "checks": checks,
+            "pass_count": pass_count,
+            "fail_count": fail_count,
+            "row_count": total_rows,
+            "max_date": str(max_date) if max_date else None,
+            "hours_old": round(hours_old, 1) if hours_old is not None else None,
+            "pipeline": pipeline_name,
+            "schedule_group": sched["schedule_group"] if sched else None,
+        })
+
+    healthy = sum(1 for h in health_cards if h["overall"] == "healthy")
+    degraded = sum(1 for h in health_cards if h["overall"] == "degraded")
+    unhealthy = sum(1 for h in health_cards if h["overall"] == "unhealthy")
+
+    if unhealthy > 0:
+        engine_status = "unhealthy"
+    elif degraded > 0:
+        engine_status = "degraded"
+    else:
+        engine_status = "healthy"
+
+    return {
+        "as_of": now_utc.isoformat(),
+        "engine_status": engine_status,
+        "summary": {
+            "total_streams": len(health_cards),
+            "healthy": healthy,
+            "degraded": degraded,
+            "unhealthy": unhealthy,
+        },
+        "streams": health_cards,
     }
