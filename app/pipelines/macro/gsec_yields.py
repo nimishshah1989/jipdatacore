@@ -1,4 +1,11 @@
-"""G-Sec daily yield curve pipeline — primary CCIL NDS-OM with RBI DBIE fallback.
+"""G-Sec daily yield curve pipeline.
+
+Primary source: yfinance India 10Y bond yield (`^IN10YT`) — reliable, no
+anti-bot issues. Provides only the 10Y tenor but is consistently
+available.
+Secondary: CCIL NDS-OM end-of-day snapshot HTML (provides full curve when
+available).
+Tertiary: RBI DBIE (stub; not implemented).
 
 Fetches end-of-day benchmark G-Sec yields across standard tenor buckets
 (1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 15Y, 30Y, 40Y) and upserts into de_gsec_yield.
@@ -6,9 +13,10 @@ Fetches end-of-day benchmark G-Sec yields across standard tenor buckets
 
 from __future__ import annotations
 
+import asyncio
 import io
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -207,6 +215,52 @@ def _parse_ccil_html(html: str, business_date: date) -> list[dict[str, Any]]:
     return [entry[1] for entry in best_per_tenor.values()]
 
 
+def _fetch_from_yfinance_sync(business_date: date) -> list[dict[str, Any]]:
+    """yfinance India 10Y bond yield — reliable single-tenor source.
+
+    Ticker ^IN10YT returns the India 10Y benchmark yield as a percentage.
+    """
+    import yfinance as yf  # noqa: PLC0415
+
+    rows: list[dict[str, Any]] = []
+    start = business_date - timedelta(days=5)
+    end = business_date + timedelta(days=1)
+
+    try:
+        t = yf.Ticker("^IN10YT")
+        df = t.history(start=start.isoformat(), end=end.isoformat())
+        if df is None or df.empty:
+            return rows
+        matching = df[df.index.date == business_date]
+        if not matching.empty:
+            raw = float(matching["Close"].iloc[-1])
+        else:
+            raw = float(df["Close"].iloc[-1])
+        # Sanity range: Indian 10Y yields typically 5-10%.
+        if raw <= 0 or raw >= 30:
+            return rows
+        rows.append(
+            {
+                "yield_date": business_date,
+                "tenor": "10Y",
+                "yield_pct": Decimal(str(round(raw, 4))),
+                "security_name": None,
+                "source": "YFINANCE",
+            }
+        )
+    except Exception as exc:
+        logger.warning(
+            "gsec_yields_yfinance_failed",
+            error=str(exc),
+            business_date=business_date.isoformat(),
+        )
+    return rows
+
+
+async def _fetch_from_yfinance(business_date: date) -> list[dict[str, Any]]:
+    return await asyncio.to_thread(_fetch_from_yfinance_sync, business_date)
+
+
 async def _fetch_from_ccil(client: httpx.AsyncClient) -> str:
     """Fetch the CCIL NDS-OM end-of-day snapshot HTML page."""
     response = await client.get(
@@ -282,28 +336,47 @@ class GsecYieldsPipeline(BasePipeline):
         )
 
         rows: list[dict[str, Any]] = []
-        source_used = "CCIL"
+        source_used = "YFINANCE"
         primary_error: Exception | None = None
 
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            # ---- PRIMARY: CCIL NDS-OM end-of-day snapshot ----
-            try:
-                html = await _fetch_from_ccil(client)
-                rows = _parse_ccil_html(html, business_date)
+        # ---- PRIMARY: yfinance 10Y India bond yield (reliable single-tenor) ----
+        try:
+            rows = await _fetch_from_yfinance(business_date)
+            if rows:
                 logger.info(
-                    "gsec_yields_ccil_success",
+                    "gsec_yields_yfinance_success",
                     parsed_rows=len(rows),
                     business_date=business_date.isoformat(),
                 )
-            except Exception as exc:
-                primary_error = exc
-                logger.warning(
-                    "gsec_yields_ccil_failed",
-                    error=str(exc),
-                    business_date=business_date.isoformat(),
-                )
+        except Exception as exc:
+            primary_error = exc
+            logger.warning(
+                "gsec_yields_yfinance_error",
+                error=str(exc),
+                business_date=business_date.isoformat(),
+            )
 
-            # ---- FALLBACK: RBI DBIE (best-effort) ----
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            # ---- SECONDARY: CCIL NDS-OM end-of-day snapshot (full curve) ----
+            if not rows:
+                try:
+                    html = await _fetch_from_ccil(client)
+                    rows = _parse_ccil_html(html, business_date)
+                    if rows:
+                        source_used = "CCIL"
+                        logger.info(
+                            "gsec_yields_ccil_success",
+                            parsed_rows=len(rows),
+                            business_date=business_date.isoformat(),
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "gsec_yields_ccil_failed",
+                        error=str(exc),
+                        business_date=business_date.isoformat(),
+                    )
+
+            # ---- TERTIARY: RBI DBIE (best-effort) ----
             if not rows:
                 try:
                     rows = await _fetch_from_rbi_dbie(client, business_date)
@@ -315,7 +388,7 @@ class GsecYieldsPipeline(BasePipeline):
                             business_date=business_date.isoformat(),
                         )
                 except Exception as exc:
-                    logger.error(
+                    logger.warning(
                         "gsec_yields_rbi_fallback_failed",
                         error=str(exc),
                         business_date=business_date.isoformat(),

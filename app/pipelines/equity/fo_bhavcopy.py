@@ -16,7 +16,6 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-import httpx
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +23,7 @@ from app.logging import get_logger
 from app.models.computed import DeFoBhavcopy
 from app.models.pipeline import DePipelineLog
 from app.pipelines.framework import BasePipeline, ExecutionResult
+from app.utils.fetch_helpers import NSE_ARCHIVES_HEADERS, fetch_with_retry
 
 logger = get_logger(__name__)
 
@@ -215,60 +215,31 @@ def _build_reports_fallback_url(business_date: date) -> str:
     return f"{NSE_FO_REPORTS_URL}?{urllib.parse.urlencode(params)}"
 
 
-async def _warm_nse_cookies(client: httpx.AsyncClient) -> None:
-    """Hit the NSE homepage to obtain the session cookies required for archives."""
-    await client.get("https://www.nseindia.com/", headers=NSE_HEADERS, timeout=15.0)
-
-
-async def _fetch_primary(
-    client: httpx.AsyncClient,
-    business_date: date,
-) -> bytes:
-    """Download the new UDiFF ZIP with one retry on 403."""
+async def _fetch_primary(business_date: date) -> bytes:
+    """Download the UDiFF ZIP using the same fetch_with_retry utility
+    that the equity bhav_copy pipeline uses — no cookie warmup needed
+    for the nsearchives subdomain.
+    """
     url = _build_primary_url(business_date)
-    await _warm_nse_cookies(client)
-    try:
-        response = await client.get(url, headers=NSE_HEADERS, timeout=30.0)
-        response.raise_for_status()
-        return response.content
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 403:
-            logger.warning(
-                "fo_bhavcopy_primary_403_retry",
-                url=url,
-                business_date=business_date.isoformat(),
-            )
-            # Re-warm cookies and retry once
-            await _warm_nse_cookies(client)
-            response = await client.get(url, headers=NSE_HEADERS, timeout=30.0)
-            response.raise_for_status()
-            return response.content
-        raise
+    return await fetch_with_retry(
+        url,
+        headers=NSE_ARCHIVES_HEADERS,
+        max_retries=3,
+        base_delay=2.0,
+        timeout=60.0,
+    )
 
 
-async def _fetch_fallback(
-    client: httpx.AsyncClient,
-    business_date: date,
-) -> bytes:
-    """Download via the legacy reports API fallback with one retry on 403."""
+async def _fetch_fallback(business_date: date) -> bytes:
+    """Download via the legacy reports API fallback (needs session cookie)."""
+    from app.utils.fetch_helpers import fetch_nse_json
+
     url = _build_reports_fallback_url(business_date)
-    await _warm_nse_cookies(client)
-    try:
-        response = await client.get(url, headers=NSE_HEADERS, timeout=30.0)
-        response.raise_for_status()
-        return response.content
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 403:
-            logger.warning(
-                "fo_bhavcopy_fallback_403_retry",
-                url=url,
-                business_date=business_date.isoformat(),
-            )
-            await _warm_nse_cookies(client)
-            response = await client.get(url, headers=NSE_HEADERS, timeout=30.0)
-            response.raise_for_status()
-            return response.content
-        raise
+    data = await fetch_nse_json(url, max_retries=2, timeout=60.0)
+    if isinstance(data, bytes):
+        return data
+    import json as _json
+    return _json.dumps(data).encode()
 
 
 async def upsert_fo_bhavcopy(
@@ -337,38 +308,34 @@ class FoBhavcopyPipeline(BasePipeline):
         raw_bytes: bytes | None = None
         source_used = "NSE_ARCHIVES"
 
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        try:
+            raw_bytes = await _fetch_primary(business_date)
+            logger.info(
+                "fo_bhavcopy_primary_success",
+                bytes=len(raw_bytes),
+                business_date=business_date.isoformat(),
+            )
+        except Exception as exc:
+            logger.warning(
+                "fo_bhavcopy_primary_failed_trying_fallback",
+                error=str(exc),
+                business_date=business_date.isoformat(),
+            )
             try:
-                raw_bytes = await _fetch_primary(client, business_date)
+                raw_bytes = await _fetch_fallback(business_date)
+                source_used = "NSE_REPORTS_API"
                 logger.info(
-                    "fo_bhavcopy_primary_success",
+                    "fo_bhavcopy_fallback_success",
                     bytes=len(raw_bytes),
                     business_date=business_date.isoformat(),
                 )
-            except (httpx.HTTPStatusError, httpx.HTTPError) as exc:
+            except Exception as fallback_exc:
                 logger.warning(
-                    "fo_bhavcopy_primary_failed_trying_fallback",
-                    error=str(exc),
+                    "fo_bhavcopy_all_sources_failed",
+                    error=str(fallback_exc),
                     business_date=business_date.isoformat(),
                 )
-                try:
-                    raw_bytes = await _fetch_fallback(client, business_date)
-                    source_used = "NSE_REPORTS_API"
-                    logger.info(
-                        "fo_bhavcopy_fallback_success",
-                        bytes=len(raw_bytes),
-                        business_date=business_date.isoformat(),
-                    )
-                except Exception as fallback_exc:
-                    logger.warning(
-                        "fo_bhavcopy_all_sources_failed",
-                        error=str(fallback_exc),
-                        business_date=business_date.isoformat(),
-                    )
-                    # Graceful-fail: NSE anti-bot can 403 every request
-                    # on certain IP ranges. Don't raise — return 0 rows
-                    # so a multi-day backfill continues.
-                    return ExecutionResult(rows_processed=0, rows_failed=0)
+                return ExecutionResult(rows_processed=0, rows_failed=0)
 
         if not raw_bytes:
             logger.warning(

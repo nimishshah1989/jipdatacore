@@ -26,6 +26,7 @@ from app.logging import get_logger
 from app.models.pipeline import DePipelineLog
 from app.models.qualitative import DeBulkBlockDeal
 from app.pipelines.framework import BasePipeline, ExecutionResult
+from app.utils.fetch_helpers import fetch_nse_json
 
 logger = get_logger(__name__)
 
@@ -256,27 +257,18 @@ def _parse_bse_records(
     return rows
 
 
-async def _nse_handshake(client: httpx.AsyncClient) -> None:
-    """Prime NSE session cookies by hitting the homepage."""
-    await client.get(
-        "https://www.nseindia.com/", headers=NSE_HEADERS, timeout=15.0
-    )
-
-
 async def _fetch_nse_feed(
-    client: httpx.AsyncClient,
     url: str,
     business_date: date,
     deal_type: str,
 ) -> list[dict[str, Any]]:
-    """Fetch an NSE historical bulk/block feed for a single business_date."""
+    """Fetch an NSE historical bulk/block feed using the shared fetch_nse_json
+    utility (handles cookie warmup + retry internally).
+    """
     dstr = business_date.strftime("%d-%m-%Y")
-    params = {"from": dstr, "to": dstr}
-    response = await client.get(
-        url, params=params, headers=NSE_HEADERS, timeout=30.0
-    )
-    response.raise_for_status()
-    return _parse_nse_records(response.json(), deal_type)
+    full_url = f"{url}?from={dstr}&to={dstr}"
+    data = await fetch_nse_json(full_url, max_retries=3, timeout=30.0)
+    return _parse_nse_records(data, deal_type)
 
 
 async def _fetch_bse_feed(
@@ -348,50 +340,12 @@ class BulkBlockDealsPipeline(BasePipeline):
         feed_failures: list[str] = []
 
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            # NSE requires a cookie handshake; if that itself fails, both
-            # NSE feeds will be skipped but BSE feeds still run.
-            nse_handshake_ok = False
-            try:
-                await _nse_handshake(client)
-                nse_handshake_ok = True
-            except Exception as exc:
-                logger.warning(
-                    "bulk_block_deals_nse_handshake_failed",
-                    error=str(exc),
-                    business_date=business_date.isoformat(),
-                )
-                feed_failures.extend(["nse_bulk", "nse_block"])
-
-            feeds: list[tuple[str, Any]] = []
-            if nse_handshake_ok:
-                feeds.append(
-                    (
-                        "nse_bulk",
-                        _fetch_nse_feed(
-                            client, NSE_BULK_URL, business_date, "BULK"
-                        ),
-                    )
-                )
-                feeds.append(
-                    (
-                        "nse_block",
-                        _fetch_nse_feed(
-                            client, NSE_BLOCK_URL, business_date, "BLOCK"
-                        ),
-                    )
-                )
-            feeds.append(
-                (
-                    "bse_bulk",
-                    _fetch_bse_feed(client, "B", business_date, "BULK"),
-                )
-            )
-            feeds.append(
-                (
-                    "bse_block",
-                    _fetch_bse_feed(client, "K", business_date, "BLOCK"),
-                )
-            )
+            feeds: list[tuple[str, Any]] = [
+                ("nse_bulk", _fetch_nse_feed(NSE_BULK_URL, business_date, "BULK")),
+                ("nse_block", _fetch_nse_feed(NSE_BLOCK_URL, business_date, "BLOCK")),
+                ("bse_bulk", _fetch_bse_feed(client, "B", business_date, "BULK")),
+                ("bse_block", _fetch_bse_feed(client, "K", business_date, "BLOCK")),
+            ]
 
             for name, coro in feeds:
                 try:
