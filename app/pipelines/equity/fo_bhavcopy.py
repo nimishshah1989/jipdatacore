@@ -242,42 +242,49 @@ async def _fetch_fallback(business_date: date) -> bytes:
     return _json.dumps(data).encode()
 
 
+_UPSERT_CHUNK = 1000  # asyncpg limit: 32767 params; FO rows have ~20 cols → max ~1600/batch
+
+
 async def upsert_fo_bhavcopy(
     session: AsyncSession,
     rows: list[dict[str, Any]],
 ) -> tuple[int, int]:
-    """Bulk upsert F&O bhavcopy rows. Returns (rows_processed, rows_failed)."""
+    """Bulk upsert F&O bhavcopy rows in chunks. Returns (rows_processed, rows_failed)."""
     if not rows:
         return 0, 0
 
-    stmt = pg_insert(DeFoBhavcopy).values(rows)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[
-            "trade_date",
-            "symbol",
-            "instrument_type",
-            "expiry_date",
-            "strike_price",
-            "option_type",
-        ],
-        set_={
-            "open": stmt.excluded.open,
-            "high": stmt.excluded.high,
-            "low": stmt.excluded.low,
-            "close": stmt.excluded.close,
-            "settle_price": stmt.excluded.settle_price,
-            "prev_close": stmt.excluded.prev_close,
-            "underlying_price": stmt.excluded.underlying_price,
-            "open_interest": stmt.excluded.open_interest,
-            "change_in_oi": stmt.excluded.change_in_oi,
-            "contracts_traded": stmt.excluded.contracts_traded,
-            "turnover_lakh": stmt.excluded.turnover_lakh,
-            "num_trades": stmt.excluded.num_trades,
-            "source": stmt.excluded.source,
-        },
-    )
-    await session.execute(stmt)
-    return len(rows), 0
+    processed = 0
+    for i in range(0, len(rows), _UPSERT_CHUNK):
+        chunk = rows[i : i + _UPSERT_CHUNK]
+        stmt = pg_insert(DeFoBhavcopy).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                "trade_date",
+                "symbol",
+                "instrument_type",
+                "expiry_date",
+                "strike_price",
+                "option_type",
+            ],
+            set_={
+                "open": stmt.excluded.open,
+                "high": stmt.excluded.high,
+                "low": stmt.excluded.low,
+                "close": stmt.excluded.close,
+                "settle_price": stmt.excluded.settle_price,
+                "prev_close": stmt.excluded.prev_close,
+                "underlying_price": stmt.excluded.underlying_price,
+                "open_interest": stmt.excluded.open_interest,
+                "change_in_oi": stmt.excluded.change_in_oi,
+                "contracts_traded": stmt.excluded.contracts_traded,
+                "turnover_lakh": stmt.excluded.turnover_lakh,
+                "num_trades": stmt.excluded.num_trades,
+                "source": stmt.excluded.source,
+            },
+        )
+        await session.execute(stmt)
+        processed += len(chunk)
+    return processed, 0
 
 
 class FoBhavcopyPipeline(BasePipeline):
