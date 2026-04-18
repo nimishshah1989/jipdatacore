@@ -19,6 +19,7 @@ import time
 import numpy as np
 import pandas as pd
 import psycopg2
+from sqlalchemy import create_engine
 
 from scripts.compute.db import get_sync_url
 
@@ -202,15 +203,18 @@ def main() -> None:
     conn = psycopg2.connect(get_sync_url())
     conn.autocommit = True
 
-    # Load ETF OHLCV
+    # Load ETF OHLCV — use SQLAlchemy engine for pandas 2.x compatibility
     print("Loading ETF prices...", flush=True)
-    df = pd.read_sql(
-        f"SELECT ticker, date, close::float AS close, COALESCE(volume, 0)::float AS volume, "
-        f"COALESCE(high, close)::float AS high, COALESCE(low, close)::float AS low "
-        f"FROM de_etf_ohlcv WHERE date >= '{args.start_date}' AND close IS NOT NULL "
-        f"ORDER BY ticker, date",
-        conn,
-    )
+    _engine = create_engine(get_sync_url())
+    with _engine.connect() as _sa_conn:
+        df = pd.read_sql(
+            f"SELECT ticker, date, close::float AS close, COALESCE(volume, 0)::float AS volume, "
+            f"COALESCE(high, close)::float AS high, COALESCE(low, close)::float AS low "
+            f"FROM de_etf_ohlcv WHERE date >= '{args.start_date}' AND close IS NOT NULL "
+            f"ORDER BY ticker, date",
+            _sa_conn,
+        )
+    _engine.dispose()
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values(["ticker", "date"]).reset_index(drop=True)
     print(f"  {len(df):,} rows, {df['ticker'].nunique()} ETFs ({time.time()-t0:.1f}s)", flush=True)
