@@ -421,83 +421,6 @@ async def _run_backfill(job: PipelineJob) -> None:
 # ---------------------------------------------------------------------------
 
 @router.post(
-    "/trigger/{schedule_name}",
-    status_code=status.HTTP_200_OK,
-    summary="Trigger a schedule group",
-)
-async def trigger_schedule(
-    schedule_name: str,
-    request: Request,
-    _key: Annotated[bool, Depends(verify_pipeline_key)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    business_date: Optional[date] = Query(default=None, description="Business date (defaults to today)"),
-):
-    """Run all pipelines in a schedule group.
-
-    Uses PipelineExecutor (DAG + retry + SLA + alerts) if available,
-    otherwise falls back to sequential execution.
-    """
-    pipeline_names = get_schedule(schedule_name)
-    if pipeline_names is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Schedule '{schedule_name}' not found. Available: {list(list_schedules().keys())}",
-        )
-
-    bdate = business_date or date.today()
-
-    # Use PipelineExecutor if initialized (wired in main.py lifespan)
-    executor = getattr(request.app.state, "executor", None)
-    if executor is not None:
-        from app.orchestrator.executor import PipelineExecutor
-        assert isinstance(executor, PipelineExecutor)
-
-        pipeline_results = await executor.run_schedule(schedule_name, bdate, db)
-        await db.commit()
-
-        return {
-            "schedule_name": schedule_name,
-            "business_date": bdate.isoformat(),
-            "orchestrated": True,
-            "pipelines": [
-                {
-                    "pipeline_name": r.pipeline_name,
-                    "business_date": r.business_date.isoformat(),
-                    "status": r.status,
-                    "rows_processed": r.rows_processed,
-                    "rows_failed": r.rows_failed,
-                    "duration_seconds": round(r.duration_seconds, 3),
-                    "error": r.error,
-                }
-                for r in pipeline_results
-            ],
-        }
-
-    # Fallback: sequential execution without orchestration
-    results: list[dict] = []
-
-    logger.info(
-        "schedule_trigger_start",
-        schedule=schedule_name,
-        business_date=bdate.isoformat(),
-        pipelines=pipeline_names,
-    )
-
-    for pname in pipeline_names:
-        result = await _run_single_pipeline(pname, bdate, db)
-        results.append(result.model_dump())
-
-    await db.commit()
-
-    return {
-        "schedule_name": schedule_name,
-        "business_date": bdate.isoformat(),
-        "orchestrated": False,
-        "pipelines": results,
-    }
-
-
-@router.post(
     "/trigger/single/{pipeline_name}",
     status_code=status.HTTP_200_OK,
     summary="Trigger a single pipeline",
@@ -588,6 +511,86 @@ async def trigger_backfill(
         "status": "pending",
         "dates_total": day_count,
         "pipeline_count": len(body.pipeline_names),
+    }
+
+
+# NOTE: /trigger/{schedule_name} is a catch-all — declared LAST among POST
+# routes. FastAPI matches routes in declaration order, and this would
+# otherwise shadow sibling routes like /trigger/backfill.
+@router.post(
+    "/trigger/{schedule_name}",
+    status_code=status.HTTP_200_OK,
+    summary="Trigger a schedule group",
+)
+async def trigger_schedule(
+    schedule_name: str,
+    request: Request,
+    _key: Annotated[bool, Depends(verify_pipeline_key)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    business_date: Optional[date] = Query(default=None, description="Business date (defaults to today)"),
+):
+    """Run all pipelines in a schedule group.
+
+    Uses PipelineExecutor (DAG + retry + SLA + alerts) if available,
+    otherwise falls back to sequential execution.
+    """
+    pipeline_names = get_schedule(schedule_name)
+    if pipeline_names is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Schedule '{schedule_name}' not found. Available: {list(list_schedules().keys())}",
+        )
+
+    bdate = business_date or date.today()
+
+    # Use PipelineExecutor if initialized (wired in main.py lifespan)
+    executor = getattr(request.app.state, "executor", None)
+    if executor is not None:
+        from app.orchestrator.executor import PipelineExecutor
+        assert isinstance(executor, PipelineExecutor)
+
+        pipeline_results = await executor.run_schedule(schedule_name, bdate, db)
+        await db.commit()
+
+        return {
+            "schedule_name": schedule_name,
+            "business_date": bdate.isoformat(),
+            "orchestrated": True,
+            "pipelines": [
+                {
+                    "pipeline_name": r.pipeline_name,
+                    "business_date": r.business_date.isoformat(),
+                    "status": r.status,
+                    "rows_processed": r.rows_processed,
+                    "rows_failed": r.rows_failed,
+                    "duration_seconds": round(r.duration_seconds, 3),
+                    "error": r.error,
+                }
+                for r in pipeline_results
+            ],
+        }
+
+    # Fallback: sequential execution without orchestration
+    results: list[dict] = []
+
+    logger.info(
+        "schedule_trigger_start",
+        schedule=schedule_name,
+        business_date=bdate.isoformat(),
+        pipelines=pipeline_names,
+    )
+
+    for pname in pipeline_names:
+        result = await _run_single_pipeline(pname, bdate, db)
+        results.append(result.model_dump())
+
+    await db.commit()
+
+    return {
+        "schedule_name": schedule_name,
+        "business_date": bdate.isoformat(),
+        "orchestrated": False,
+        "pipelines": results,
     }
 
 
