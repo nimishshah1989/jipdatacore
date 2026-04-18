@@ -25,7 +25,7 @@ from scripts.compute.db import get_sync_url
 
 # Columns that map to de_etf_technical_daily (excluding computed generated columns)
 ETF_INDICATOR_COLS = [
-    "close",
+    "close_adj",
     "sma_50",
     "sma_200",
     "ema_10",
@@ -154,6 +154,7 @@ def write_etf_technicals_via_staging(conn, df: pd.DataFrame, filter_date: str = 
         df = df[df["date"] >= pd.Timestamp(filter_date)].copy()
         df["date"] = df["date"].dt.date
 
+    df = df.rename(columns={"close": "close_adj"})
     write_cols = ["ticker", "date"] + ETF_INDICATOR_COLS
     out = df[write_cols].copy()
 
