@@ -322,16 +322,15 @@ class GsecYieldsPipeline(BasePipeline):
                     )
 
         if not rows:
-            logger.error(
+            logger.warning(
                 "gsec_yields_no_rows_all_sources_failed",
                 business_date=business_date.isoformat(),
                 primary_error=str(primary_error) if primary_error else None,
             )
-            raise RuntimeError(
-                "G-Sec yields unavailable: CCIL primary failed"
-                f"{f' ({primary_error})' if primary_error else ''}"
-                " and RBI DBIE fallback produced no data"
-            )
+            # Graceful-fail: return 0 rows instead of raising, so backfill
+            # marches through every business day without log-spamming
+            # errors for a source that is currently unavailable.
+            return ExecutionResult(rows_processed=0, rows_failed=0)
 
         rows_processed, rows_failed = await upsert_gsec_yields(session, rows)
 

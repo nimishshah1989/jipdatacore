@@ -1,7 +1,9 @@
 """RBI / FBIL INR reference exchange rates pipeline.
 
-Primary source: FBIL JSON API (https://fbil.org.in/ReferenceRatePublishApi/PublishApi/getReferenceRate).
-Fallback: FBIL archive HTML page (USD-INR-Reference-Rate-Archives.aspx).
+Primary source: Yahoo Finance (USDINR=X, EURINR=X, GBPINR=X, JPYINR=X) — reliable,
+broad historical coverage, no anti-bot issues.
+Secondary: FBIL JSON API (https://fbil.org.in/ReferenceRatePublishApi/PublishApi/getReferenceRate).
+Tertiary: FBIL archive HTML page (USD-INR-Reference-Rate-Archives.aspx).
 
 Captures the four core INR reference rates published daily (post 13:30 IST on
 working days): USD/INR, EUR/INR, GBP/INR, JPY/INR.
@@ -9,8 +11,9 @@ working days): USD/INR, EUR/INR, GBP/INR, JPY/INR.
 
 from __future__ import annotations
 
+import asyncio
 import re
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -199,6 +202,71 @@ def _parse_fbil_archive_html(
     return unique_rows
 
 
+YFINANCE_TICKERS: dict[str, str] = {
+    "USDINR=X": "USD/INR",
+    "EURINR=X": "EUR/INR",
+    "GBPINR=X": "GBP/INR",
+    "JPYINR=X": "JPY/INR",
+}
+
+
+def _fetch_from_yfinance_sync(business_date: date) -> list[dict[str, Any]]:
+    """Synchronous yfinance fetch — runs in a thread via asyncio.to_thread.
+
+    Pulls daily close for each currency pair for the target date (with a
+    small window since yfinance uses trading-day data). JPY/INR from
+    yfinance is rate-per-1-JPY; FBIL publishes rate-per-100-JPY, so we
+    scale JPY/INR by 100 to match historical convention.
+    """
+    import yfinance as yf  # noqa: PLC0415
+
+    rows: list[dict[str, Any]] = []
+    start = business_date - timedelta(days=3)
+    end = business_date + timedelta(days=1)
+
+    for ticker, pair in YFINANCE_TICKERS.items():
+        try:
+            df = yf.download(
+                ticker,
+                start=start.isoformat(),
+                end=end.isoformat(),
+                progress=False,
+                auto_adjust=False,
+            )
+            if df is None or df.empty:
+                continue
+            if business_date in [d.date() for d in df.index]:
+                close_val = df.loc[df.index.date == business_date, "Close"]
+            else:
+                close_val = df["Close"].iloc[[-1]]
+            if close_val is None or len(close_val) == 0:
+                continue
+            raw = float(close_val.values[0])
+            if pair == "JPY/INR":
+                raw *= 100
+            rows.append(
+                {
+                    "rate_date": business_date,
+                    "currency_pair": pair,
+                    "reference_rate": Decimal(str(round(raw, 4))),
+                    "source": "YFINANCE",
+                }
+            )
+        except Exception as exc:
+            logger.warning(
+                "rbi_fx_yfinance_ticker_failed",
+                ticker=ticker,
+                error=str(exc),
+                business_date=business_date.isoformat(),
+            )
+    return rows
+
+
+async def _fetch_from_yfinance(business_date: date) -> list[dict[str, Any]]:
+    """Async wrapper over synchronous yfinance call."""
+    return await asyncio.to_thread(_fetch_from_yfinance_sync, business_date)
+
+
 async def _fetch_from_fbil_json(
     client: httpx.AsyncClient,
     business_date: date,
@@ -276,45 +344,67 @@ class RbiFxRatesPipeline(BasePipeline):
         )
 
         rows: list[dict[str, Any]] = []
-        source_used = "FBIL_JSON"
+        source_used = "YFINANCE"
 
-        async with httpx.AsyncClient() as client:
-            try:
-                payload = await _fetch_from_fbil_json(client, business_date)
-                rows = _parse_fbil_json(payload, business_date)
+        # ---- PRIMARY: yfinance (reliable, wide historical coverage) ----
+        try:
+            rows = await _fetch_from_yfinance(business_date)
+            if rows:
                 logger.info(
-                    "rbi_fx_fbil_json_success",
+                    "rbi_fx_yfinance_success",
                     parsed_rows=len(rows),
                     business_date=business_date.isoformat(),
                 )
-            except Exception as json_exc:
-                logger.warning(
-                    "rbi_fx_fbil_json_failed_falling_back_to_archive",
-                    error=str(json_exc),
-                    business_date=business_date.isoformat(),
-                )
+        except Exception as yf_exc:
+            logger.warning(
+                "rbi_fx_yfinance_failed_trying_fbil",
+                error=str(yf_exc),
+                business_date=business_date.isoformat(),
+            )
+
+        # ---- SECONDARY: FBIL JSON API ----
+        if not rows:
+            async with httpx.AsyncClient() as client:
                 try:
-                    html = await _fetch_from_fbil_archive(client)
-                    rows = _parse_fbil_archive_html(html, business_date)
-                    source_used = "FBIL_HTML"
-                    logger.info(
-                        "rbi_fx_fbil_html_fallback_success",
-                        parsed_rows=len(rows),
+                    payload = await _fetch_from_fbil_json(client, business_date)
+                    rows = _parse_fbil_json(payload, business_date)
+                    if rows:
+                        source_used = "FBIL_JSON"
+                        logger.info(
+                            "rbi_fx_fbil_json_success",
+                            parsed_rows=len(rows),
+                            business_date=business_date.isoformat(),
+                        )
+                except Exception as json_exc:
+                    logger.warning(
+                        "rbi_fx_fbil_json_failed_trying_archive",
+                        error=str(json_exc),
                         business_date=business_date.isoformat(),
                     )
-                except Exception as html_exc:
-                    logger.error(
-                        "rbi_fx_fbil_html_fallback_failed",
-                        error=str(html_exc),
-                        business_date=business_date.isoformat(),
-                    )
-                    raise html_exc
+
+                # ---- TERTIARY: FBIL archive HTML ----
+                if not rows:
+                    try:
+                        html = await _fetch_from_fbil_archive(client)
+                        rows = _parse_fbil_archive_html(html, business_date)
+                        if rows:
+                            source_used = "FBIL_HTML"
+                            logger.info(
+                                "rbi_fx_fbil_html_fallback_success",
+                                parsed_rows=len(rows),
+                                business_date=business_date.isoformat(),
+                            )
+                    except Exception as html_exc:
+                        logger.warning(
+                            "rbi_fx_fbil_html_fallback_failed",
+                            error=str(html_exc),
+                            business_date=business_date.isoformat(),
+                        )
 
         if not rows:
             logger.warning(
-                "rbi_fx_no_rows_parsed",
+                "rbi_fx_no_rows_all_sources_failed",
                 business_date=business_date.isoformat(),
-                source=source_used,
             )
             return ExecutionResult(rows_processed=0, rows_failed=0)
 

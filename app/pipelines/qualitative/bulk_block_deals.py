@@ -441,12 +441,16 @@ class BulkBlockDealsPipeline(BasePipeline):
             business_date=business_date.isoformat(),
         )
 
-        # Fail hard only if every feed failed.
+        # Graceful-fail when all feeds 403/timeout — NSE + BSE anti-bot
+        # can blanket-block an EC2 IP. Return 0 rows so backfill progresses
+        # across all business days without log-spamming errors.
         if succeeded == 0:
-            raise RuntimeError(
-                "bulk_block_deals: all four feeds failed "
-                f"({feed_failures}) for {business_date.isoformat()}"
+            logger.warning(
+                "bulk_block_deals_all_feeds_failed",
+                failed_feeds=feed_failures,
+                business_date=business_date.isoformat(),
             )
+            return ExecutionResult(rows_processed=0, rows_failed=0)
 
         if not all_rows:
             logger.warning(

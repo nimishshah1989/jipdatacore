@@ -360,12 +360,15 @@ class FoBhavcopyPipeline(BasePipeline):
                         business_date=business_date.isoformat(),
                     )
                 except Exception as fallback_exc:
-                    logger.error(
-                        "fo_bhavcopy_fallback_failed",
+                    logger.warning(
+                        "fo_bhavcopy_all_sources_failed",
                         error=str(fallback_exc),
                         business_date=business_date.isoformat(),
                     )
-                    raise fallback_exc
+                    # Graceful-fail: NSE anti-bot can 403 every request
+                    # on certain IP ranges. Don't raise — return 0 rows
+                    # so a multi-day backfill continues.
+                    return ExecutionResult(rows_processed=0, rows_failed=0)
 
         if not raw_bytes:
             logger.warning(
