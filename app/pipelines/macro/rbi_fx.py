@@ -213,35 +213,28 @@ YFINANCE_TICKERS: dict[str, str] = {
 def _fetch_from_yfinance_sync(business_date: date) -> list[dict[str, Any]]:
     """Synchronous yfinance fetch — runs in a thread via asyncio.to_thread.
 
-    Pulls daily close for each currency pair for the target date (with a
-    small window since yfinance uses trading-day data). JPY/INR from
-    yfinance is rate-per-1-JPY; FBIL publishes rate-per-100-JPY, so we
-    scale JPY/INR by 100 to match historical convention.
+    Uses Ticker.history() (not yf.download) to avoid MultiIndex column
+    issues in newer yfinance/pandas versions. JPY/INR from yfinance is
+    rate-per-1-JPY; FBIL publishes rate-per-100-JPY, so we scale by 100.
     """
     import yfinance as yf  # noqa: PLC0415
 
     rows: list[dict[str, Any]] = []
-    start = business_date - timedelta(days=3)
+    start = business_date - timedelta(days=5)
     end = business_date + timedelta(days=1)
 
     for ticker, pair in YFINANCE_TICKERS.items():
         try:
-            df = yf.download(
-                ticker,
-                start=start.isoformat(),
-                end=end.isoformat(),
-                progress=False,
-                auto_adjust=False,
-            )
+            t = yf.Ticker(ticker)
+            df = t.history(start=start.isoformat(), end=end.isoformat())
             if df is None or df.empty:
                 continue
-            if business_date in [d.date() for d in df.index]:
-                close_val = df.loc[df.index.date == business_date, "Close"]
+            # Find exact date or closest prior
+            matching = df[df.index.date == business_date]
+            if not matching.empty:
+                raw = float(matching["Close"].iloc[-1])
             else:
-                close_val = df["Close"].iloc[[-1]]
-            if close_val is None or len(close_val) == 0:
-                continue
-            raw = float(close_val.values[0])
+                raw = float(df["Close"].iloc[-1])
             if pair == "JPY/INR":
                 raw *= 100
             rows.append(
