@@ -327,7 +327,9 @@ class BhavPipeline(BasePipeline):
         """Download, parse, and upsert BHAV copy data."""
         logger.info("bhav_execute_start", business_date=business_date.isoformat())
 
-        # Determine URL based on date — try UDiFF first, fallback to standard
+        # Determine URL based on date.
+        # NSE retired the UDiFF URL pattern (BhavCopy_NSE_CM_...) as of 2026 — always 404 now.
+        # STANDARD URL (sec_bhavdata_full_DDMMYYYY.csv) is the live endpoint for all dates.
         date_str_std = business_date.strftime("%d%m%Y")
         date_str_udiff = business_date.strftime("%Y%m%d")
 
@@ -336,10 +338,10 @@ class BhavPipeline(BasePipeline):
                 (NSE_BHAV_URL_PRE2010.format(date_str=date_str_std), BhavFormat.PRE2010),
             ]
         elif business_date >= UDIFF_START_DATE:
-            # Try UDiFF first, fallback to standard (NSE may revert formats)
+            # Try STANDARD first (live); UDiFF as fallback in case NSE re-publishes it
             urls_to_try = [
-                (NSE_BHAV_URL_UDIFF.format(date_str=date_str_udiff), BhavFormat.UDIFF),
                 (NSE_BHAV_URL_STANDARD.format(date_str=date_str_std), BhavFormat.STANDARD),
+                (NSE_BHAV_URL_UDIFF.format(date_str=date_str_udiff), BhavFormat.UDIFF),
             ]
         else:
             urls_to_try = [

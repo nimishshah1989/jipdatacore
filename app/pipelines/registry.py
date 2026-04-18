@@ -25,7 +25,6 @@ logger = get_logger(__name__)
 _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     # Equity
     "equity_bhav": ("app.pipelines.equity.bhav", "BhavPipeline"),
-    "equity_bhav_copy": ("app.pipelines.equity.bhav_copy", "BhavCopyPipeline"),
     "equity_delivery": ("app.pipelines.equity.delivery", "DeliveryPipeline"),
     "equity_eod": ("app.pipelines.equity.eod", "EodOrchestrator"),
     "equity_master_refresh": ("app.pipelines.equity.master_refresh", "MasterRefreshPipeline"),
