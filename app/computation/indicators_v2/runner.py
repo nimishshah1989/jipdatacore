@@ -14,6 +14,9 @@ this runner is for the cron path only.
 
 from __future__ import annotations
 
+import argparse
+import asyncio
+import sys
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -128,3 +131,19 @@ async def run_indicators_v2_pipeline(
     )
 
     return report
+
+
+async def _main_async(business_date: date, lookback_days: int) -> int:
+    from app.db.session import async_session_factory
+    async with async_session_factory() as session:
+        report = await run_indicators_v2_pipeline(session, business_date, lookback_days=lookback_days)
+    print(f"indicators_v2 complete: status={report.overall_status} rows={report.total_rows_written} failed={report.failed_assets}", flush=True)
+    return 0 if not report.failed_assets else 1
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run indicators v2 for a business date")
+    parser.add_argument("--date", type=date.fromisoformat, default=date.today())
+    parser.add_argument("--lookback-days", type=int, default=DAILY_LOOKBACK_DAYS)
+    args = parser.parse_args()
+    sys.exit(asyncio.run(_main_async(args.date, args.lookback_days)))
