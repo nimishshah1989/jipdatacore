@@ -20,7 +20,7 @@ class DataEngineApi(ConfigurableResource):
 
     base_url: str = "http://data-engine:8010"
     api_key: str = ""
-    timeout_seconds: int = 1800  # 30 min — matches longest pipeline
+    timeout_seconds: int = 7200  # 2 hr — morningstar holdings can run >30 min on monthly refresh
 
     def trigger(self, pipeline_name: str, business_date: str | None = None) -> dict:
         """Fire the pipeline synchronously and return the response JSON."""

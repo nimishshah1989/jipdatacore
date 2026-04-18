@@ -37,6 +37,8 @@ dependencies = [
     # Data sources
     "yfinance>=0.2.36",
     "fredapi>=0.5.1",
+    "bse>=0.4.0",        # BSE India API wrapper for filings/ownership pipelines
+
     # Validation & serialization
     "pydantic>=2.6.0",
     "pydantic-settings>=2.2.0",
