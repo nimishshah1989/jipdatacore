@@ -12,7 +12,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from dagster import (
-    AssetCheckExecutionContext,
     AssetCheckResult,
     AssetCheckSeverity,
     asset_check,
@@ -34,7 +33,7 @@ def _make_freshness_check(spec: TableSpec):
         asset=spec.table,
         description=f"Asserts MAX({spec.date_col}) is within {spec.max_lag_hours}h.",
     )
-    def _check(context: AssetCheckExecutionContext, rds: RdsConnection):
+    def _check(context, rds: RdsConnection):
         with rds.cursor() as cur:
             cur.execute(f"SELECT MAX({spec.date_col}) FROM {spec.table}")  # noqa: S608
             row = cur.fetchone()
@@ -97,7 +96,7 @@ def _make_rowcount_check(spec: TableSpec):
         asset=spec.table,
         description=f"Asserts row count for latest {spec.date_col} is within ±5% of prior period.",
     )
-    def _check(context: AssetCheckExecutionContext, rds: RdsConnection):
+    def _check(context, rds: RdsConnection):
         with rds.cursor() as cur:
             cur.execute(f"""
                 SELECT {spec.date_col} AS d, COUNT(*) AS c

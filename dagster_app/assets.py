@@ -11,10 +11,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from dagster import (
-    AssetExecutionContext,
-    AssetSpec,
     FreshnessPolicy,
-    MetadataValue,
     asset,
 )
 
@@ -63,7 +60,7 @@ def _make_asset(spec: TableSpec):
             f"Criticality: {spec.criticality}."
         ),
     )
-    def _impl(context: AssetExecutionContext, api: DataEngineApi):
+    def _impl(context, api: DataEngineApi):
         context.log.info(f"Triggering pipeline {spec.pipeline} for table {spec.table}")
         result = api.trigger(spec.pipeline)
         context.log.info(f"Pipeline result: {result}")
