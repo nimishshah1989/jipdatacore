@@ -71,6 +71,7 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     "bulk_block_deals": ("app.pipelines.qualitative.bulk_block_deals", "BulkBlockDealsPipeline"),
     # BSE
     "bse_filings": ("app.pipelines.bse.filings", "BseFilingsPipeline"),
+    "bse_ownership": ("app.pipelines.bse.ownership", "BseOwnershipPipeline"),
 }
 
 # ---------------------------------------------------------------------------
@@ -110,6 +111,7 @@ DAG_ALIAS: dict[str, str] = {
     "insider_trades": "insider_trades",
     "bulk_block_deals": "bulk_block_deals",
     "shareholding_pattern": "shareholding_pattern",
+    "bse_ownership": "bse_ownership",
 }
 
 # Reverse map: pipeline_name → DAG alias (for lookups going the other direction)
@@ -157,6 +159,7 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     "fundamentals_weekly": ["equity_fundamentals"],
     "holdings_monthly": ["morningstar_portfolio", "mf_category_flows"],
     "bse_filings_daily": ["bse_filings"],
+    "bse_ownership_weekly": ["bse_ownership"],
     "reconciliation": ["__reconciliation__"],
     "full_rs_rebuild": ["relative_strength"],
     # Nightly: validate → compute everything → goldilocks scrape
