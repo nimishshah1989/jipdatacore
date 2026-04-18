@@ -24,7 +24,7 @@ from scripts.compute.db import get_sync_url
 
 # Columns that map to de_global_technical_daily (excluding computed generated columns)
 ETF_INDICATOR_COLS = [
-    "close",
+    "close_adj",
     "sma_50",
     "sma_200",
     "ema_10",
@@ -42,7 +42,6 @@ ETF_INDICATOR_COLS = [
     "volatility_60d",
     "bollinger_upper",
     "bollinger_lower",
-    "relative_volume",
     "adx_14",
 ]
 
@@ -206,6 +205,7 @@ def write_global_technicals_via_staging(
         df = df[df["date"] >= pd.Timestamp(filter_date)].copy()
         df["date"] = df["date"].dt.date
 
+    df = df.rename(columns={"close": "close_adj"})
     write_cols = ["ticker", "date"] + ETF_INDICATOR_COLS
     out = df[write_cols].copy()
 
