@@ -2,11 +2,10 @@
 # Install: crontab /home/ubuntu/jip-data-engine/scripts/cron/jip_scheduler.cron
 # All times in IST (UTC+5:30) — EC2 runs UTC, so subtract 5:30.
 #
-# Every line calls jip_trigger.sh, which:
-#   - records the run in de_cron_run (started + finished rows)
-#   - writes per-schedule *_run.log with HTTP code, duration, curl exit
-#   - posts a Telegram alert on failure
-#   - exits non-zero on failure (no more silent no-ops)
+# 2026-04-18 CUTOVER: Dagster orchestrator (https://data.jslwealth.in/dagster)
+# now owns all pipeline scheduling. Per-pipeline lines below are commented out.
+# Agent3 self-healer remains active as out-of-band safety net for 1 week.
+# Plan: fully purge commented pipeline lines on 2026-04-25 if Dagster is stable.
 
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
@@ -15,32 +14,30 @@ AGENT3=/home/ubuntu/jip-data-engine/scripts/cron/jip_agent3.sh
 LOG_DIR=/home/ubuntu/jip-data-engine/logs
 
 # ============================================================
-# WEEKDAY INGESTION (Mon-Fri)
+# WEEKDAY INGESTION (Mon-Fri) — DAGSTER-OWNED 2026-04-18
 # ============================================================
 
 # EOD: full ingestion after market close (IST 18:33 = UTC 13:03)
-3 13 * * 1-5  $WRAPPER eod >> $LOG_DIR/eod_cron.log 2>&1
+# DAGSTER-OWNED 2026-04-18: 3 13 * * 1-5  $WRAPPER eod >> $LOG_DIR/eod_cron.log 2>&1
 
-# Late AMFI catch-up (IST 23:00 = UTC 17:30) — AMFI publishes NAVs around 22:00 IST,
-# AFTER the 18:33 EOD cron, so same-day NAVs are never in the EOD run. This separate
-# job picks them up before nightly compute runs.
-0 17 * * 1-5  $WRAPPER amfi_late >> $LOG_DIR/amfi_late_cron.log 2>&1
+# Late AMFI catch-up (IST 23:00 = UTC 17:30) — AMFI publishes NAVs around 22:00 IST.
+# DAGSTER-OWNED 2026-04-18: 0 17 * * 1-5  $WRAPPER amfi_late >> $LOG_DIR/amfi_late_cron.log 2>&1
 
 # BSE filings: announcements + corp actions + result calendar (IST 01:30 = UTC 20:00)
-0 20 * * 1-5  $WRAPPER bse_filings_daily >> $LOG_DIR/bse_filings_cron.log 2>&1
+# DAGSTER-OWNED 2026-04-18: 0 20 * * 1-5  $WRAPPER bse_filings_daily >> $LOG_DIR/bse_filings_cron.log 2>&1
 
 # Nightly compute (IST 00:30 NEXT DAY = UTC 19:00, after AMFI late catch-up)
-0 19 * * 1-5  $WRAPPER nightly_compute >> $LOG_DIR/nightly_compute_cron.log 2>&1
+# DAGSTER-OWNED 2026-04-18: 0 19 * * 1-5  $WRAPPER nightly_compute >> $LOG_DIR/nightly_compute_cron.log 2>&1
 
 # ============================================================
-# WEEKEND (Sat-Sun) — global markets still trade
+# WEEKEND (Sat-Sun) — global markets still trade — DAGSTER-OWNED
 # ============================================================
 
 # Weekend EOD: yfinance + FRED (IST 18:33 = UTC 13:03)
-3 13 * * 0,6  $WRAPPER eod_weekend >> $LOG_DIR/eod_weekend_cron.log 2>&1
+# DAGSTER-OWNED 2026-04-18: 3 13 * * 0,6  $WRAPPER eod_weekend >> $LOG_DIR/eod_weekend_cron.log 2>&1
 
 # Weekend compute: etf + global (IST 19:33 = UTC 14:03)
-3 14 * * 0,6  $WRAPPER etf_global >> $LOG_DIR/etf_global_cron.log 2>&1
+# DAGSTER-OWNED 2026-04-18: 3 14 * * 0,6  $WRAPPER etf_global >> $LOG_DIR/etf_global_cron.log 2>&1
 
 # ============================================================
 # DAILY SELF-HEALING — Agent 3 (every day)
@@ -61,16 +58,15 @@ LOG_DIR=/home/ubuntu/jip-data-engine/logs
 # ============================================================
 
 # Morningstar fund master refresh (IST 04:00 Sunday = UTC 22:30 Saturday)
-30 22 * * 6   $WRAPPER morningstar_weekly >> $LOG_DIR/morningstar_cron.log 2>&1
+# DAGSTER-OWNED 2026-04-18: 30 22 * * 6   $WRAPPER morningstar_weekly >> $LOG_DIR/morningstar_cron.log 2>&1
 
 # GAP-08: Equity fundamentals via screener.in (IST 05:00 Sunday = UTC 23:30 Saturday)
-# Rate-limited at 1 req/1.2s → ~45 min for 2,200 stocks. Requires
-# SCREENER_SESSION_COOKIE in .env.
-30 23 * * 6   $WRAPPER fundamentals_weekly >> $LOG_DIR/fundamentals_cron.log 2>&1
+# Rate-limited at 1 req/1.2s → ~45 min for 2,200 stocks.
+# DAGSTER-OWNED 2026-04-18: 30 23 * * 6   $WRAPPER fundamentals_weekly >> $LOG_DIR/fundamentals_cron.log 2>&1
 
 # ============================================================
-# MONTHLY (1st of month)
+# MONTHLY (1st of month) — DAGSTER-OWNED
 # ============================================================
 
 # MF holdings (IST 03:00 on 1st = UTC 21:30 on last day of prev month)
-30 21 1 * *   $WRAPPER holdings_monthly >> $LOG_DIR/holdings_cron.log 2>&1
+# DAGSTER-OWNED 2026-04-18: 30 21 1 * *   $WRAPPER holdings_monthly >> $LOG_DIR/holdings_cron.log 2>&1
