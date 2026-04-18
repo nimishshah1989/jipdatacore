@@ -43,7 +43,7 @@ class TableSpec:
 TABLE_SPECS: list[TableSpec] = [
     # ── Equity (daily, weekday EOD 18:33 IST) ──
     TableSpec("de_equity_ohlcv_y2026", "equity_bhav", "eod", "33 18 * * 1-5", "date", "equity", "P0", 24, 4),
-    TableSpec("de_equity_corporate_action", "equity_corporate_actions", "eod", "33 18 * * 1-5", "ex_date", "equity", "P1", 168, 24),
+    TableSpec("de_corporate_actions", "equity_corporate_actions", "eod", "33 18 * * 1-5", "ex_date", "equity", "P1", 168, 24),
     TableSpec("de_equity_technical_daily", "equity_technicals_sql", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P0", 24, 4),
     TableSpec("de_rs_scores", "relative_strength", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P0", 24, 4),
     TableSpec("de_rs_daily_summary", "relative_strength", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P1", 24, 4),
@@ -51,8 +51,7 @@ TABLE_SPECS: list[TableSpec] = [
     TableSpec("de_sector_breadth_daily", "sector_breadth", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P1", 24, 4),
     # ── Indices ──
     TableSpec("de_index_prices", "nse_indices", "eod", "33 18 * * 1-5", "date", "equity", "P0", 24, 4),
-    TableSpec("de_index_constituent", "index_constituents", "weekly_indices", "0 19 * * 6", "as_of_date", "equity", "P2", 168, 48),
-    TableSpec("de_india_vix", "india_vix", "eod", "33 18 * * 1-5", "date", "equity", "P1", 24, 4),
+    TableSpec("de_index_constituents", "index_constituents", "weekly_indices", "0 19 * * 6", "effective_from", "equity", "P2", 168, 48),
     TableSpec("de_index_technical_daily", "equity_technicals_sql", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P1", 24, 4),
     # ── F&O ──
     TableSpec("de_fo_bhavcopy", "fo_bhavcopy", "eod", "33 18 * * 1-5", "trade_date", "equity", "P1", 24, 4),
@@ -77,13 +76,13 @@ TABLE_SPECS: list[TableSpec] = [
     TableSpec("de_rbi_fx_rate", "rbi_fx_rates", "eod", "33 18 * * 1-5", "rate_date", "macro", "P2", 48, 12),
     TableSpec("de_rbi_policy_rate", "rbi_policy_rates", "macro_daily", "15 9 * * *", "effective_date", "macro", "P2", 7 * 24, 48),
     # ── Flows ──
-    TableSpec("de_fii_dii_flows", "fii_dii_flows", "eod", "33 18 * * 1-5", "trade_date", "flows", "P0", 24, 4),
+    TableSpec("de_institutional_flows", "fii_dii_flows", "eod", "33 18 * * 1-5", "date", "flows", "P0", 24, 4),
     # ── Fundamentals ──
     TableSpec("de_shareholding_pattern", "shareholding_pattern", "filings_daily", "0 19 * * *", "as_of_date", "fundamentals", "P1", 30 * 24, 7 * 24),
-    TableSpec("de_fundamentals_history", "equity_fundamentals", "fundamentals_weekly", "30 23 * * 6", "period_end", "fundamentals", "P1", 8 * 24, 24),
+    TableSpec("de_equity_fundamentals_history", "equity_fundamentals", "fundamentals_weekly", "30 23 * * 6", "fiscal_period_end", "fundamentals", "P1", 8 * 24, 24),
     # ── BSE filings ──
-    TableSpec("de_bse_announcement", "bse_filings", "bse_filings_daily", "0 18 * * 1-5", "announcement_date", "qualitative", "P1", 24, 4),
-    TableSpec("de_bse_corp_action", "bse_filings", "bse_filings_daily", "0 18 * * 1-5", "ex_date", "qualitative", "P1", 168, 48),
+    TableSpec("de_bse_announcements", "bse_filings", "bse_filings_daily", "0 18 * * 1-5", "announcement_dt", "qualitative", "P1", 24, 4),
+    TableSpec("de_bse_corp_actions", "bse_filings", "bse_filings_daily", "0 18 * * 1-5", "ex_date", "qualitative", "P1", 168, 48),
     TableSpec("de_bse_result_calendar", "bse_filings", "bse_filings_daily", "0 18 * * 1-5", "result_date", "qualitative", "P1", 168, 48),
     # ── Insider trades + bulk/block deals ──
     TableSpec("de_insider_trades", "insider_trades", "eod", "33 18 * * 1-5", "disclosure_date", "qualitative", "P1", 24, 4),
