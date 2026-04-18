@@ -80,7 +80,11 @@ from app.models.mf_derived import DeMfDerivedDaily  # noqa: F401
 from app.models.bse import (  # noqa: F401
     DeBseAnnouncements,
     DeBseCorpActions,
+    DeBseInsiderTrades,
+    DeBsePledgeHistory,
     DeBseResultCalendar,
+    DeBseSastDisclosures,
+    DeBseShareholding,
 )
 from app.models.indicators_v2 import (  # noqa: F401
     DeEquityTechnicalDailyV2,
@@ -173,5 +177,9 @@ __all__ = [
     # bse
     "DeBseAnnouncements",
     "DeBseCorpActions",
+    "DeBseInsiderTrades",
+    "DeBsePledgeHistory",
     "DeBseResultCalendar",
+    "DeBseSastDisclosures",
+    "DeBseShareholding",
 ]
