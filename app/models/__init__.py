@@ -36,17 +36,25 @@ from app.models.prices import (  # noqa: F401
 from app.models.flows import (  # noqa: F401
     DeInstitutionalFlows,
     DeMfCategoryFlows,
+    DeParticipantOi,
 )
 from app.models.computed import (  # noqa: F401
     DeBreadthDaily,
     DeEquityTechnicalDaily,
+    DeFoBanList,
+    DeFoBhavcopy,
     DeFoSummary,
+    DeGsecYield,
     DeMarketRegime,
+    DeRbiFxRate,
+    DeRbiPolicyRate,
     DeRsDailySummary,
     DeRsScores,
     DeSectorBreadthDaily,
 )
 from app.models.qualitative import (  # noqa: F401
+    DeBulkBlockDeal,
+    DeInsiderTrade,
     DeQualDocuments,
     DeQualExtracts,
     DeQualOutcomes,
@@ -75,7 +83,7 @@ from app.models.goldilocks import (  # noqa: F401
 )
 from app.models.champion import DeChampionTrades  # noqa: F401
 from app.models.fundamentals import DeEquityFundamentals  # noqa: F401
-from app.models.holdings import DeMfHoldings  # noqa: F401
+from app.models.holdings import DeMfHoldings, DeShareholdingPattern  # noqa: F401
 from app.models.mf_derived import DeMfDerivedDaily  # noqa: F401
 from app.models.bse import (  # noqa: F401
     DeBseAnnouncements,
@@ -124,6 +132,7 @@ __all__ = [
     # flows
     "DeInstitutionalFlows",
     "DeMfCategoryFlows",
+    "DeParticipantOi",
     # computed
     "DeEquityTechnicalDaily",
     "DeRsScores",
@@ -132,11 +141,18 @@ __all__ = [
     "DeBreadthDaily",
     "DeSectorBreadthDaily",
     "DeFoSummary",
+    "DeFoBhavcopy",
+    "DeFoBanList",
+    "DeGsecYield",
+    "DeRbiFxRate",
+    "DeRbiPolicyRate",
     # qualitative
     "DeQualSources",
     "DeQualDocuments",
     "DeQualExtracts",
     "DeQualOutcomes",
+    "DeInsiderTrade",
+    "DeBulkBlockDeal",
     # clients
     "DeClients",
     "DeClientKeys",
@@ -162,6 +178,7 @@ __all__ = [
     "DeChampionTrades",
     # holdings
     "DeMfHoldings",
+    "DeShareholdingPattern",
     # mf derived
     "DeMfDerivedDaily",
     # indicators v2

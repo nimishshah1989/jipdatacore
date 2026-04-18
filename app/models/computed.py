@@ -236,6 +236,29 @@ class DeSectorBreadthDaily(Base):
     )
 
 
+class DeFoBanList(Base):
+    """Daily NSE F&O Securities-in-Ban list (market-wide position limit breach).
+
+    Populated from NSE's published fo_secban.csv (primary) or the
+    equity-stockIndices API fallback. A given business_date may have zero rows
+    when no security is in ban; this is a valid, successful pipeline outcome.
+    """
+
+    __tablename__ = "de_fo_ban_list"
+
+    business_date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    symbol: Mapped[str] = mapped_column(sa.String(60), primary_key=True)
+    ban_count: Mapped[Optional[int]] = mapped_column(
+        sa.SmallInteger, nullable=True, default=0
+    )
+    source: Mapped[str] = mapped_column(
+        sa.String(50), nullable=False, default="NSE"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+
+
 class DeFoSummary(Base):
     """Daily F&O market summary — PCR, OI, FII positions."""
 
@@ -259,4 +282,125 @@ class DeFoSummary(Base):
         server_default=sa.func.now(),
         onupdate=sa.func.now(),
         nullable=False,
+    )
+
+
+class DeRbiFxRate(Base):
+    """RBI/FBIL daily INR reference exchange rates.
+
+    Natural key: (rate_date, currency_pair).
+    currency_pair examples: 'USD/INR', 'EUR/INR', 'GBP/INR', 'JPY/INR'.
+    reference_rate stored with 4 decimal precision (e.g. 83.2145).
+    """
+
+    __tablename__ = "de_rbi_fx_rate"
+
+    rate_date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    currency_pair: Mapped[str] = mapped_column(sa.String(10), primary_key=True)
+    reference_rate: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    source: Mapped[str] = mapped_column(
+        sa.String(50), nullable=False, server_default=sa.text("'FBIL'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+
+
+class DeFoBhavcopy(Base):
+    """NSE F&O UDiFF Bhavcopy — daily futures and options contract data.
+
+    Natural key: (trade_date, symbol, instrument_type, expiry_date, strike_price, option_type).
+    For futures, strike_price=0 and option_type='--'.
+    """
+
+    __tablename__ = "de_fo_bhavcopy"
+    __table_args__ = (
+        sa.Index("ix_de_fo_bhavcopy_trade_date", "trade_date"),
+        sa.Index("ix_de_fo_bhavcopy_symbol_expiry", "symbol", "expiry_date"),
+    )
+
+    trade_date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    symbol: Mapped[str] = mapped_column(sa.String(60), primary_key=True)
+    instrument_type: Mapped[str] = mapped_column(sa.String(10), primary_key=True)
+    expiry_date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    strike_price: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), primary_key=True, nullable=False, server_default=sa.text("0")
+    )
+    option_type: Mapped[str] = mapped_column(
+        sa.String(2), primary_key=True, nullable=False, server_default=sa.text("'--'")
+    )
+
+    open: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    high: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    low: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    close: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    settle_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    prev_close: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    underlying_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    open_interest: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    change_in_oi: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    contracts_traded: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    turnover_lakh: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 4), nullable=True)
+    num_trades: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    source: Mapped[str] = mapped_column(
+        sa.String(50), nullable=False, server_default=sa.text("'NSE'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+        nullable=False,
+    )
+
+
+class DeGsecYield(Base):
+    """Daily G-Sec (Government Securities) benchmark yield curve.
+
+    Primary source: CCIL NDS-OM end-of-day snapshot.
+    Fallback: RBI DBIE weekly series (best-effort; may be skipped).
+    Natural key: (yield_date, tenor) where tenor is one of the standard
+    benchmark buckets: '1Y','2Y','3Y','5Y','7Y','10Y','15Y','30Y','40Y'.
+    """
+
+    __tablename__ = "de_gsec_yield"
+
+    yield_date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    tenor: Mapped[str] = mapped_column(sa.String(10), primary_key=True)
+    yield_pct: Mapped[Decimal] = mapped_column(Numeric(8, 4), nullable=False)
+    security_name: Mapped[Optional[str]] = mapped_column(sa.String(100), nullable=True)
+    source: Mapped[str] = mapped_column(
+        sa.String(50), nullable=False, server_default=sa.text("'CCIL'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+
+
+class DeRbiPolicyRate(Base):
+    """RBI policy rates — repo, reverse repo, MSF, bank rate, CRR, SLR.
+
+    Low-frequency data: changes only at MPC meetings (~8 times/year).
+    Natural key: (effective_date, rate_type). ON CONFLICT DO NOTHING preserves
+    the first observation of a given rate_type on a given effective_date.
+    """
+
+    __tablename__ = "de_rbi_policy_rate"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "rate_type IN ('REPO','REVERSE_REPO','MSF','BANK_RATE','CRR','SLR')",
+            name="chk_rbi_policy_rate_type",
+        ),
+    )
+
+    effective_date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    rate_type: Mapped[str] = mapped_column(sa.String(30), primary_key=True)
+    rate_pct: Mapped[Decimal] = mapped_column(Numeric(8, 4), nullable=False)
+    source: Mapped[str] = mapped_column(
+        sa.String(50), nullable=False, server_default=sa.text("'RBI'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
     )

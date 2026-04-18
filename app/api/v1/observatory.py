@@ -415,6 +415,70 @@ STREAM_DEFINITIONS: list[dict[str, Any]] = [
         "date_col": "trade_date",
         "category": "equity",
     },
+    # ── Atlas additions (derivatives, macro, filings) ──
+    {
+        "stream_id": "fo_bhavcopy",
+        "label": "F&O Bhavcopy",
+        "table": "de_fo_bhavcopy",
+        "date_col": "trade_date",
+        "category": "derivatives",
+    },
+    {
+        "stream_id": "fo_ban_list",
+        "label": "F&O Ban List",
+        "table": "de_fo_ban_list",
+        "date_col": "business_date",
+        "category": "derivatives",
+    },
+    {
+        "stream_id": "participant_oi",
+        "label": "Participant OI",
+        "table": "de_participant_oi",
+        "date_col": "trade_date",
+        "category": "derivatives",
+    },
+    {
+        "stream_id": "gsec_yields",
+        "label": "G-Sec Yields",
+        "table": "de_gsec_yield",
+        "date_col": "yield_date",
+        "category": "macro",
+    },
+    {
+        "stream_id": "rbi_fx_rates",
+        "label": "RBI FX Reference Rates",
+        "table": "de_rbi_fx_rate",
+        "date_col": "rate_date",
+        "category": "macro",
+    },
+    {
+        "stream_id": "rbi_policy_rates",
+        "label": "RBI Policy Rates",
+        "table": "de_rbi_policy_rate",
+        "date_col": "effective_date",
+        "category": "macro",
+    },
+    {
+        "stream_id": "insider_trades",
+        "label": "Insider Trades (PIT)",
+        "table": "de_insider_trades",
+        "date_col": "disclosure_date",
+        "category": "flows",
+    },
+    {
+        "stream_id": "bulk_block_deals",
+        "label": "Bulk & Block Deals",
+        "table": "de_bulk_block_deals",
+        "date_col": "deal_date",
+        "category": "flows",
+    },
+    {
+        "stream_id": "shareholding_pattern",
+        "label": "Shareholding Pattern",
+        "table": "de_shareholding_pattern",
+        "date_col": "as_of_date",
+        "category": "fundamentals",
+    },
 ]
 
 
@@ -941,6 +1005,16 @@ STREAM_PIPELINE_MAP: dict[str, str] = {
     "fo_summary": "fo_summary",
     "rs_daily_summary": "relative_strength",
     "champion_trades": "__goldilocks_compute__",
+    # Atlas additions
+    "fo_bhavcopy": "fo_bhavcopy",
+    "fo_ban_list": "fo_ban_list",
+    "participant_oi": "participant_oi",
+    "gsec_yields": "gsec_yields",
+    "rbi_fx_rates": "rbi_fx_rates",
+    "rbi_policy_rates": "rbi_policy_rates",
+    "insider_trades": "insider_trades",
+    "bulk_block_deals": "bulk_block_deals",
+    "shareholding_pattern": "shareholding_pattern",
 }
 
 

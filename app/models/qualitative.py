@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date as date_cls, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, Numeric, UniqueConstraint
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import BigInteger, Computed, ForeignKey, Index, Numeric, UniqueConstraint
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -196,4 +196,118 @@ class DeQualOutcomes(Base):
         server_default=sa.func.now(),
         onupdate=sa.func.now(),
         nullable=False,
+    )
+
+
+class DeBulkBlockDeal(Base):
+    """NSE + BSE bulk and block deals — large trade disclosures.
+
+    Bulk deal: single client trading >0.5% of listed shares in a session.
+    Block deal: single trade of >=5 lakh shares or >=Rs 5 crore value in the
+    block deal window.
+    """
+
+    __tablename__ = "de_bulk_block_deals"
+    __table_args__ = (
+        UniqueConstraint(
+            "deal_date",
+            "symbol",
+            "client_name",
+            "deal_type",
+            "transaction_type",
+            "quantity",
+            "exchange",
+            name="uq_bulk_block_deal",
+        ),
+        sa.CheckConstraint(
+            "deal_type IN ('BULK','BLOCK')", name="chk_bulk_block_deal_type"
+        ),
+        sa.CheckConstraint(
+            "transaction_type IN ('BUY','SELL')",
+            name="chk_bulk_block_transaction_type",
+        ),
+        Index("ix_bulk_block_deals_date", "deal_date"),
+        Index("ix_bulk_block_deals_symbol", "symbol"),
+        Index("ix_bulk_block_deals_client", "client_name"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    deal_date: Mapped[date_cls] = mapped_column(sa.Date, nullable=False)
+    symbol: Mapped[str] = mapped_column(sa.String(60), nullable=False)
+    company_name: Mapped[Optional[str]] = mapped_column(sa.String(255), nullable=True)
+    client_name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    deal_type: Mapped[str] = mapped_column(sa.String(10), nullable=False)
+    transaction_type: Mapped[str] = mapped_column(sa.String(4), nullable=False)
+    quantity: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    traded_price: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )
+    value_inr: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(20, 4),
+        Computed("quantity * traded_price", persisted=True),
+        nullable=True,
+    )
+    exchange: Mapped[str] = mapped_column(sa.String(10), nullable=False)
+    source: Mapped[Optional[str]] = mapped_column(sa.String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+
+
+class DeInsiderTrade(Base):
+    """SEBI PIT Regulation 7 insider trading disclosures (NSE + BSE).
+
+    Reg 7 requires promoters, directors, KMP and their immediate relatives
+    to disclose trades in listed company securities to the exchange within
+    2 trading days of the transaction. This table aggregates disclosures
+    from both NSE and BSE corporate announcement feeds.
+    """
+
+    __tablename__ = "de_insider_trades"
+    __table_args__ = (
+        UniqueConstraint(
+            "disclosure_date",
+            "symbol",
+            "person_name",
+            "transaction_type",
+            "quantity",
+            "exchange",
+            name="uq_insider_trades_natural_key",
+        ),
+        sa.CheckConstraint(
+            "transaction_type IN ('BUY','SELL','PLEDGE','INVOCATION')",
+            name="chk_insider_trades_txn_type",
+        ),
+        sa.CheckConstraint(
+            "exchange IN ('NSE','BSE')",
+            name="chk_insider_trades_exchange",
+        ),
+        Index("ix_insider_trades_disclosure_date", "disclosure_date"),
+        Index("ix_insider_trades_symbol", "symbol"),
+        Index("ix_insider_trades_person_name", "person_name"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    disclosure_date: Mapped[date_cls] = mapped_column(sa.Date, nullable=False)
+    transaction_date: Mapped[Optional[date_cls]] = mapped_column(sa.Date, nullable=True)
+    symbol: Mapped[str] = mapped_column(sa.String(60), nullable=False)
+    company_name: Mapped[Optional[str]] = mapped_column(sa.String(255), nullable=True)
+    person_name: Mapped[str] = mapped_column(sa.String(200), nullable=False)
+    person_category: Mapped[Optional[str]] = mapped_column(sa.String(100), nullable=True)
+    transaction_type: Mapped[str] = mapped_column(sa.String(20), nullable=False)
+    quantity: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    value_inr: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 4), nullable=True)
+    pre_holding_pct: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )
+    post_holding_pct: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )
+    exchange: Mapped[str] = mapped_column(sa.String(10), nullable=False)
+    source: Mapped[Optional[str]] = mapped_column(sa.String(50), nullable=True)
+    raw_payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
     )

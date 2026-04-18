@@ -69,6 +69,14 @@ class CronSchedule:
                     "fred_macro",
                     "india_vix",
                     "etf_prices",
+                    # Atlas daily additions
+                    "fo_bhavcopy",
+                    "fo_ban_list",
+                    "participant_oi",
+                    "gsec_yields",
+                    "rbi_fx_rates",
+                    "insider_trades",
+                    "bulk_block_deals",
                 ],
                 description="End of day: full data refresh",
             ),
@@ -107,6 +115,20 @@ class CronSchedule:
                 cron_expr="0 20 * * 1-5",
                 pipelines=["fo_summary"],
                 description="F&O summary: PCR, OI, FII positions",
+            ),
+            # ── RBI policy rates (daily 09:15 IST — poll for MPC changes) ──
+            ScheduleEntry(
+                name="macro_daily",
+                cron_expr="15 9 * * *",
+                pipelines=["rbi_policy_rates"],
+                description="RBI policy rates: daily poll for repo/CRR/SLR changes",
+            ),
+            # ── Shareholding pattern filings (daily 21:00 IST) ──
+            ScheduleEntry(
+                name="filings_daily",
+                cron_expr="0 21 * * *",
+                pipelines=["shareholding_pattern"],
+                description="Shareholding pattern: daily poll for quarterly filings",
             ),
             # ── Reconciliation (23:00 IST, daily) ──
             ScheduleEntry(

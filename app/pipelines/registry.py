@@ -32,6 +32,8 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     "equity_corporate_actions": ("app.pipelines.equity.corporate_actions", "CorporateActionsPipeline"),
     "market_cap_history": ("app.pipelines.equity.market_cap_history", "MarketCapHistoryPipeline"),
     "symbol_history": ("app.pipelines.equity.symbol_history", "SymbolHistoryPipeline"),
+    "fo_bhavcopy": ("app.pipelines.equity.fo_bhavcopy", "FoBhavcopyPipeline"),
+    "fo_ban_list": ("app.pipelines.equity.fo_ban", "FoBanListPipeline"),
     # Indices
     "index_prices": ("app.pipelines.indices.index_prices", "IndexPricePipeline"),
     "nse_indices": ("app.pipelines.indices.nse_indices", "NseIndicesPipeline"),
@@ -46,6 +48,13 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     "fii_dii_flows": ("app.pipelines.flows.fii_dii", "FiiDiiFlowsPipeline"),
     "fo_summary": ("app.pipelines.flows.fo_summary", "FoSummaryPipeline"),
     "mf_category_flows": ("app.pipelines.flows.mf_category_flows", "MfCategoryFlowsPipeline"),
+    "participant_oi": ("app.pipelines.flows.participant_oi", "ParticipantOiPipeline"),
+    # Macro (RBI / CCIL / FBIL)
+    "gsec_yields": ("app.pipelines.macro.gsec_yields", "GsecYieldsPipeline"),
+    "rbi_fx_rates": ("app.pipelines.macro.rbi_fx", "RbiFxRatesPipeline"),
+    "rbi_policy_rates": ("app.pipelines.macro.rbi_policy", "RbiPolicyRatesPipeline"),
+    # Fundamentals (quarterly filings)
+    "shareholding_pattern": ("app.pipelines.fundamentals.shareholding", "ShareholdingPatternPipeline"),
     # Morningstar
     "morningstar_fund_master": ("app.pipelines.morningstar.fund_master", "FundMasterPipeline"),
     "morningstar_holdings": ("app.pipelines.morningstar.holdings", "HoldingsPipeline"),
@@ -58,6 +67,8 @@ _PIPELINE_CLASSES: dict[str, tuple[str, str]] = {
     # Qualitative
     "qualitative_rss": ("app.pipelines.qualitative.rss", "RssPipeline"),
     "qualitative_goldilocks": ("app.pipelines.qualitative.playwright_goldilocks", "GoldilocksScraperPipeline"),
+    "insider_trades": ("app.pipelines.qualitative.insider_trades", "InsiderTradesPipeline"),
+    "bulk_block_deals": ("app.pipelines.qualitative.bulk_block_deals", "BulkBlockDealsPipeline"),
     # BSE
     "bse_filings": ("app.pipelines.bse.filings", "BseFilingsPipeline"),
 }
@@ -89,6 +100,16 @@ DAG_ALIAS: dict[str, str] = {
     "etf_prices": "etf_prices",
     "compute_indicators_v2": "compute_indicators_v2",
     "bse_filings": "bse_filings",
+    # Atlas pipelines — names match pipeline_name
+    "fo_bhavcopy": "fo_bhavcopy",
+    "fo_ban_list": "fo_ban_list",
+    "participant_oi": "participant_oi",
+    "gsec_yields": "gsec_yields",
+    "rbi_fx_rates": "rbi_fx_rates",
+    "rbi_policy_rates": "rbi_policy_rates",
+    "insider_trades": "insider_trades",
+    "bulk_block_deals": "bulk_block_deals",
+    "shareholding_pattern": "shareholding_pattern",
 }
 
 # Reverse map: pipeline_name → DAG alias (for lookups going the other direction)
@@ -109,6 +130,10 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
         "nse_bhav", "nse_corporate_actions", "nse_indices",
         "fii_dii_flows", "amfi_nav", "yfinance_global", "fred_macro",
         "india_vix", "nse_etf_sync", "etf_prices",
+        # Atlas additions — daily derivatives + ban list + macro + filings
+        "fo_bhavcopy", "fo_ban_list", "participant_oi",
+        "gsec_yields", "rbi_fx_rates",
+        "insider_trades", "bulk_block_deals",
     ],
     # Weekend: no Indian equity, but global markets still trade
     "eod_weekend": [
@@ -118,6 +143,10 @@ SCHEDULE_REGISTRY: dict[str, list[str]] = {
     # Same amfi_nav pipeline, just a later schedule slot so mf_nav lands
     # on the correct business_date instead of lagging by one day.
     "amfi_late": ["amfi_nav"],
+    # Macro low-frequency (daily poll, writes rarely)
+    "macro_daily": ["rbi_policy_rates"],
+    # Quarterly filings — daily poll, new rows appear only after quarter-end + 21 days
+    "filings_daily": ["shareholding_pattern"],
     "rs_computation": ["relative_strength"],
     "technicals": ["equity_technicals_sql", "equity_technicals_pandas"],
     "regime": ["market_breadth", "regime_detection"],

@@ -54,6 +54,50 @@ class DeInstitutionalFlows(Base):
     )
 
 
+class DeParticipantOi(Base):
+    """Daily NSE participant-wise open interest (FII/DII/Pro/Client/TOTAL).
+
+    Contract counts for futures (index/stock) and options (index/stock, call/put),
+    split by long and short side, plus aggregate long/short totals.
+    """
+
+    __tablename__ = "de_participant_oi"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "client_type IN ('Client','DII','FII','Pro','TOTAL')",
+            name="chk_participant_oi_client_type",
+        ),
+    )
+
+    trade_date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    client_type: Mapped[str] = mapped_column(sa.String(20), primary_key=True)
+
+    future_index_long: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    future_index_short: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    future_stock_long: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    future_stock_short: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    option_index_call_long: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    option_index_put_long: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    option_index_call_short: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    option_index_put_short: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    option_stock_call_long: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    option_stock_put_long: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    option_stock_call_short: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    option_stock_put_short: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    total_long_contracts: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    total_short_contracts: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+        nullable=False,
+    )
+
+
 class DeMfCategoryFlows(Base):
     """Monthly MF category-level AUM, flows and SIP data."""
 
