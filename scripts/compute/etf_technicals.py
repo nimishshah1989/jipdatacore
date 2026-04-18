@@ -43,7 +43,6 @@ ETF_INDICATOR_COLS = [
     "volatility_60d",
     "bollinger_upper",
     "bollinger_lower",
-    "relative_volume",
     "adx_14",
 ]
 
