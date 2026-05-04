@@ -178,14 +178,18 @@ def parse_master(xml_text: str) -> dict[str, dict]:
 def _looks_like_etf(name: Optional[str]) -> bool:
     """Heuristic ETF detection by fund name.
 
-    The master service doesn't return InvestmentType/SecurityType, so we
-    fall back to name patterns. 'Fund of Fund' / 'FoF' must NOT match
-    since those are open-ended FoFs that hold the ETF, not the ETF itself.
+    Excludes FoFs aggressively -- Morningstar's compressed names sometimes
+    drop spaces, so 'ETFFoFRegGr' has to be caught alongside 'ETF Fund of
+    Fund'. We collapse spaces before matching the FoF substring.
     """
     if not name:
         return False
     n = name.upper()
-    if "FUND OF FUND" in n or " FOF" in n or n.endswith("FOF"):
+    n_compact = n.replace(" ", "")
+    if "FUND OF FUND" in n or "ETFFOF" in n_compact or "FOFREGGR" in n_compact \
+            or "FOFDIRGR" in n_compact:
+        return False
+    if " FOF" in n or n.endswith("FOF"):
         return False
     return ("ETF" in n) or ("BEES" in n)
 
@@ -426,6 +430,48 @@ async def main() -> int:
                             if not holdings:
                                 n_etf_no_holdings += 1
                                 continue
+                            effective = _date(holding_date) or today
+
+                            # 1. Always write to de_mf_holdings keyed by mstar_id.
+                            #    This is the durable home for ETF holdings -- most
+                            #    Morningstar ETFs aren't in de_etf_master so the
+                            #    FK-strict de_etf_holdings can't accept them.
+                            mf_rows = []
+                            for h in holdings:
+                                iid = isin_to_iid.get(h["isin"])
+                                mf_rows.append({
+                                    "mstar_id": master["mstar_id"],
+                                    "as_of_date": effective,
+                                    "isin": h["isin"],
+                                    "holding_name": h.get("name"),
+                                    "instrument_id": iid,
+                                    "weight_pct": h.get("weight_pct"),
+                                    "shares_held": h.get("shares_held"),
+                                    "market_value": h.get("market_value"),
+                                    "sector_code": h.get("sector_code"),
+                                    "is_mapped": iid is not None,
+                                })
+                            with_isin = [r for r in mf_rows if r["isin"]]
+                            if with_isin:
+                                stmt = pg_insert(DeMfHoldings).values(with_isin)
+                                stmt = stmt.on_conflict_do_update(
+                                    constraint="uq_mf_holdings",
+                                    set_={
+                                        "holding_name": stmt.excluded.holding_name,
+                                        "weight_pct": stmt.excluded.weight_pct,
+                                        "shares_held": stmt.excluded.shares_held,
+                                        "market_value": stmt.excluded.market_value,
+                                        "sector_code": stmt.excluded.sector_code,
+                                        "instrument_id": stmt.excluded.instrument_id,
+                                        "is_mapped": stmt.excluded.is_mapped,
+                                    },
+                                )
+                                await session.execute(stmt)
+
+                            # 2. ALSO try to mirror into de_etf_holdings if we
+                            #    can map this Morningstar fund to a row in
+                            #    de_etf_master (best-effort; most won't match
+                            #    because the master service doesn't return Ticker).
                             ticker_in = (master.get("Ticker") or "").upper()
                             resolved = (ticker_lookup.get(ticker_in)
                                         or ticker_lookup.get(ticker_in.replace(".NS", "").replace(".BO", ""))
@@ -436,26 +482,25 @@ async def main() -> int:
                                     sample_etf_unmatched.append((master["mstar_id"], ticker_in,
                                                                  (master.get("Name") or "")[:60]))
                                 continue
-                            effective = _date(holding_date) or today
-                            rows = []
+                            etf_rows = []
                             for h in holdings:
                                 iid = isin_to_iid.get(h["isin"])
                                 if iid is None:
                                     continue
-                                rows.append({
+                                etf_rows.append({
                                     "ticker": resolved, "instrument_id": iid,
                                     "as_of_date": effective, "weight": h["weight"],
                                     "last_disclosed_date": today,
                                 })
-                            if rows:
-                                stmt = pg_insert(DeEtfHoldings).values(rows)
+                            if etf_rows:
+                                stmt = pg_insert(DeEtfHoldings).values(etf_rows)
                                 stmt = stmt.on_conflict_do_update(
                                     constraint="pk_de_etf_holdings",
                                     set_={"weight": stmt.excluded.weight,
                                           "last_disclosed_date": stmt.excluded.last_disclosed_date},
                                 )
                                 await session.execute(stmt)
-                                n_etf_holdings_inserted += len(rows)
+                                n_etf_holdings_inserted += len(etf_rows)
                         else:
                             n_mfs += 1
                             if not holdings:
