@@ -290,13 +290,9 @@ async def _load_symbol_map(session: AsyncSession) -> dict[str, uuid.UUID]:
     """Load every known ticker -> instrument_id mapping.
 
     Includes BOTH `de_instrument.current_symbol` AND every historical
-    `de_symbol_history.old_symbol`. Without the historical entries, BHAV
-    rows for a stock that was later renamed (the original ticker still
-    appears in old BHAV files) get silently dropped at ingestion time --
-    that was the cause of the partial pre-rename history we saw in the
-    Atlas-M0 universe coverage audit.
+    `de_symbol_history.old_symbol`. Used as the secondary lookup when ISIN
+    matching fails (see _load_isin_map and _ingest_single_date).
     """
-    # Current symbols
     current = await session.execute(
         select(DeInstrument.current_symbol, DeInstrument.id).where(
             DeInstrument.is_active == True,  # noqa: E712
@@ -304,9 +300,6 @@ async def _load_symbol_map(session: AsyncSession) -> dict[str, uuid.UUID]:
     )
     mapping: dict[str, uuid.UUID] = {row[0].upper(): row[1] for row in current}
 
-    # Historical aliases (old_symbol from de_symbol_history). When a
-    # historical alias collides with a current symbol owned by a different
-    # instrument, the current_symbol wins (we processed it first above).
     from app.models.instruments import DeSymbolHistory
 
     history = await session.execute(
@@ -315,10 +308,32 @@ async def _load_symbol_map(session: AsyncSession) -> dict[str, uuid.UUID]:
     for old_symbol, instrument_id in history:
         if not old_symbol:
             continue
-        key = old_symbol.upper()
-        mapping.setdefault(key, instrument_id)
+        mapping.setdefault(old_symbol.upper(), instrument_id)
 
     return mapping
+
+
+async def _load_isin_map(session: AsyncSession) -> dict[str, uuid.UUID]:
+    """Load isin -> instrument_id mapping.
+
+    Primary lookup for BHAV row resolution. ISIN is stable across renames
+    (it follows the company, not the ticker), so matching on ISIN means
+    a renamed stock like ADANIENT keeps its full pre-rename history even
+    if `de_symbol_history` has no entry for the old ticker (which is the
+    case for almost all stocks in this database -- de_symbol_history is
+    largely empty in production).
+
+    BHAV file ISIN coverage:
+      - PRE2010 format: no ISIN column                  -> falls through to symbol
+      - STANDARD (historical zip + sec_bhavdata_full): has ISIN
+      - UDIFF (2024+):                                  has ISIN
+    """
+    result = await session.execute(
+        select(DeInstrument.isin, DeInstrument.id).where(
+            DeInstrument.isin.isnot(None),
+        )
+    )
+    return {row[0].upper(): row[1] for row in result if row[0]}
 
 
 NSE_BHAV_URL_HISTORICAL_ZIP = (
@@ -359,6 +374,7 @@ async def _ingest_single_date(
     business_date: date,
     symbol_map: dict[str, uuid.UUID],
     semaphore: asyncio.Semaphore,
+    isin_map: dict[str, uuid.UUID] | None = None,
 ) -> tuple[int, int]:
     """Download and ingest BHAV for one date. Returns (rows_inserted, rows_failed)."""
     url, expected_fmt = _bhav_url_for_date(business_date)
@@ -416,7 +432,14 @@ async def _ingest_single_date(
 
     for row in parsed_rows:
         symbol = row["symbol"]
-        instrument_id = symbol_map.get(symbol)
+        # ISIN-first lookup: stable across renames. Symbol is fallback for
+        # PRE2010 format (no ISIN column) and any rows where ISIN is blank.
+        instrument_id: uuid.UUID | None = None
+        row_isin = row.get("isin")
+        if row_isin and isin_map:
+            instrument_id = isin_map.get(row_isin)
+        if instrument_id is None:
+            instrument_id = symbol_map.get(symbol)
         if instrument_id is None:
             rows_failed += 1
             continue
@@ -485,6 +508,7 @@ async def _worker(
     semaphore: asyncio.Semaphore,
     total_dates: int,
     skipped_count: int,
+    isin_map: dict[str, uuid.UUID] | None = None,
 ) -> tuple[int, int, int]:
     """Process a chunk of dates. Returns (completed, failed, rows_inserted)."""
     completed = 0
@@ -504,6 +528,7 @@ async def _worker(
                     async with session.begin():
                         rows_inserted, rows_failed = await _ingest_single_date(
                             client, session, business_date, symbol_map, semaphore,
+                            isin_map=isin_map,
                         )
 
                 completed += 1
@@ -628,6 +653,7 @@ async def run_backfill(
     async with async_session() as session:
         db_completed = await _load_completed_dates(session)
         symbol_map = await _load_symbol_map(session)
+        isin_map = await _load_isin_map(session)
 
     # Merge both sources
     completed_dates = {date.fromisoformat(d) for d in checkpoint_dates} | db_completed
@@ -637,6 +663,7 @@ async def run_backfill(
         total_weekdays=len(all_weekdays),
         already_completed=len(completed_dates),
         instruments=len(symbol_map),
+        instruments_with_isin=len(isin_map),
         start=start_date.isoformat(),
         end=end_date.isoformat(),
         workers=n_workers,
@@ -706,6 +733,7 @@ async def run_backfill(
                 semaphore=semaphore,
                 total_dates=len(all_weekdays),
                 skipped_count=skipped_count,
+                isin_map=isin_map,
             )
         )
 

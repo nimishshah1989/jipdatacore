@@ -193,6 +193,7 @@ def parse_bhav_csv(content: str, fmt: BhavFormat) -> list[dict[str, Any]]:
             volume = _safe_int(get("TOTTRDQTY"))
             trades = _safe_int(get("TOTALTRADES"))
             trade_date_str = get("TIMESTAMP") or get("DATE")
+            isin = get("ISIN") or get("ISIN_NUMBER")
 
         elif fmt == BhavFormat.STANDARD:
             symbol = get("SYMBOL")
@@ -204,6 +205,7 @@ def parse_bhav_csv(content: str, fmt: BhavFormat) -> list[dict[str, Any]]:
             volume = _safe_int(get("TTL_TRD_QNTY"))
             trades = _safe_int(get("NO_OF_TRADES"))
             trade_date_str = get("DATE1") or get("TIMESTAMP")
+            isin = get("ISIN") or get("ISIN_NUMBER")
 
         else:  # UDIFF
             symbol = get("FININSTRMID") or get("SYMBOL") or get("TCKRSYMB")
@@ -215,6 +217,7 @@ def parse_bhav_csv(content: str, fmt: BhavFormat) -> list[dict[str, Any]]:
             volume = _safe_int(get("TTLQTY") or get("TTLTRDQTY") or get("TOTTRDQTY"))
             trades = _safe_int(get("NOOF_TRADES") or get("NO_OF_TRADES"))
             trade_date_str = get("TRADDT") or get("BIZDT")
+            isin = get("ISIN")
 
         if not symbol or close_price is None:
             continue
@@ -234,6 +237,7 @@ def parse_bhav_csv(content: str, fmt: BhavFormat) -> list[dict[str, Any]]:
             {
                 "symbol": symbol.strip().upper(),
                 "series": (series or "EQ").strip().upper(),
+                "isin": (isin or "").strip().upper() or None,
                 "open": open_price,
                 "high": high_price,
                 "low": low_price,
