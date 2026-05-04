@@ -65,24 +65,33 @@ def collect_facts(target_date: date) -> dict[str, Any]:
     conn = psycopg2.connect(_conn_url())
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # ----- Job 1: stocks coverage --------------------------------
+            # ----- Job 1: stocks coverage (top-750 universe by market cap) ---
+            # Universe = NIFTY 500 + NIFTY MICROCAP 250 (matches architect spec
+            # 'top 750-800 by market cap' aligned 2026-05-04).
             cur.execute(
                 """
-                WITH active AS (
-                    SELECT id FROM de_instrument WHERE is_active AND is_tradeable
+                WITH universe AS (
+                    SELECT DISTINCT c.instrument_id
+                    FROM de_index_constituents c
+                    WHERE c.index_code IN ('NIFTY 500','NIFTY MICROCAP250')
+                      AND c.effective_to IS NULL
                 ),
-                hist AS (
-                    SELECT instrument_id,
-                           COUNT(*) FILTER (WHERE date < DATE '2014-04-01') AS days_before
-                    FROM de_equity_ohlcv
-                    GROUP BY instrument_id
+                cov AS (
+                    SELECT u.instrument_id,
+                           COUNT(*) FILTER (WHERE o.date >= DATE '2014-01-01') AS days_post_2014,
+                           MAX(o.date) AS latest
+                    FROM universe u LEFT JOIN de_equity_ohlcv o USING(instrument_id)
+                    GROUP BY u.instrument_id
                 )
                 SELECT
-                    (SELECT COUNT(*) FROM active) AS active_stocks,
-                    (SELECT COUNT(*) FROM active a
-                     JOIN hist h ON h.instrument_id = a.id
-                     WHERE h.days_before >= 252) AS stocks_meeting_252day_floor
-                """
+                    (SELECT COUNT(*) FROM universe) AS universe_size,
+                    COUNT(*) FILTER (WHERE days_post_2014 >= 1500) AS stocks_well_covered,
+                    COUNT(*) FILTER (WHERE days_post_2014 BETWEEN 250 AND 1499) AS stocks_partial,
+                    COUNT(*) FILTER (WHERE COALESCE(days_post_2014,0) = 0) AS stocks_zero_data,
+                    COUNT(*) FILTER (WHERE latest >= %(target)s::date - INTERVAL '5 days') AS stocks_current
+                FROM cov
+                """,
+                {"target": target_date},
             )
             facts["job1_stocks"] = dict(cur.fetchone())
 
@@ -124,6 +133,9 @@ def collect_facts(target_date: date) -> dict[str, Any]:
             facts["job1_mfs"] = dict(cur.fetchone())
 
             # ----- Job 1: INTL coverage ----------------------------------
+            # Use the existing tickers in master, not INTL_* aliases. The
+            # canonical sources from Stooq are ^GSPC (S&P 500 from world pack)
+            # and URTH (iShares MSCI World ETF from US pack).
             cur.execute(
                 """
                 SELECT ticker,
@@ -134,7 +146,7 @@ def collect_facts(target_date: date) -> dict[str, Any]:
                 WHERE ticker = ANY(%s)
                 GROUP BY ticker
                 """,
-                (["INTL_SPX", "INTL_MSCIWORLD"],),
+                (["^GSPC", "URTH"],),
             )
             facts["job1_intl"] = [dict(r) for r in cur.fetchall()]
 
@@ -210,10 +222,14 @@ def render(facts: dict[str, Any]) -> str:
     j1i = facts["job1_intl"]
     intl_map = {r["ticker"]: r for r in j1i}
 
+    universe_size = j1s.get("universe_size") or 0
+    well_covered = j1s.get("stocks_well_covered") or 0
+    partial = j1s.get("stocks_partial") or 0
+    zero_data = j1s.get("stocks_zero_data") or 0
+    current = j1s.get("stocks_current") or 0
+    stocks_with_useful_data = well_covered + partial
     stocks_pct = (
-        100.0 * j1s["stocks_meeting_252day_floor"] / j1s["active_stocks"]
-        if j1s["active_stocks"]
-        else 0
+        100.0 * stocks_with_useful_data / universe_size if universe_size else 0
     )
     mfs_pct = (
         100.0 * j1m["mfs_current_to_t1"] / j1m["eligible_mfs"]
@@ -222,7 +238,7 @@ def render(facts: dict[str, Any]) -> str:
     )
     intl_ok = sum(
         1
-        for t in ("INTL_SPX", "INTL_MSCIWORLD")
+        for t in ("^GSPC", "URTH")
         if t in intl_map and intl_map[t]["row_count"] > 0
     )
 
@@ -253,12 +269,17 @@ def render(facts: dict[str, Any]) -> str:
         "",
         "## 1. Job 1 — Gap Fill",
         "",
-        "### 1.1 Stocks (PARTIAL backfill)",
+        "### 1.1 Stocks (top-750 universe by market cap)",
         "",
-        f"- Active+tradeable instruments: {j1s['active_stocks']}",
-        f"- Meeting >=252 trading days before 2014-04-01: "
-        f"{j1s['stocks_meeting_252day_floor']} ({stocks_pct:.1f} %)",
-        f"- DoD threshold: >=95 % -- "
+        "Universe = NIFTY 500 + NIFTY MICROCAP 250 (architect-aligned 2026-05-04).",
+        "",
+        f"- Universe size: {universe_size}",
+        f"- Well covered (>=1500 days post-2014): {well_covered}",
+        f"- Partial (250-1499 days): {partial}",
+        f"- No data: {zero_data}",
+        f"- Current to T-5: {current}",
+        f"- DoD: >=95 % of universe with usable history -- "
+        f"{stocks_with_useful_data}/{universe_size} = {stocks_pct:.1f} % "
         f"{'PASS' if stocks_pct >= 95.0 else 'FAIL'}",
         "",
         "### 1.2 MFs (NAV current to T-1)",
@@ -268,12 +289,12 @@ def render(facts: dict[str, Any]) -> str:
         f"- DoD threshold: >=95 % -- "
         f"{'PASS' if mfs_pct >= 95.0 else 'FAIL'}",
         "",
-        "### 1.3 International (INTL_SPX, INTL_MSCIWORLD)",
+        "### 1.3 International (^GSPC, URTH from Stooq)",
         "",
         "| Ticker | Earliest | Latest | Row count |",
         "|---|---|---|---|",
     ]
-    for t in ("INTL_SPX", "INTL_MSCIWORLD"):
+    for t in ("^GSPC", "URTH"):
         if t in intl_map:
             r = intl_map[t]
             lines.append(
