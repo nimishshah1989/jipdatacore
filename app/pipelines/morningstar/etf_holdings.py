@@ -166,20 +166,62 @@ def parse_etf_holdings_response(
     return parsed, effective_date
 
 
-async def load_etf_universe(session: AsyncSession) -> list[str]:
-    """Load active ETF tickers from de_etf_master.
+async def load_etf_universe(
+    session: AsyncSession,
+) -> list[tuple[str, str, Optional[str]]]:
+    """Load Morningstar-covered Indian ETFs.
 
-    Filters to is_active = True. Country filter is intentionally omitted —
-    the universe currently mixes Indian and US-listed ETFs; the Morningstar
-    holdings call works on tickers it knows about and returns 404 (handled
-    gracefully) for the rest.
+    Returns list of (mstar_id, fund_name, de_etf_master_ticker_or_none).
+
+    Why this isn't keyed off de_etf_master directly: the Morningstar Direct
+    service `fq9mxhk7xeb20f3b` covers Indian funds only -- it doesn't know
+    SPY/QQQ/VTI etc. Indian ETFs are registered in de_mf_master with the
+    `is_etf` flag set, and that's where their mstar_id lives. The smoke test
+    confirmed this: 5 US ETFs from de_etf_master all returned 404.
+
+    Storage in de_etf_holdings still requires a de_etf_master.ticker (FK).
+    We attempt a case-insensitive fund_name match -- if no match exists
+    (typically for ETFs Morningstar covers but de_etf_master doesn't), the
+    holdings are skipped with a warning. The readiness report records
+    skipped ETFs as accepted limitations.
     """
+    from app.models.instruments import DeMfMaster
+
     result = await session.execute(
-        select(DeEtfMaster.ticker).where(DeEtfMaster.is_active == True)  # noqa: E712
+        select(DeMfMaster.mstar_id, DeMfMaster.fund_name).where(
+            DeMfMaster.is_active == True,  # noqa: E712
+            DeMfMaster.is_etf == True,  # noqa: E712
+        )
     )
-    tickers = [row[0] for row in result.fetchall()]
-    logger.info("etf_holdings_universe_loaded", count=len(tickers))
-    return tickers
+    universe = result.fetchall()
+
+    # Build a lower-cased fund_name -> de_etf_master.ticker lookup for storage.
+    etf_master = await session.execute(
+        select(DeEtfMaster.ticker, DeEtfMaster.name).where(
+            DeEtfMaster.is_active == True  # noqa: E712
+        )
+    )
+    name_to_ticker: dict[str, str] = {}
+    for ticker, name in etf_master:
+        if name:
+            name_to_ticker.setdefault(name.strip().lower(), ticker)
+
+    out: list[tuple[str, str, Optional[str]]] = []
+    matched = 0
+    for mstar_id, fund_name in universe:
+        ticker_match = None
+        if fund_name:
+            ticker_match = name_to_ticker.get(fund_name.strip().lower())
+        if ticker_match:
+            matched += 1
+        out.append((mstar_id, fund_name or "", ticker_match))
+
+    logger.info(
+        "etf_holdings_universe_loaded",
+        morningstar_etfs=len(out),
+        with_etf_master_ticker=matched,
+    )
+    return out
 
 
 async def upsert_etf_holdings_batch(
@@ -241,8 +283,8 @@ class EtfHoldingsPipeline(BasePipeline):
         session: AsyncSession,
         run_log: DePipelineLog,
     ) -> ExecutionResult:
-        tickers = await load_etf_universe(session)
-        if not tickers:
+        universe = await load_etf_universe(session)
+        if not universe:
             logger.warning("etf_holdings_empty_universe")
             return ExecutionResult(rows_processed=0, rows_failed=0)
 
@@ -252,6 +294,7 @@ class EtfHoldingsPipeline(BasePipeline):
         rows_failed = 0
         etfs_with_data = 0
         etfs_no_data = 0
+        etfs_no_master_match = 0
 
         client = self._client or MorningstarClient(
             max_per_second=self._max_per_second,
@@ -263,18 +306,23 @@ class EtfHoldingsPipeline(BasePipeline):
             if use_context_manager:
                 await client.__aenter__()
 
-            for ticker in tickers:
+            for mstar_id, fund_name, ticker_or_none in universe:
+                if ticker_or_none is None:
+                    # Morningstar covers it but we have no de_etf_master row to
+                    # FK against -- skip and count for the readiness report.
+                    etfs_no_master_match += 1
+                    continue
+                ticker = ticker_or_none
                 try:
-                    # Morningstar accepts ticker via the same fund endpoint
-                    # used for MFs; id_type "Ticker" is the documented form.
                     data = await client.fetch(
-                        id_type="Ticker",
-                        identifier=ticker,
+                        id_type="FundId",
+                        identifier=mstar_id,
                         datapoints=HOLDINGS_DATAPOINTS,
                     )
 
                     if not data:
-                        logger.debug("etf_holdings_no_data", ticker=ticker)
+                        logger.debug(
+                            "etf_holdings_no_data", ticker=ticker, mstar_id=mstar_id)
                         etfs_no_data += 1
                         continue
 
@@ -282,7 +330,8 @@ class EtfHoldingsPipeline(BasePipeline):
                         ticker, data, effective_fallback
                     )
                     if not parsed_rows:
-                        logger.debug("etf_holdings_empty_parsed", ticker=ticker)
+                        logger.debug(
+                            "etf_holdings_empty_parsed", ticker=ticker, mstar_id=mstar_id)
                         etfs_no_data += 1
                         continue
 
@@ -317,6 +366,7 @@ class EtfHoldingsPipeline(BasePipeline):
                     logger.info(
                         "etf_holdings_etf_complete",
                         ticker=ticker,
+                        mstar_id=mstar_id,
                         as_of_date=as_of_date.isoformat(),
                         upserted=upserted,
                         unresolved_isins=fund_failed,
@@ -344,9 +394,10 @@ class EtfHoldingsPipeline(BasePipeline):
         logger.info(
             "etf_holdings_execute_complete",
             business_date=business_date.isoformat(),
-            etfs_total=len(tickers),
+            etfs_total=len(universe),
             etfs_with_data=etfs_with_data,
             etfs_no_data=etfs_no_data,
+            etfs_no_master_match=etfs_no_master_match,
             rows_processed=rows_processed,
             rows_failed=rows_failed,
         )
