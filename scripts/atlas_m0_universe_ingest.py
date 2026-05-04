@@ -165,7 +165,11 @@ def parse_holdings(xml_text: str) -> dict[str, dict]:
                     "isin": isin.upper(),
                     "name": h.get("Name"),
                     "weight": weight,
-                    "weight_pct": weight_pct,
+                    # Clamp to 99.9999 -- de_mf_holdings.weight_pct is NUMERIC(6,4)
+                    # and Morningstar occasionally reports >100% for fund-of-fund
+                    # accounting (e.g. ICICI Pru Nifty EV & New Age Automtv ETF
+                    # showed 100.38892 in the universe response).
+                    "weight_pct": min(weight_pct, Decimal("99.9999")),
                     "shares_held": _int(h.get("NumberOfShare")),
                     "market_value": _decimal(h.get("MarketValue")),
                     "sector_code": h.get("SectorId") or h.get("GlobalSectorId"),
@@ -277,96 +281,102 @@ async def main() -> int:
     sample_etf_unmatched: list[tuple] = []
 
     print("\nIngesting...")
+    n_skipped_errors = 0
+    error_samples: list[tuple] = []
     async with Session() as session:
         async with session.begin():
             for master, hold in iter_funds():
                 n_funds += 1
-
-                # 1. Refresh de_mf_master row
-                await upsert_mf_master(session, master)
-                n_master_upserted += 1
-
                 category = master.get("CategoryName")
                 inv_type = master.get("InvestmentType")
                 is_etf = _is_etf(category, inv_type)
                 holdings = hold.get("holdings") or []
                 holding_date = hold.get("HoldingDate")
+                try:
+                    # Savepoint per fund -- a single bad row (e.g. weight_pct
+                    # overflow on a fund-of-fund) doesn't roll back all 4,133.
+                    async with session.begin_nested():
+                        await upsert_mf_master(session, master)
+                        n_master_upserted += 1
 
-                if is_etf:
-                    n_etfs += 1
-                    if not holdings:
-                        n_etf_no_holdings += 1
-                        continue
-                    # Map mstar_id -> de_etf_master.ticker via Ticker field
-                    ticker_in = (master.get("Ticker") or "").upper()
-                    resolved = (ticker_lookup.get(ticker_in)
-                                or ticker_lookup.get(ticker_in.replace(".NS", "").replace(".BO", ""))
-                                or ticker_lookup.get(ticker_in + ".NS"))
-                    if resolved is None:
-                        n_etf_no_master += 1
-                        if len(sample_etf_unmatched) < 10:
-                            sample_etf_unmatched.append((master["mstar_id"], ticker_in,
-                                                         (master.get("Name") or "")[:60]))
-                        continue
-                    effective = _date(holding_date) or today
-                    rows = []
-                    for h in holdings:
-                        iid = isin_to_iid.get(h["isin"])
-                        if iid is None:
-                            continue
-                        rows.append({
-                            "ticker": resolved, "instrument_id": iid,
-                            "as_of_date": effective, "weight": h["weight"],
-                            "last_disclosed_date": today,
-                        })
-                    if rows:
-                        stmt = pg_insert(DeEtfHoldings).values(rows)
-                        stmt = stmt.on_conflict_do_update(
-                            constraint="pk_de_etf_holdings",
-                            set_={"weight": stmt.excluded.weight,
-                                  "last_disclosed_date": stmt.excluded.last_disclosed_date},
-                        )
-                        await session.execute(stmt)
-                        n_etf_holdings_inserted += len(rows)
-                else:
-                    n_mfs += 1
-                    if not holdings:
-                        n_mf_no_holdings += 1
-                        continue
-                    effective = _date(holding_date) or today
-                    rows = []
-                    for h in holdings:
-                        iid = isin_to_iid.get(h["isin"])
-                        rows.append({
-                            "mstar_id": master["mstar_id"],
-                            "as_of_date": effective,
-                            "isin": h["isin"],
-                            "holding_name": h.get("name"),
-                            "instrument_id": iid,
-                            "weight_pct": h.get("weight_pct"),
-                            "shares_held": h.get("shares_held"),
-                            "market_value": h.get("market_value"),
-                            "sector_code": h.get("sector_code"),
-                            "is_mapped": iid is not None,
-                        })
-                    if rows:
-                        with_isin = [r for r in rows if r["isin"]]
-                        if with_isin:
-                            stmt = pg_insert(DeMfHoldings).values(with_isin)
-                            stmt = stmt.on_conflict_do_update(
-                                constraint="uq_mf_holdings",
-                                set_={
-                                    "holding_name": stmt.excluded.holding_name,
-                                    "weight_pct": stmt.excluded.weight_pct,
-                                    "shares_held": stmt.excluded.shares_held,
-                                    "market_value": stmt.excluded.market_value,
-                                    "sector_code": stmt.excluded.sector_code,
-                                    "instrument_id": stmt.excluded.instrument_id,
-                                    "is_mapped": stmt.excluded.is_mapped,
-                                },
-                            )
-                            await session.execute(stmt)
-                            n_mf_holdings_inserted += len(with_isin)
+                        if is_etf:
+                            n_etfs += 1
+                            if not holdings:
+                                n_etf_no_holdings += 1
+                                continue
+                            ticker_in = (master.get("Ticker") or "").upper()
+                            resolved = (ticker_lookup.get(ticker_in)
+                                        or ticker_lookup.get(ticker_in.replace(".NS", "").replace(".BO", ""))
+                                        or ticker_lookup.get(ticker_in + ".NS"))
+                            if resolved is None:
+                                n_etf_no_master += 1
+                                if len(sample_etf_unmatched) < 10:
+                                    sample_etf_unmatched.append((master["mstar_id"], ticker_in,
+                                                                 (master.get("Name") or "")[:60]))
+                                continue
+                            effective = _date(holding_date) or today
+                            rows = []
+                            for h in holdings:
+                                iid = isin_to_iid.get(h["isin"])
+                                if iid is None:
+                                    continue
+                                rows.append({
+                                    "ticker": resolved, "instrument_id": iid,
+                                    "as_of_date": effective, "weight": h["weight"],
+                                    "last_disclosed_date": today,
+                                })
+                            if rows:
+                                stmt = pg_insert(DeEtfHoldings).values(rows)
+                                stmt = stmt.on_conflict_do_update(
+                                    constraint="pk_de_etf_holdings",
+                                    set_={"weight": stmt.excluded.weight,
+                                          "last_disclosed_date": stmt.excluded.last_disclosed_date},
+                                )
+                                await session.execute(stmt)
+                                n_etf_holdings_inserted += len(rows)
+                        else:
+                            n_mfs += 1
+                            if not holdings:
+                                n_mf_no_holdings += 1
+                                continue
+                            effective = _date(holding_date) or today
+                            rows = []
+                            for h in holdings:
+                                iid = isin_to_iid.get(h["isin"])
+                                rows.append({
+                                    "mstar_id": master["mstar_id"],
+                                    "as_of_date": effective,
+                                    "isin": h["isin"],
+                                    "holding_name": h.get("name"),
+                                    "instrument_id": iid,
+                                    "weight_pct": h.get("weight_pct"),
+                                    "shares_held": h.get("shares_held"),
+                                    "market_value": h.get("market_value"),
+                                    "sector_code": h.get("sector_code"),
+                                    "is_mapped": iid is not None,
+                                })
+                            if rows:
+                                with_isin = [r for r in rows if r["isin"]]
+                                if with_isin:
+                                    stmt = pg_insert(DeMfHoldings).values(with_isin)
+                                    stmt = stmt.on_conflict_do_update(
+                                        constraint="uq_mf_holdings",
+                                        set_={
+                                            "holding_name": stmt.excluded.holding_name,
+                                            "weight_pct": stmt.excluded.weight_pct,
+                                            "shares_held": stmt.excluded.shares_held,
+                                            "market_value": stmt.excluded.market_value,
+                                            "sector_code": stmt.excluded.sector_code,
+                                            "instrument_id": stmt.excluded.instrument_id,
+                                            "is_mapped": stmt.excluded.is_mapped,
+                                        },
+                                    )
+                                    await session.execute(stmt)
+                                    n_mf_holdings_inserted += len(with_isin)
+                except Exception as exc:
+                    n_skipped_errors += 1
+                    if len(error_samples) < 10:
+                        error_samples.append((master.get("mstar_id"), str(exc)[:200]))
 
     async with Session() as session:
         n_master = (await session.execute(text(
@@ -381,6 +391,11 @@ async def main() -> int:
             "SELECT COUNT(DISTINCT mstar_id) FROM de_mf_holdings"))).scalar()
     await engine.dispose()
 
+    print(f"\n  funds skipped on error:    {n_skipped_errors}")
+    if error_samples:
+        print("  Error samples (first 10):")
+        for mid, err in error_samples:
+            print(f"    {mid}: {err}")
     print("\n=== Universe ingest -- summary ===")
     print(f"Funds in universe response:   {n_funds}")
     print(f"  ETFs:                       {n_etfs}")
