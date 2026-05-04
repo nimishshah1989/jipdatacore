@@ -83,7 +83,11 @@ from app.models.goldilocks import (  # noqa: F401
 )
 from app.models.champion import DeChampionTrades  # noqa: F401
 from app.models.fundamentals import DeEquityFundamentals  # noqa: F401
-from app.models.holdings import DeMfHoldings, DeShareholdingPattern  # noqa: F401
+from app.models.holdings import (  # noqa: F401
+    DeEtfHoldings,
+    DeMfHoldings,
+    DeShareholdingPattern,
+)
 from app.models.mf_derived import DeMfDerivedDaily  # noqa: F401
 from app.models.bse import (  # noqa: F401
     DeBseAnnouncements,
@@ -183,6 +187,7 @@ __all__ = [
     # holdings
     "DeMfHoldings",
     "DeShareholdingPattern",
+    "DeEtfHoldings",
     # mf derived
     "DeMfDerivedDaily",
     # indicators v2

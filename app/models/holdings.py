@@ -1,4 +1,4 @@
-"""MF holdings — portfolio holdings disclosure per fund per month."""
+"""MF and ETF holdings — portfolio holdings disclosures per fund per month."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, Index, Numeric, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -103,4 +103,47 @@ class DeShareholdingPattern(Base):
         server_default=sa.func.now(),
         onupdate=sa.func.now(),
         nullable=False,
+    )
+
+
+class DeEtfHoldings(Base):
+    """Monthly ETF portfolio holdings disclosure (Atlas-M0).
+
+    Sourced from Morningstar Direct via the same access channel that feeds
+    de_mf_holdings. Atlas-M5 thematic dominant-sector classification reads
+    from this table.
+
+    Natural key: (ticker, instrument_id, as_of_date) — multiple disclosures
+    may exist per ETF over time.
+    """
+
+    __tablename__ = "de_etf_holdings"
+    __table_args__ = (
+        CheckConstraint(
+            "weight >= 0 AND weight <= 1",
+            name="chk_etf_holdings_weight_range",
+        ),
+        Index(
+            "idx_de_etf_holdings_ticker_date",
+            "ticker",
+            sa.text("as_of_date DESC"),
+        ),
+        Index("idx_de_etf_holdings_instrument", "instrument_id"),
+    )
+
+    ticker: Mapped[str] = mapped_column(
+        sa.String(30),
+        ForeignKey("de_etf_master.ticker", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    instrument_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        ForeignKey("de_instrument.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    as_of_date: Mapped[date] = mapped_column(sa.Date, primary_key=True)
+    weight: Mapped[Decimal] = mapped_column(Numeric(8, 6), nullable=False)
+    last_disclosed_date: Mapped[date] = mapped_column(sa.Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False
     )
