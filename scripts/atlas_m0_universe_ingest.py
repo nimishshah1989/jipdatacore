@@ -53,19 +53,25 @@ from app.models.etf import DeEtfMaster
 from app.models.holdings import DeEtfHoldings, DeMfHoldings
 from app.models.instruments import DeInstrument, DeMfMaster
 
-SERVICE = "fq9mxhk7xeb20f3b"
-UNIVERSE = "q3zv6b817mp4fz0f"
+SERVICE_MASTER = "x6d9w6xxu0hmhrr4"      # atlas_fund_master service
+SERVICE_HOLDINGS = "fq9mxhk7xeb20f3b"    # holdings service
+UNIVERSE = "q3zv6b817mp4fz0f"            # India OE+ETF, 4,133 funds
 ACCESS = os.environ.get(
     "MORNINGSTAR_ACCESS_CODE", "ftijxp6pf11ezmizn19otbz18ghq2iu4"
 )
-DATAPOINTS = ",".join([
+
+MASTER_DATAPOINTS = ",".join([
     "Name", "Ticker", "ISIN", "InceptionDate", "NetExpenseRatio",
     "CategoryName", "BroadCategoryGroup", "InvestmentType", "PurchaseMode",
-    "Holdings", "HoldingDate",
+    "Benchmark", "ManagerName", "TotalNetAssets",
 ])
+HOLDINGS_DATAPOINTS = "Holdings,HoldingDate"
 
-UNIVERSE_URL = (
-    f"https://api.morningstar.com/v2/service/mf/{SERVICE}/universeid/{UNIVERSE}"
+MASTER_URL = (
+    f"https://api.morningstar.com/v2/service/mf/{SERVICE_MASTER}/universeid/{UNIVERSE}"
+)
+HOLDINGS_URL = (
+    f"https://api.morningstar.com/v2/service/mf/{SERVICE_HOLDINGS}/universeid/{UNIVERSE}"
 )
 
 
@@ -105,30 +111,45 @@ def _is_etf(category: Optional[str], investment_type: Optional[str]) -> bool:
     return "ETF" in blob or "EXCHANGE TRADED" in blob
 
 
-def parse_universe(xml_text: str):
-    """Yield one dict per fund."""
+def parse_master(xml_text: str) -> dict[str, dict]:
+    """Parse the fund-master XML response into {mstar_id: {field: value, ...}}."""
     root = ET.fromstring(xml_text)
+    by_id: dict[str, dict] = {}
+    fields = ("Name", "Ticker", "ISIN", "InceptionDate", "NetExpenseRatio",
+              "CategoryName", "BroadCategoryGroup", "InvestmentType",
+              "PurchaseMode", "Benchmark", "ManagerName", "TotalNetAssets")
     for data_elem in root.iter():
         if _local(data_elem.tag) != "data":
             continue
         mstar_id = data_elem.attrib.get("_id") or ""
         if not mstar_id:
             continue
-        f: dict[str, Optional[str]] = {
-            "mstar_id": mstar_id,
-            "Name": None, "Ticker": None, "ISIN": None,
-            "InceptionDate": None, "NetExpenseRatio": None,
-            "CategoryName": None, "BroadCategoryGroup": None,
-            "InvestmentType": None, "PurchaseMode": None,
-            "HoldingDate": None,
-        }
-        holdings: list[dict] = []
-
+        f: dict[str, Optional[str]] = {k: None for k in fields}
+        f["mstar_id"] = mstar_id
         for elem in data_elem.iter():
             tag = _local(elem.tag)
-            text_v = (elem.text or "").strip() if elem.text else None
-            if tag in f and f[tag] is None and text_v:
-                f[tag] = text_v
+            if tag in f and f[tag] is None and elem.text:
+                f[tag] = elem.text.strip()
+        by_id[mstar_id] = f
+    return by_id
+
+
+def parse_holdings(xml_text: str) -> dict[str, dict]:
+    """Parse the holdings XML response into {mstar_id: {holding_date, holdings[]}}."""
+    root = ET.fromstring(xml_text)
+    by_id: dict[str, dict] = {}
+    for data_elem in root.iter():
+        if _local(data_elem.tag) != "data":
+            continue
+        mstar_id = data_elem.attrib.get("_id") or ""
+        if not mstar_id:
+            continue
+        holding_date = None
+        holdings: list[dict] = []
+        for elem in data_elem.iter():
+            tag = _local(elem.tag)
+            if tag == "HoldingDate" and holding_date is None and elem.text:
+                holding_date = elem.text.strip()
             elif tag == "HoldingDetail":
                 h: dict[str, Optional[str]] = {}
                 for child in elem:
@@ -149,9 +170,8 @@ def parse_universe(xml_text: str):
                     "market_value": _decimal(h.get("MarketValue")),
                     "sector_code": h.get("SectorId") or h.get("GlobalSectorId"),
                 })
-
-        f["holdings"] = holdings
-        yield f
+        by_id[mstar_id] = {"HoldingDate": holding_date, "holdings": holdings}
+    return by_id
 
 
 async def upsert_mf_master(session, fund: dict) -> None:
@@ -188,16 +208,39 @@ async def upsert_mf_master(session, fund: dict) -> None:
 
 
 async def main() -> int:
-    print(f"Fetching universe: {UNIVERSE_URL}")
-    print(f"  service={SERVICE}  universe={UNIVERSE}  datapoints={DATAPOINTS}")
+    print(f"Universe: {UNIVERSE}")
     async with httpx.AsyncClient(timeout=900.0) as client:
-        r = await client.get(UNIVERSE_URL, params={
-            "accesscode": ACCESS, "datapoints": DATAPOINTS,
+        print(f"\n[1/2] Fetching MASTER from service {SERVICE_MASTER}")
+        rm = await client.get(MASTER_URL, params={
+            "accesscode": ACCESS, "datapoints": MASTER_DATAPOINTS,
         })
-    print(f"HTTP {r.status_code}  size={len(r.text):,} chars")
-    if r.status_code != 200:
-        print(f"Body: {r.text[:600]}")
-        return 1
+        print(f"  HTTP {rm.status_code}  size={len(rm.text):,} chars")
+        if rm.status_code != 200:
+            print(f"  Body: {rm.text[:400]}")
+            return 1
+
+        print(f"\n[2/2] Fetching HOLDINGS from service {SERVICE_HOLDINGS}")
+        rh = await client.get(HOLDINGS_URL, params={
+            "accesscode": ACCESS, "datapoints": HOLDINGS_DATAPOINTS,
+        })
+        print(f"  HTTP {rh.status_code}  size={len(rh.text):,} chars")
+        if rh.status_code != 200:
+            print(f"  Body: {rh.text[:400]}")
+            return 1
+
+    print("\nParsing both responses...")
+    master_by_id = parse_master(rm.text)
+    holdings_by_id = parse_holdings(rh.text)
+    print(f"  master entries:   {len(master_by_id)}")
+    print(f"  holdings entries: {len(holdings_by_id)}")
+
+    # Merge: yield (mstar_id, master_dict, holdings_dict)
+    def iter_funds():
+        all_ids = set(master_by_id) | set(holdings_by_id)
+        for mid in all_ids:
+            m = master_by_id.get(mid, {"mstar_id": mid})
+            h = holdings_by_id.get(mid, {"HoldingDate": None, "holdings": []})
+            yield m, h
 
     engine = create_async_engine(DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False)
@@ -233,20 +276,21 @@ async def main() -> int:
     n_mf_no_holdings = 0
     sample_etf_unmatched: list[tuple] = []
 
-    print("\nParsing + ingesting...")
+    print("\nIngesting...")
     async with Session() as session:
         async with session.begin():
-            for fund in parse_universe(r.text):
+            for master, hold in iter_funds():
                 n_funds += 1
 
                 # 1. Refresh de_mf_master row
-                await upsert_mf_master(session, fund)
+                await upsert_mf_master(session, master)
                 n_master_upserted += 1
 
-                category = fund.get("CategoryName")
-                inv_type = fund.get("InvestmentType")
+                category = master.get("CategoryName")
+                inv_type = master.get("InvestmentType")
                 is_etf = _is_etf(category, inv_type)
-                holdings = fund.get("holdings", [])
+                holdings = hold.get("holdings") or []
+                holding_date = hold.get("HoldingDate")
 
                 if is_etf:
                     n_etfs += 1
@@ -254,17 +298,17 @@ async def main() -> int:
                         n_etf_no_holdings += 1
                         continue
                     # Map mstar_id -> de_etf_master.ticker via Ticker field
-                    ticker_in = (fund.get("Ticker") or "").upper()
+                    ticker_in = (master.get("Ticker") or "").upper()
                     resolved = (ticker_lookup.get(ticker_in)
                                 or ticker_lookup.get(ticker_in.replace(".NS", "").replace(".BO", ""))
                                 or ticker_lookup.get(ticker_in + ".NS"))
                     if resolved is None:
                         n_etf_no_master += 1
                         if len(sample_etf_unmatched) < 10:
-                            sample_etf_unmatched.append((fund["mstar_id"], ticker_in,
-                                                         (fund.get("Name") or "")[:60]))
+                            sample_etf_unmatched.append((master["mstar_id"], ticker_in,
+                                                         (master.get("Name") or "")[:60]))
                         continue
-                    effective = _date(fund.get("HoldingDate")) or today
+                    effective = _date(holding_date) or today
                     rows = []
                     for h in holdings:
                         iid = isin_to_iid.get(h["isin"])
@@ -289,12 +333,12 @@ async def main() -> int:
                     if not holdings:
                         n_mf_no_holdings += 1
                         continue
-                    effective = _date(fund.get("HoldingDate")) or today
+                    effective = _date(holding_date) or today
                     rows = []
                     for h in holdings:
                         iid = isin_to_iid.get(h["isin"])
                         rows.append({
-                            "mstar_id": fund["mstar_id"],
+                            "mstar_id": master["mstar_id"],
                             "as_of_date": effective,
                             "isin": h["isin"],
                             "holding_name": h.get("name"),
