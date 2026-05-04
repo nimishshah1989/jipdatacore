@@ -353,15 +353,21 @@ async def main() -> int:
     # Pre-load lookup maps
     async with Session() as session:
         master_rows = (await session.execute(
-            select(DeEtfMaster.ticker, DeEtfMaster.name).where(
+            select(DeEtfMaster.ticker, DeEtfMaster.name, DeEtfMaster.mstar_id).where(
                 DeEtfMaster.is_active == True  # noqa: E712
             )
         )).all()
         ticker_lookup: dict[str, str] = {}
-        for t, _ in master_rows:
+        name_to_ticker: dict[str, str] = {}
+        mstar_to_ticker: dict[str, str] = {}
+        for t, n, mid in master_rows:
             if t:
                 ticker_lookup[t.upper()] = t
                 ticker_lookup[t.upper().replace(".NS", "").replace(".BO", "")] = t
+            if n:
+                name_to_ticker.setdefault(n.strip().lower(), t)
+            if mid:
+                mstar_to_ticker[mid] = t
 
         isin_rows = (await session.execute(
             select(DeInstrument.isin, DeInstrument.id).where(
@@ -468,20 +474,67 @@ async def main() -> int:
                                 )
                                 await session.execute(stmt)
 
-                            # 2. ALSO try to mirror into de_etf_holdings if we
-                            #    can map this Morningstar fund to a row in
-                            #    de_etf_master (best-effort; most won't match
-                            #    because the master service doesn't return Ticker).
+                            # 2. Ensure a de_etf_master row exists, then mirror
+                            #    holdings into de_etf_holdings (canonical store).
+                            #    Resolution priority:
+                            #      a. mstar_id already linked to a de_etf_master row
+                            #      b. case-insensitive name match
+                            #      c. existing ticker (rare; usually master service
+                            #         doesn't return one)
+                            #      d. INSERT a new de_etf_master row with synthetic
+                            #         ticker = mstar_id
+                            mid = master["mstar_id"]
                             ticker_in = (master.get("Ticker") or "").upper()
-                            resolved = (ticker_lookup.get(ticker_in)
-                                        or ticker_lookup.get(ticker_in.replace(".NS", "").replace(".BO", ""))
-                                        or ticker_lookup.get(ticker_in + ".NS"))
+                            etf_name = (master.get("Name") or "")
+                            resolved = mstar_to_ticker.get(mid)
+                            if resolved is None and etf_name:
+                                resolved = name_to_ticker.get(etf_name.strip().lower())
+                                if resolved:
+                                    # Backfill mstar_id on the matched row
+                                    await session.execute(
+                                        text("UPDATE de_etf_master SET mstar_id=:m "
+                                             "WHERE ticker=:t AND mstar_id IS NULL"),
+                                        {"m": mid, "t": resolved},
+                                    )
+                                    mstar_to_ticker[mid] = resolved
+                            if resolved is None and ticker_in:
+                                resolved = (ticker_lookup.get(ticker_in)
+                                            or ticker_lookup.get(ticker_in.replace(".NS", "").replace(".BO", ""))
+                                            or ticker_lookup.get(ticker_in + ".NS"))
+                                if resolved:
+                                    await session.execute(
+                                        text("UPDATE de_etf_master SET mstar_id=:m "
+                                             "WHERE ticker=:t AND mstar_id IS NULL"),
+                                        {"m": mid, "t": resolved},
+                                    )
+                                    mstar_to_ticker[mid] = resolved
                             if resolved is None:
+                                # Insert a new de_etf_master row keyed by the mstar_id
+                                # as synthetic ticker. Most fields default.
+                                synthetic_ticker = mid[:30]
+                                await session.execute(
+                                    pg_insert(DeEtfMaster).values(
+                                        ticker=synthetic_ticker,
+                                        mstar_id=mid,
+                                        name=etf_name[:200] or synthetic_ticker,
+                                        exchange="NSE",  # best-guess for Indian ETFs
+                                        country="IN",
+                                        currency="INR",
+                                        is_active=True,
+                                        source="morningstar_universe",
+                                    ).on_conflict_do_update(
+                                        index_elements=["ticker"],
+                                        set_={"mstar_id": mid, "name": etf_name[:200] or synthetic_ticker},
+                                    )
+                                )
+                                resolved = synthetic_ticker
+                                ticker_lookup[synthetic_ticker.upper()] = synthetic_ticker
+                                mstar_to_ticker[mid] = synthetic_ticker
                                 n_etf_no_master += 1
                                 if len(sample_etf_unmatched) < 10:
-                                    sample_etf_unmatched.append((master["mstar_id"], ticker_in,
-                                                                 (master.get("Name") or "")[:60]))
-                                continue
+                                    sample_etf_unmatched.append((mid, "(synthetic)",
+                                                                 etf_name[:60]))
+
                             etf_rows = []
                             for h in holdings:
                                 iid = isin_to_iid.get(h["isin"])

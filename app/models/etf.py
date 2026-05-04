@@ -19,6 +19,7 @@ class DeEtfMaster(Base):
     __tablename__ = "de_etf_master"
 
     ticker: Mapped[str] = mapped_column(sa.String(30), primary_key=True)
+    mstar_id: Mapped[Optional[str]] = mapped_column(sa.String(20), nullable=True, index=True)
     name: Mapped[str] = mapped_column(sa.String(200), nullable=False)
     exchange: Mapped[str] = mapped_column(sa.String(20), nullable=False)
     country: Mapped[str] = mapped_column(sa.String(10), nullable=False)
