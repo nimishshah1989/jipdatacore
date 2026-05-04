@@ -179,7 +179,11 @@ def _resolve_index(
     # Strip the .NS suffix and any whitespace before matching the ticker.
     ticker_low = (etf_ticker or "").lower().replace(".ns", "").strip()
 
-    for key, code in TICKER_OVERRIDES.items():
+    # Sort by key length descending so 'nifty 500' wins over 'nifty 50' on
+    # an ETF name like "Nifty 500 ETF" -- otherwise the shorter key would
+    # spuriously match first since 'nifty 50' is a substring of 'nifty 500'.
+    for key, code in sorted(TICKER_OVERRIDES.items(),
+                            key=lambda kv: len(kv[0]), reverse=True):
         if key in ticker_low or key in name_low:
             return code
 

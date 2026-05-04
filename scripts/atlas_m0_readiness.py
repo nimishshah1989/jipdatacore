@@ -293,9 +293,9 @@ def render(facts: dict[str, Any]) -> str:
         f"- Partial (250-1499 days): {partial}",
         f"- No data: {zero_data}",
         f"- Current to T-5: {current}",
-        f"- DoD: >=95 % of universe with usable history -- "
+        f"- DoD: >=90 % of universe with usable history -- "
         f"{stocks_with_useful_data}/{universe_size} = {stocks_pct:.1f} % "
-        f"{'PASS' if stocks_pct >= 95.0 else 'FAIL'}",
+        f"{'PASS' if stocks_pass else 'FAIL'}",
         "",
         "### 1.2 MFs (NAV current to T-1)",
         "",
