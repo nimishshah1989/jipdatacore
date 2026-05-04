@@ -134,7 +134,7 @@ def main() -> int:
         for ticker, path in pairs:
             print(f"\n[seed] {ticker}  <-  {path}", flush=True)
             if not path.exists():
-                print(f"[seed] FAIL: file not found", flush=True)
+                print("[seed] FAIL: file not found", flush=True)
                 continue
             if not ensure_master(conn, ticker):
                 print(
