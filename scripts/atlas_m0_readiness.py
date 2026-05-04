@@ -316,7 +316,8 @@ def render(facts: dict[str, Any]) -> str:
         f"{facts.get('job2_etf_universe', 'n/a')}",
         f"- Distinct ETFs with holdings rows: "
         f"{facts.get('job2_distinct_etfs', 0)}",
-        f"- Total holdings rows: {facts.get('job2_total_rows', 0)}",
+        f"- Total holdings rows: "
+        f"{facts.get('job2_total_rows', 0) if facts.get('job2_table_exists') else 'n/a (table missing)'}",
         f"- DoD threshold: >=80 distinct ETFs -- "
         f"{'PASS' if j2_pass else 'FAIL'}",
         "",
