@@ -109,6 +109,54 @@ TICKER_OVERRIDES: dict[str, str] = {
     "nifty india digital": "NIFTY IND DIGITAL",
     "nifty health": "NIFTY HEALTHCARE",
     "nifty healthcare": "NIFTY HEALTHCARE",
+
+    # ---- Compact ticker-form keys (match against ETF ticker) ----
+    # AMC ETF naming convention: "<theme>BEES" / "<theme>ETF" / etc.
+    "psubnk": "NIFTY PSU BANK",
+    "psubnkbees": "NIFTY PSU BANK",
+    "cpseetf": "NIFTY CPSE",
+    "cpse": "NIFTY CPSE",
+    "infrabees": "NIFTY INFRA",
+    "infra": "NIFTY INFRA",
+    "pharmabees": "NIFTY PHARMA",
+    "phar": "NIFTY PHARMA",
+    "healthbees": "NIFTY HEALTHCARE",
+    "healthi": "NIFTY HEALTHCARE",
+    "healthcare": "NIFTY HEALTHCARE",
+    "divopp": "NIFTY DIV OPPS 50",
+    "divoppbees": "NIFTY DIV OPPS 50",
+    "consumbees": "NIFTY CONSUMPTION",
+    "consum": "NIFTY CONSUMPTION",
+    "itbees": "NIFTY IT",
+    "moitbees": "NIFTY IT",
+    "autobees": "NIFTY AUTO",
+    "psbk": "NIFTY PSU BANK",
+    "fmcg": "NIFTY FMCG",
+    "metal": "NIFTY METAL",
+    "energy": "NIFTY ENERGY",
+    "realty": "NIFTY REALTY",
+    "media": "NIFTY MEDIA",
+    "oilngas": "NIFTY OIL AND GAS",
+    "mnc": "NIFTY MNC",
+    "midcap": "NIFTY MIDCAP 150",
+    "mom100": "NIFTY200MOMENTM30",
+    "alpha50": "NIFTY ALPHA 50",
+    "lowvol": "NIFTY LOW VOL 50",
+    "qualty": "NIFTY100 QUALTY30",
+    "100ewb": "NIFTY100 EQL WGT",
+    "50ewb": "NIFTY50 EQL WGT",
+    "next50": "NIFTY NEXT 50",
+    "midqual": "NIFTY M150 QLTY50",
+    "smallqual": "NIFTY SML250 Q50",
+    "highbeta": "NIFTY HIGHBETA 50",
+    "tatagrp": "NIFTY TATA 25 CAP",
+    "manufact": "NIFTY INDIA MFG",
+    "defence": "NIFTY IND DEFENCE",
+    "indigital": "NIFTY IND DIGITAL",
+    "tourism": "NIFTY IND TOURISM",
+    "rural": "NIFTY RURAL",
+    "ev": "NIFTY EV",
+    "value": "NIFTY200 VALUE 30",
 }
 
 
@@ -128,7 +176,8 @@ def _resolve_index(
     if not etf_name and not etf_ticker:
         return None
     name_low = (etf_name or "").lower()
-    ticker_low = (etf_ticker or "").lower()
+    # Strip the .NS suffix and any whitespace before matching the ticker.
+    ticker_low = (etf_ticker or "").lower().replace(".ns", "").strip()
 
     for key, code in TICKER_OVERRIDES.items():
         if key in ticker_low or key in name_low:

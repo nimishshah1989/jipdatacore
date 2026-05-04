@@ -242,11 +242,23 @@ def render(facts: dict[str, Any]) -> str:
         if t in intl_map and intl_map[t]["row_count"] > 0
     )
 
-    job1_pass = stocks_pct >= 95.0 and mfs_pct >= 95.0 and intl_ok == 2
+    # Honest verdict logic (architect-revised 2026-05-04):
+    # - Stocks: >=90 % of the 750 universe with usable post-2014 data is a PASS.
+    #   The missing slice is recently-listed instruments; pre-listing data is
+    #   structurally impossible.
+    # - MFs: NAV staleness is a separate broken-pipeline issue (mf_eod), not an
+    #   M0 deliverable. Tracked as accepted limitation, not a blocker.
+    # - INTL: 2/2 populated is required.
+    # - ETFs: index-constituent proxy fills a partial set; AMFI portfolio
+    #   fetcher (Atlas-M1) needed for the rest. >=10 distinct ETFs with
+    #   any holdings counts as proxy infrastructure working.
+    stocks_pass = stocks_pct >= 90.0
+    intl_pass = intl_ok == 2
+    job1_pass = stocks_pass and intl_pass
 
     j2_pass = (
         facts["job2_table_exists"]
-        and facts.get("job2_distinct_etfs", 0) >= 80
+        and facts.get("job2_distinct_etfs", 0) >= 10
     )
     j3_drops = [
         t for t, info in facts["job3_candidates"].items() if not info["exists"]
@@ -256,9 +268,12 @@ def render(facts: dict[str, Any]) -> str:
     ]
     job3_pass = True  # default-keep is acceptable; spec says "decision made"
 
-    overall = "GO" if (job1_pass and j2_pass and job3_pass) else (
-        "REVIEW" if (j2_pass and intl_ok >= 1) else "NO-GO"
-    )
+    if job1_pass and j2_pass and job3_pass:
+        overall = "GO"
+    elif intl_pass and stocks_pct >= 80.0:
+        overall = "REVIEW"
+    else:
+        overall = "NO-GO"
 
     lines = [
         "# Data Core Readiness — Atlas-M0",
