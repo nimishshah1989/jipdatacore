@@ -67,9 +67,9 @@ def _safe_decimal(value: Any) -> Optional[Decimal]:
 def _normalise_weight(raw: Any) -> Optional[Decimal]:
     """Convert Morningstar weight to a 0..1 decimal fraction.
 
-    Morningstar returns weights as percentages (5.12 = 5.12 %). If a value
-    > 1 is seen we divide by 100. If <=1 we assume the response is already
-    a fraction. Either way the result is clamped to [0, 1] and returned at
+    Morningstar returns weights as percentages (5.12 = 5.12 %; 0.5 = 0.5 %).
+    Always divide by 100 -- the previous "if val > 1" heuristic mis-handled
+    sub-1 % weights (storing 0.5 % as 50 %). Result is clamped to [0, 1] at
     Numeric(8,6) precision.
     """
     val = _safe_decimal(raw)
@@ -77,11 +77,9 @@ def _normalise_weight(raw: Any) -> Optional[Decimal]:
         return None
     if val < 0:
         return None
-    if val > 1:
-        val = val * WEIGHT_PCT_TO_FRACTION
+    val = val * WEIGHT_PCT_TO_FRACTION
     if val > WEIGHT_FRACTION_MAX:
         val = WEIGHT_FRACTION_MAX
-    # Numeric(8,6) -> 6 fractional digits
     return val.quantize(Decimal("0.000001"))
 
 
@@ -135,9 +133,12 @@ def parse_etf_holdings_response(
         if isin:
             isin = str(isin).strip() or None
 
-        weight = _normalise_weight(
-            item.get("Weighting") or item.get("Weight")
-        )
+        # Explicit None check: a valid 0 % weight from "Weighting" must not
+        # fall through to "Weight" (truthiness would treat 0 as missing).
+        raw_weight = item.get("Weighting")
+        if raw_weight is None:
+            raw_weight = item.get("Weight")
+        weight = _normalise_weight(raw_weight)
         if weight is None:
             continue
 

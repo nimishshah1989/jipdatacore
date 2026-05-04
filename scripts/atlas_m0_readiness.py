@@ -38,8 +38,12 @@ def _conn_url() -> str:
 
 
 def _table_exists(cur, table: str) -> bool:
+    # Scope to public schema so a same-named table in pg_catalog or another
+    # schema doesn't false-positive (and then make _row_count fail because
+    # the unqualified name doesn't resolve under default search_path).
     cur.execute(
-        "SELECT 1 FROM information_schema.tables WHERE table_name = %s",
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = %s",
         (table,),
     )
     return cur.fetchone() is not None

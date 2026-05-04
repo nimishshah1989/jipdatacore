@@ -27,9 +27,9 @@ import argparse
 import os
 import sys
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import psycopg2
 import psycopg2.extras
@@ -221,16 +221,31 @@ def load_yfinance(ticker: str, start: date, end: date) -> list[tuple[date, Decim
         print("[yf] yfinance not installed -- pip install yfinance", flush=True)
         return []
 
-    df = yf.download(
-        ticker,
-        start=start.isoformat(),
-        end=(end + timedelta(days=1)).isoformat(),
-        progress=False,
-        auto_adjust=False,
-    )
+    # yfinance >= 0.2.47 defaults multi_level_index=True even for single
+    # tickers, returning columns like ('Open', 'INTL_SPX'). Force a flat
+    # column index so plain row.get('Open') works.
+    download_kwargs = {
+        "tickers": ticker,
+        "start": start.isoformat(),
+        "end": (end + timedelta(days=1)).isoformat(),
+        "progress": False,
+        "auto_adjust": False,
+        "group_by": "column",
+    }
+    try:
+        df = yf.download(multi_level_index=False, **download_kwargs)
+    except TypeError:
+        # Older yfinance (<0.2.47) doesn't accept multi_level_index; flatten
+        # manually below if columns came back as a MultiIndex.
+        df = yf.download(**download_kwargs)
     if df is None or df.empty:
         print(f"[yf] no data for {ticker}", flush=True)
         return []
+    if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
+        df.columns = df.columns.get_level_values(0)
+
+    def _is_nan(x: Any) -> bool:
+        return x is None or (isinstance(x, float) and x != x)
 
     out = []
     for ts, row in df.iterrows():
@@ -239,12 +254,14 @@ def load_yfinance(ticker: str, start: date, end: date) -> list[tuple[date, Decim
         except AttributeError:
             d = ts
         try:
-            o = Decimal(str(row.get("Open"))) if row.get("Open") == row.get("Open") else None
-            hi = Decimal(str(row.get("High"))) if row.get("High") == row.get("High") else None
-            lo = Decimal(str(row.get("Low"))) if row.get("Low") == row.get("Low") else None
-            c = Decimal(str(row.get("Close"))) if row.get("Close") == row.get("Close") else None
-            v = int(row.get("Volume")) if row.get("Volume") == row.get("Volume") else 0
-        except Exception:
+            raw_o, raw_h, raw_l = row.get("Open"), row.get("High"), row.get("Low")
+            raw_c, raw_v = row.get("Close"), row.get("Volume")
+            o = None if _is_nan(raw_o) else Decimal(str(raw_o))
+            hi = None if _is_nan(raw_h) else Decimal(str(raw_h))
+            lo = None if _is_nan(raw_l) else Decimal(str(raw_l))
+            c = None if _is_nan(raw_c) else Decimal(str(raw_c))
+            v = 0 if _is_nan(raw_v) else int(raw_v)
+        except (TypeError, ValueError, InvalidOperation):
             continue
         if c is None:
             continue
