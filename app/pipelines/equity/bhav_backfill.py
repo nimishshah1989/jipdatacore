@@ -287,13 +287,38 @@ async def _load_completed_dates(session: AsyncSession) -> set[date]:
 
 
 async def _load_symbol_map(session: AsyncSession) -> dict[str, uuid.UUID]:
-    """Load current_symbol → instrument_id mapping."""
-    result = await session.execute(
+    """Load every known ticker -> instrument_id mapping.
+
+    Includes BOTH `de_instrument.current_symbol` AND every historical
+    `de_symbol_history.old_symbol`. Without the historical entries, BHAV
+    rows for a stock that was later renamed (the original ticker still
+    appears in old BHAV files) get silently dropped at ingestion time --
+    that was the cause of the partial pre-rename history we saw in the
+    Atlas-M0 universe coverage audit.
+    """
+    # Current symbols
+    current = await session.execute(
         select(DeInstrument.current_symbol, DeInstrument.id).where(
             DeInstrument.is_active == True,  # noqa: E712
         )
     )
-    return {row[0].upper(): row[1] for row in result}
+    mapping: dict[str, uuid.UUID] = {row[0].upper(): row[1] for row in current}
+
+    # Historical aliases (old_symbol from de_symbol_history). When a
+    # historical alias collides with a current symbol owned by a different
+    # instrument, the current_symbol wins (we processed it first above).
+    from app.models.instruments import DeSymbolHistory
+
+    history = await session.execute(
+        select(DeSymbolHistory.old_symbol, DeSymbolHistory.instrument_id)
+    )
+    for old_symbol, instrument_id in history:
+        if not old_symbol:
+            continue
+        key = old_symbol.upper()
+        mapping.setdefault(key, instrument_id)
+
+    return mapping
 
 
 NSE_BHAV_URL_HISTORICAL_ZIP = (
