@@ -112,21 +112,28 @@ TICKER_OVERRIDES: dict[str, str] = {
 }
 
 
-def _resolve_index(etf_name: str, index_name_to_code: dict[str, str]) -> Optional[str]:
+def _resolve_index(
+    etf_name: str,
+    etf_ticker: str,
+    index_name_to_code: dict[str, str],
+) -> Optional[str]:
     """Return de_index_master.index_code for the index this ETF tracks.
 
-    1. Exact substring overrides (TICKER_OVERRIDES). Most precise.
-    2. Lower-case substring of any known index_name in the ETF name.
+    Match priority:
+      1. Substring match against the **ticker** (e.g. BANKBEES -> NIFTY BANK).
+         Tickers are short and unambiguous; tried first.
+      2. Substring match against the **name** via TICKER_OVERRIDES.
+      3. Substring match against the name vs known full index_names.
     """
-    if not etf_name:
+    if not etf_name and not etf_ticker:
         return None
-    name_low = etf_name.lower()
+    name_low = (etf_name or "").lower()
+    ticker_low = (etf_ticker or "").lower()
 
     for key, code in TICKER_OVERRIDES.items():
-        if key in name_low:
+        if key in ticker_low or key in name_low:
             return code
 
-    # Try matching by full index_name (longest first to prefer specific matches)
     for index_name in sorted(index_name_to_code.keys(), key=len, reverse=True):
         if index_name and len(index_name) > 5 and index_name.lower() in name_low:
             return index_name_to_code[index_name]
@@ -139,9 +146,13 @@ async def main() -> int:
 
     async with Session() as session:
         async with session.begin():
+            # Filter to Indian ETFs -- US ETFs (SPY/QQQ/VTI/etc.) live in
+            # de_etf_master too but legitimately can't be matched to Nifty
+            # indices. Restrict by country so the denominator is honest.
             etfs = (await session.execute(
                 select(DeEtfMaster.ticker, DeEtfMaster.name).where(
-                    DeEtfMaster.is_active == True  # noqa: E712
+                    DeEtfMaster.is_active == True,  # noqa: E712
+                    DeEtfMaster.country == "IN",
                 )
             )).all()
             indices = (await session.execute(
@@ -171,7 +182,7 @@ async def main() -> int:
                 if not etf_name:
                     unmatched_etfs.append(ticker)
                     continue
-                index_code = _resolve_index(etf_name, index_name_to_code)
+                index_code = _resolve_index(etf_name, ticker, index_name_to_code)
                 if not index_code:
                     unmatched_etfs.append(ticker)
                     continue
