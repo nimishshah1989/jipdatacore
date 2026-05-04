@@ -104,12 +104,13 @@ def collect_facts(target_date: date) -> dict[str, Any]:
                     WHERE m.is_active
                       AND m.broad_category = 'Equity'
                       AND NOT m.is_etf
-                      AND NOT m.is_index_fund
-                      AND m.purchase_mode = 1
                       AND m.fund_name NOT ILIKE %(idcw)s
                       AND m.fund_name NOT ILIKE %(div)s
                       AND m.fund_name NOT ILIKE %(seg)s
                       AND m.fund_name NOT ILIKE %(direct)s
+                      AND m.fund_name NOT ILIKE '%%Index%%'
+                      AND m.fund_name NOT ILIKE '%%Fund of Fund%%'
+                      AND m.fund_name NOT ILIKE '%% FoF%%'
                 ),
                 fresh AS (
                     SELECT mstar_id, MAX(nav_date) AS latest

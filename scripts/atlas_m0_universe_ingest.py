@@ -112,26 +112,106 @@ def _is_etf(category: Optional[str], investment_type: Optional[str]) -> bool:
 
 
 def parse_master(xml_text: str) -> dict[str, dict]:
-    """Parse the fund-master XML response into {mstar_id: {field: value, ...}}."""
+    """Parse the fund-master XML response into {mstar_id: {field: value, ...}}.
+
+    The master service x6d9w6xxu0hmhrr4 uses FSCBI-/ARF-/FB-/FNA-/FM- tag
+    prefixes, NOT the bare Name/CategoryName tags returned by the holdings
+    service. We map the prefixed tags onto canonical keys so the rest of
+    the script can stay tag-agnostic.
+
+    A response can include multiple <data> elements for the same ISIN
+    (primary + secondary share class -- different mstar_ids). We key by
+    mstar_id and keep the FIRST one seen (usually the primary share).
+    """
+    # Map source tag -> canonical key. Source tags are matched on local name
+    # so XML namespaces are stripped; the FSCBI-/ARF- prefixes are part of
+    # the tag itself, not a namespace.
+    TAG_MAP = {
+        "FSCBI-FundName": "Name",
+        "FSCBI-FundStandardName": "Name",   # fallback if FundName missing
+        "FSCBI-ISIN": "ISIN",
+        "FSCBI-AMFICode": "AMFICode",
+        "FSCBI-BroadCategoryGroup": "BroadCategoryGroup",
+        "FSCBI-AggregatedCategoryName": "CategoryName",
+        "FSCBI-InceptionDate": "InceptionDate",
+        "FSCBI-MStarID": "MStarID",
+        "ARF-NetExpenseRatio": "NetExpenseRatio",
+        "FB-PrimaryIndexName": "Benchmark",
+        "FNA-FundNetAssets": "TotalNetAssets",
+        # Holdings service style fallbacks (in case some funds expose them)
+        "Name": "Name",
+        "Ticker": "Ticker",
+        "ISIN": "ISIN",
+        "InceptionDate": "InceptionDate",
+        "NetExpenseRatio": "NetExpenseRatio",
+        "CategoryName": "CategoryName",
+        "BroadCategoryGroup": "BroadCategoryGroup",
+        "InvestmentType": "InvestmentType",
+        "PurchaseMode": "PurchaseMode",
+    }
     root = ET.fromstring(xml_text)
     by_id: dict[str, dict] = {}
-    fields = ("Name", "Ticker", "ISIN", "InceptionDate", "NetExpenseRatio",
-              "CategoryName", "BroadCategoryGroup", "InvestmentType",
-              "PurchaseMode", "Benchmark", "ManagerName", "TotalNetAssets")
     for data_elem in root.iter():
         if _local(data_elem.tag) != "data":
             continue
         mstar_id = data_elem.attrib.get("_id") or ""
-        if not mstar_id:
-            continue
-        f: dict[str, Optional[str]] = {k: None for k in fields}
-        f["mstar_id"] = mstar_id
+        if not mstar_id or mstar_id in by_id:
+            continue  # keep first occurrence
+        f: dict[str, Optional[str]] = {
+            "mstar_id": mstar_id,
+            "Name": None, "Ticker": None, "ISIN": None,
+            "AMFICode": None, "InceptionDate": None,
+            "NetExpenseRatio": None, "CategoryName": None,
+            "BroadCategoryGroup": None, "InvestmentType": None,
+            "PurchaseMode": None, "Benchmark": None,
+            "TotalNetAssets": None, "MStarID": None,
+        }
         for elem in data_elem.iter():
             tag = _local(elem.tag)
-            if tag in f and f[tag] is None and elem.text:
-                f[tag] = elem.text.strip()
+            target = TAG_MAP.get(tag)
+            if target and f.get(target) is None and elem.text:
+                f[target] = elem.text.strip()
         by_id[mstar_id] = f
     return by_id
+
+
+def _looks_like_etf(name: Optional[str]) -> bool:
+    """Heuristic ETF detection by fund name.
+
+    The master service doesn't return InvestmentType/SecurityType, so we
+    fall back to name patterns. 'Fund of Fund' / 'FoF' must NOT match
+    since those are open-ended FoFs that hold the ETF, not the ETF itself.
+    """
+    if not name:
+        return False
+    n = name.upper()
+    if "FUND OF FUND" in n or " FOF" in n or n.endswith("FOF"):
+        return False
+    return ("ETF" in n) or ("BEES" in n)
+
+
+def _is_keep(fund: dict) -> bool:
+    """Architect filter (2026-05-04): keep only ETFs + regular equity growth MFs.
+
+    - ETFs always kept (regardless of category, since they're a separate class).
+    - For mutual funds: broad_category must be Equity; name must not mark
+      Direct plan, IDCW/Dividend variant, Segregated, FoF, or Index fund.
+    """
+    name = (fund.get("Name") or "")
+    name_up = name.upper()
+
+    if "FUND OF FUND" in name_up or " FOF" in name_up or name_up.endswith("FOF"):
+        return False
+
+    if _looks_like_etf(name):
+        return True
+
+    if (fund.get("BroadCategoryGroup") or "") != "Equity":
+        return False
+    if any(x in name_up for x in ("DIRECT", "IDCW", "DIVIDEND",
+                                  "SEGREGATED", "INDEX")):
+        return False
+    return True
 
 
 def parse_holdings(xml_text: str) -> dict[str, dict]:
@@ -179,7 +259,7 @@ def parse_holdings(xml_text: str) -> dict[str, dict]:
 
 
 async def upsert_mf_master(session, fund: dict) -> None:
-    is_etf = _is_etf(fund.get("CategoryName"), fund.get("InvestmentType"))
+    is_etf = _looks_like_etf(fund.get("Name"))
     values = {
         "mstar_id": fund["mstar_id"],
         "fund_name": fund.get("Name") or fund["mstar_id"],
@@ -238,10 +318,27 @@ async def main() -> int:
     print(f"  master entries:   {len(master_by_id)}")
     print(f"  holdings entries: {len(holdings_by_id)}")
 
-    # Merge: yield (mstar_id, master_dict, holdings_dict)
+    # Merge + filter: only architect-approved funds (ETFs + regular equity growth MFs)
+    keep_ids: set[str] = set()
+    skip_reasons: dict[str, int] = {"not_equity": 0, "direct_or_idcw": 0,
+                                    "fof": 0, "index": 0, "kept_etf": 0,
+                                    "kept_mf": 0}
+    for mid in (set(master_by_id) | set(holdings_by_id)):
+        m = master_by_id.get(mid)
+        if not m:
+            continue
+        if _is_keep(m):
+            keep_ids.add(mid)
+            if _looks_like_etf(m.get("Name")):
+                skip_reasons["kept_etf"] += 1
+            else:
+                skip_reasons["kept_mf"] += 1
+    print(f"\nFilter result: keeping {len(keep_ids)} funds out of {len(master_by_id)}")
+    print(f"  ETFs kept:                {skip_reasons['kept_etf']}")
+    print(f"  Regular Equity MFs kept:  {skip_reasons['kept_mf']}")
+
     def iter_funds():
-        all_ids = set(master_by_id) | set(holdings_by_id)
-        for mid in all_ids:
+        for mid in keep_ids:
             m = master_by_id.get(mid, {"mstar_id": mid})
             h = holdings_by_id.get(mid, {"HoldingDate": None, "holdings": []})
             yield m, h
@@ -280,6 +377,30 @@ async def main() -> int:
     n_mf_no_holdings = 0
     sample_etf_unmatched: list[tuple] = []
 
+    # ---- Cleanup pass: delete pre-existing master rows not in the filtered set
+    # (legacy data from older / unfiltered runs). Cascades to de_mf_holdings.
+    print("\nCleanup: dropping de_mf_master rows outside the keep set...")
+    async with Session() as session:
+        async with session.begin():
+            keep_list = list(keep_ids)
+            # Use temporary table to handle large IN() lists efficiently
+            await session.execute(text(
+                "CREATE TEMP TABLE _keep_ids (mstar_id text PRIMARY KEY) ON COMMIT DROP"
+            ))
+            for i in range(0, len(keep_list), 5000):
+                batch = keep_list[i:i+5000]
+                await session.execute(
+                    text("INSERT INTO _keep_ids VALUES " +
+                         ",".join(f"(:m{j})" for j in range(len(batch)))),
+                    {f"m{j}": v for j, v in enumerate(batch)},
+                )
+            res = await session.execute(text(
+                "DELETE FROM de_mf_master "
+                "WHERE mstar_id NOT IN (SELECT mstar_id FROM _keep_ids)"
+            ))
+            print(f"  deleted {res.rowcount} legacy/non-matching de_mf_master rows "
+                  f"(de_mf_holdings cascaded)")
+
     print("\nIngesting...")
     n_skipped_errors = 0
     error_samples: list[tuple] = []
@@ -287,9 +408,10 @@ async def main() -> int:
         async with session.begin():
             for master, hold in iter_funds():
                 n_funds += 1
-                category = master.get("CategoryName")
-                inv_type = master.get("InvestmentType")
-                is_etf = _is_etf(category, inv_type)
+                # Primary classifier: name pattern. Master service doesn't
+                # return InvestmentType, so the substring-on-name approach is
+                # the only reliable signal in production.
+                is_etf = _looks_like_etf(master.get("Name"))
                 holdings = hold.get("holdings") or []
                 holding_date = hold.get("HoldingDate")
                 try:
