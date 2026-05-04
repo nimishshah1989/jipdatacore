@@ -99,11 +99,18 @@ def collect_facts(target_date: date) -> dict[str, Any]:
             cur.execute(
                 """
                 WITH eligible AS (
+                    -- Retail Indian MFs only. amfi_code IS NOT NULL is the
+                    -- discriminator: AMFI only issues codes to mainstream
+                    -- retail MFs (mandatory daily NAV publishing). AIF / PMS /
+                    -- GIFT-City schemes appear in the same Morningstar
+                    -- universe but don't have AMFI codes -- they report
+                    -- monthly/quarterly to SEBI under a different regime.
                     SELECT m.mstar_id
                     FROM de_mf_master m
                     WHERE m.is_active
                       AND m.broad_category = 'Equity'
                       AND NOT m.is_etf
+                      AND m.amfi_code IS NOT NULL
                       AND m.fund_name NOT ILIKE %(idcw)s
                       AND m.fund_name NOT ILIKE %(div)s
                       AND m.fund_name NOT ILIKE %(seg)s

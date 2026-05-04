@@ -41,56 +41,37 @@ class TableSpec:
 # ---------------------------------------------------------------------------
 
 TABLE_SPECS: list[TableSpec] = [
-    # ── Equity (daily, weekday EOD 18:33 IST) ──
+    # ── Equity (daily, weekday EOD 19:15 IST) ──
     TableSpec("de_equity_ohlcv_y2026", "equity_bhav", "eod", "15 19 * * 1-5", "date", "equity", "P0", 24, 4),
     TableSpec("de_corporate_actions", "equity_corporate_actions", "eod", "15 19 * * 1-5", "ex_date", "equity", "P1", 168, 24),
-    TableSpec("de_equity_technical_daily", "equity_technicals_sql", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P0", 24, 4),
-    TableSpec("de_rs_scores", "relative_strength", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P0", 24, 4),
-    TableSpec("de_rs_daily_summary", "relative_strength", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P1", 24, 4),
-    TableSpec("de_breadth_daily", "market_breadth", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P0", 24, 4),
-    TableSpec("de_sector_breadth_daily", "sector_breadth", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P1", 24, 4),
     # ── Indices ──
     TableSpec("de_index_prices", "nse_indices", "eod", "15 19 * * 1-5", "date", "equity", "P0", 24, 4),
     TableSpec("de_index_constituents", "index_constituents", "weekly_indices", "0 19 * * 6", "effective_from", "equity", "P2", 168, 48),
-    TableSpec("de_index_technical_daily", "equity_technicals_sql", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P1", 24, 4),
-    # ── F&O ──
-    TableSpec("de_fo_bhavcopy", "fo_bhavcopy", "eod", "15 19 * * 1-5", "trade_date", "equity", "P1", 24, 4),
-    TableSpec("de_fo_ban_list", "fo_ban_list", "eod", "15 19 * * 1-5", "business_date", "equity", "P1", 24, 4),
-    TableSpec("de_participant_oi", "participant_oi", "eod", "15 19 * * 1-5", "trade_date", "equity", "P1", 24, 4),
-    TableSpec("de_fo_summary", "fo_summary", "fo_summary", "30 20 * * 1-5", "date", "equity", "P1", 24, 4),
-    # ── MF (NAV daily, late 23:00 IST after AMFI publishes) ──
+    # ── MF (NAV daily 23:30 IST after AMFI publishes; holdings monthly) ──
     TableSpec("de_mf_nav_daily_y2026", "amfi_nav", "amfi_late", "30 23 * * 1-5", "nav_date", "mf", "P0", 36, 12),
-    TableSpec("de_mf_derived_daily", "mf_derived", "nightly_compute", "30 0 * * 2-6", "nav_date", "computed", "P0", 36, 12),
-    TableSpec("de_mf_technical_daily", "mf_derived", "nightly_compute", "30 0 * * 2-6", "nav_date", "computed", "P1", 36, 12),
     TableSpec("de_mf_holdings", "morningstar_portfolio", "holdings_monthly", "0 21 1 * *", "as_of_date", "mf", "P1", 30 * 24, 7 * 24),
-    TableSpec("de_mf_category_flows", "mf_category_flows", "holdings_monthly", "0 21 1 * *", "month_date", "mf", "P1", 45 * 24, 15 * 24),
     # ── ETF ──
     TableSpec("de_etf_ohlcv", "etf_prices", "eod", "15 19 * * 1-5", "date", "etf", "P1", 24, 4),
-    TableSpec("de_etf_technical_daily", "etf_technicals", "nightly_compute", "30 0 * * 2-6", "date", "computed", "P1", 24, 4),
-    # ── Global (yfinance + FRED) ──
+    TableSpec("de_etf_holdings", "morningstar_portfolio", "holdings_monthly", "0 21 1 * *", "as_of_date", "etf", "P1", 30 * 24, 7 * 24),
+    # ── Global (yfinance / Stooq) ──
     TableSpec("de_global_prices", "yfinance_global", "eod", "33 18 * * *", "date", "global", "P1", 24, 4),
-    TableSpec("de_global_technical_daily", "global_technicals", "nightly_compute", "30 0 * * *", "date", "computed", "P1", 24, 4),
-    TableSpec("de_macro_values", "fred_macro", "eod", "33 18 * * *", "date", "macro", "P2", 168, 48),
-    # ── Macro (RBI / FBIL) ──
-    TableSpec("de_gsec_yield", "gsec_yields", "eod", "15 19 * * 1-5", "yield_date", "macro", "P2", 48, 12),
-    TableSpec("de_rbi_fx_rate", "rbi_fx_rates", "eod", "15 19 * * 1-5", "rate_date", "macro", "P2", 48, 12),
-    TableSpec("de_rbi_policy_rate", "rbi_policy_rates", "macro_daily", "15 9 * * *", "effective_date", "macro", "P2", 7 * 24, 48),
-    # ── Flows ──
-    TableSpec("de_institutional_flows", "fii_dii_flows", "eod", "15 19 * * 1-5", "date", "flows", "P0", 24, 4),
-    # ── Fundamentals ──
-    TableSpec("de_shareholding_pattern", "shareholding_pattern", "filings_daily", "0 19 * * *", "as_of_date", "fundamentals", "P1", 30 * 24, 7 * 24),
-    TableSpec("de_equity_fundamentals_history", "equity_fundamentals", "fundamentals_weekly", "30 23 * * 6", "fiscal_period_end", "fundamentals", "P1", 8 * 24, 24),
-    # ── BSE filings ──
-    TableSpec("de_bse_announcements", "bse_filings", "bse_filings_daily", "0 18 * * 1-5", "announcement_dt", "qualitative", "P1", 24, 4),
-    TableSpec("de_bse_corp_actions", "bse_filings", "bse_filings_daily", "0 18 * * 1-5", "ex_date", "qualitative", "P1", 168, 48),
-    TableSpec("de_bse_result_calendar", "bse_filings", "bse_filings_daily", "0 18 * * 1-5", "result_date", "qualitative", "P1", 168, 48),
-    # ── Insider trades + bulk/block deals ──
-    TableSpec("de_insider_trades", "insider_trades", "eod", "15 19 * * 1-5", "disclosure_date", "qualitative", "P1", 24, 4),
-    TableSpec("de_bulk_block_deals", "bulk_block_deals", "eod", "15 19 * * 1-5", "deal_date", "qualitative", "P1", 24, 4),
-    # ── Qualitative (RSS + Goldilocks) ──
-    TableSpec("de_qual_documents", "qualitative_rss", "eod", "15 19 * * 1-5", "created_at", "qualitative", "P2", 24, 6),
-    TableSpec("de_goldilocks_market_view", "__goldilocks_compute__", "nightly_compute", "30 0 * * 2-6", "report_date", "qualitative", "P2", 168, 24),
 ]
+# NOTE -- the following TableSpecs were removed in the Atlas-M0 cleanup
+# (migration 020_atlas_m0_cleanup_unused_tables, 2026-05-04). Their target
+# tables have been dropped from the database and Atlas computes its own
+# derivations from raw OHLCV + holdings:
+#   de_equity_technical_daily, de_etf_technical_daily,
+#   de_global_technical_daily, de_index_technical_daily, de_mf_technical_daily,
+#   de_rs_scores, de_rs_daily_summary, de_breadth_daily, de_sector_breadth_daily,
+#   de_mf_derived_daily, de_mf_sector_exposure, de_market_regime,
+#   de_fo_bhavcopy, de_fo_ban_list, de_fo_summary, de_participant_oi,
+#   de_macro_values, de_macro_master, de_gsec_yield, de_rbi_fx_rate,
+#   de_rbi_policy_rate, de_institutional_flows, de_mf_category_flows,
+#   de_intermarket_ratios, de_bse_announcements, de_bse_corp_actions,
+#   de_bse_result_calendar, de_insider_trades, de_bulk_block_deals,
+#   de_shareholding_pattern, de_equity_fundamentals_history,
+#   de_qual_documents, de_goldilocks_market_view.
+# Re-add an entry here only if the corresponding table is recreated.
 
 
 def all_specs() -> list[TableSpec]:

@@ -267,6 +267,7 @@ async def upsert_mf_master(session, fund: dict) -> None:
     values = {
         "mstar_id": fund["mstar_id"],
         "fund_name": fund.get("Name") or fund["mstar_id"],
+        "amfi_code": fund.get("AMFICode"),
         "isin": fund.get("ISIN"),
         "category_name": fund.get("CategoryName"),
         "broad_category": fund.get("BroadCategoryGroup"),
@@ -282,6 +283,7 @@ async def upsert_mf_master(session, fund: dict) -> None:
         index_elements=["mstar_id"],
         set_={
             "fund_name": stmt.excluded.fund_name,
+            "amfi_code": stmt.excluded.amfi_code,
             "isin": stmt.excluded.isin,
             "category_name": stmt.excluded.category_name,
             "broad_category": stmt.excluded.broad_category,
