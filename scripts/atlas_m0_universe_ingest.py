@@ -346,7 +346,7 @@ async def main() -> int:
     print(f"  MFs:                        {n_mfs}")
     print(f"    holdings upserted (rows): {n_mf_holdings_inserted}")
     print(f"    no holdings parsed:       {n_mf_no_holdings}")
-    print(f"\nDB state after ingest:")
+    print("\nDB state after ingest:")
     print(f"  de_mf_master active:        {n_master}")
     print(f"    of which ETF:             {n_master_etf}")
     print(f"    of which Equity (broad):  {n_master_eq}")
